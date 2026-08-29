@@ -28,6 +28,11 @@ import { formatCompactRelativeTime } from '@/lib/format-relative-time';
 import { isElectronRenderer, useElectronFullscreen } from '@/lib/electron';
 import { getIpcServices } from '@/lib/electron-ipc-client';
 import { formatSessionTabSearch } from '@/lib/session-tab-url';
+import {
+  filterSidebarSearchableItems,
+  projectNameMatchesSidebarQuery,
+  sidebarQueryIsActive,
+} from '@/lib/sidebar-session-search';
 import { openExternalUrl } from '@/lib/native-browser';
 import { getChangelogUrl } from '@/lib/lody-urls';
 import { getCachedWorkspaceName } from '@/lib/local-storage-cache';
@@ -1212,6 +1217,8 @@ export function LoroAppSidebar({ className }: LoroAppSidebarProps) {
     select: (l) => ({ pathname: l.pathname, search: l.search }),
   });
   const isMobile = useIsMobile();
+  const [sidebarSearchQuery, setSidebarSearchQuery] = useState('');
+  const searchActive = sidebarQueryIsActive(sidebarSearchQuery);
   const multiWorkspaceAvailable = useAppCapability('multiWorkspace');
   const { openSettings } = useOpenSettings();
 
@@ -2058,14 +2065,66 @@ export function LoroAppSidebar({ className }: LoroAppSidebarProps) {
     sessionSharingById,
     t,
   ]);
+  const visibleSidebarItems = useMemo(
+    () => filterSidebarSearchableItems(allSidebarItems, sidebarSearchQuery),
+    [allSidebarItems, sidebarSearchQuery]
+  );
+  const matchingSessionIds = useMemo(() => {
+    if (!searchActive) return null;
+    return new Set(visibleSidebarItems.map((item) => item.id));
+  }, [searchActive, visibleSidebarItems]);
   const pinnedItems = useMemo(
-    () => sortUpdatedItems(allSidebarItems.filter((item) => item.isPinned)),
-    [allSidebarItems]
+    () => sortUpdatedItems(visibleSidebarItems.filter((item) => item.isPinned)),
+    [visibleSidebarItems]
   );
   const updatedItems = useMemo(
-    () => allSidebarItems.filter((item) => !item.isPinned),
-    [allSidebarItems]
+    () => visibleSidebarItems.filter((item) => !item.isPinned),
+    [visibleSidebarItems]
   );
+  const visibleWorkspaceChatSessions = useMemo(() => {
+    if (!matchingSessionIds) return workspaceChatSessions;
+    return workspaceChatSessions.filter((task) => matchingSessionIds.has(task.sessionId));
+  }, [matchingSessionIds, workspaceChatSessions]);
+  const visibleWorkspaceRepoSessions = useMemo(() => {
+    if (!matchingSessionIds) return workspaceRepoSessions;
+    return workspaceRepoSessions.filter((task) => matchingSessionIds.has(task.sessionId));
+  }, [matchingSessionIds, workspaceRepoSessions]);
+  const visibleWorkspaceLocalProjectSessionsByKey = useMemo(() => {
+    if (!matchingSessionIds) return workspaceLocalProjectSessionsByKey;
+    const next = new Map<string, SessionMeta[]>();
+    for (const [projectKey, sessionsForProject] of workspaceLocalProjectSessionsByKey) {
+      next.set(
+        projectKey,
+        sessionsForProject.filter((session) => matchingSessionIds.has(session.id))
+      );
+    }
+    return next;
+  }, [matchingSessionIds, workspaceLocalProjectSessionsByKey]);
+  const visibleLocalProjectSections = useMemo(() => {
+    if (!searchActive) return localProjectSections;
+    return localProjectSections
+      .map((section) => ({
+        ...section,
+        projects: section.projects.filter((project) => {
+          if (!section.machineId) return false;
+          const projectKey = `${section.machineId}:${project.id}`;
+          const sessionsForProject =
+            visibleWorkspaceLocalProjectSessionsByKey.get(projectKey) ?? [];
+          if (sessionsForProject.length > 0) return true;
+          return projectNameMatchesSidebarQuery(project.name, sidebarSearchQuery);
+        }),
+      }))
+      .filter((section) => section.projects.length > 0);
+  }, [
+    localProjectSections,
+    searchActive,
+    sidebarSearchQuery,
+    visibleWorkspaceLocalProjectSessionsByKey,
+  ]);
+  const sidebarSearchEmpty =
+    searchActive &&
+    visibleSidebarItems.length === 0 &&
+    visibleLocalProjectSections.length === 0;
 
   const archiveTooltipLabel = useMemo(() => t('sessions.archive', 'Archive session'), [t]);
   const archiveActionLabel = useMemo(() => t('archive.title', 'Archive'), [t]);
@@ -2092,8 +2151,8 @@ export function LoroAppSidebar({ className }: LoroAppSidebarProps) {
     [setLocalProjectsSectionCollapseState]
   );
 
-  const showChats = sessionsListLoading || workspaceChatSessions.length > 0;
-  const showGithubWorktrees = sessionsListLoading || workspaceRepoSessions.length > 0;
+  const showChats = sessionsListLoading || visibleWorkspaceChatSessions.length > 0;
+  const showGithubWorktrees = sessionsListLoading || visibleWorkspaceRepoSessions.length > 0;
   const filterLabels = useMemo(
     () => ({
       triggerAriaLabel: t('sidebar.filter.trigger', 'Filter sidebar'),
@@ -2111,12 +2170,14 @@ export function LoroAppSidebar({ className }: LoroAppSidebarProps) {
       <span aria-hidden="true" className="block h-6 w-6" />
     ) : null;
   const localProjectsTopContent =
-    localProjectSections.length === 0 ? null : (
+    visibleLocalProjectSections.length === 0 ? null : (
       // Sections carry their own bottom margin (see sidebarTopContent): 12px
       // when expanded, 4px when collapsed so folded sections stack compactly.
       <div>
-        {localProjectSections.map((section, sectionIndex) => {
-          const sectionCollapsed = localProjectsSectionCollapseState[section.sectionKey] ?? false;
+        {visibleLocalProjectSections.map((section, sectionIndex) => {
+          const sectionCollapsed = searchActive
+            ? false
+            : (localProjectsSectionCollapseState[section.sectionKey] ?? false);
           const headerFilter = sectionIndex === 0 ? sidebarFilterPlaceholder : null;
           const dividerRight =
             section.canImport && isElectron ? (
@@ -2169,9 +2230,11 @@ export function LoroAppSidebar({ className }: LoroAppSidebarProps) {
                     const machineId = section.machineId;
                     if (!machineId) return null;
                     const projectKey = `${machineId}:${project.id}`;
-                    const collapsed = localProjectCollapseState[projectKey] ?? false;
+                    const collapsed = searchActive
+                      ? false
+                      : (localProjectCollapseState[projectKey] ?? false);
                     const sessionsForProject =
-                      workspaceLocalProjectSessionsByKey.get(projectKey) ?? [];
+                      visibleWorkspaceLocalProjectSessionsByKey.get(projectKey) ?? [];
                     const isSelected = projectKey === selectedLocalProjectKey;
                     const rootPath =
                       typeof project.rootPath === 'string' ? project.rootPath.trim() : '';
@@ -2231,9 +2294,14 @@ export function LoroAppSidebar({ className }: LoroAppSidebarProps) {
       </div>
     );
 
+  const displayRepoFullNames = useMemo(
+    () => getStableRepoFullNames(visibleWorkspaceRepoSessions),
+    [visibleWorkspaceRepoSessions]
+  );
+
   // Compute repos array from persisted state
   const repos = useMemo<SessionListRepoState[]>(() => {
-    const repoSet = new Set(repoFullNames);
+    const repoSet = new Set(displayRepoFullNames);
     const result: SessionListRepoState[] = [];
     const seen = new Set<string>();
 
@@ -2243,24 +2311,24 @@ export function LoroAppSidebar({ className }: LoroAppSidebarProps) {
         seen.add(repoFullName);
         result.push({
           repoFullName,
-          collapsed: repoCollapseState[repoFullName] ?? false,
+          collapsed: searchActive ? false : (repoCollapseState[repoFullName] ?? false),
         });
       }
     }
 
     // Then, add any new repos not in the persisted order
-    for (const repoFullName of repoFullNames) {
+    for (const repoFullName of displayRepoFullNames) {
       if (!seen.has(repoFullName)) {
         seen.add(repoFullName);
         result.push({
           repoFullName,
-          collapsed: repoCollapseState[repoFullName] ?? false,
+          collapsed: searchActive ? false : (repoCollapseState[repoFullName] ?? false),
         });
       }
     }
 
     return result;
-  }, [repoFullNames, repoOrder, repoCollapseState]);
+  }, [displayRepoFullNames, repoOrder, repoCollapseState, searchActive]);
 
   // Append-only sync: register newly discovered repos into `repoOrder`, but
   // never remove. Removing on transient disappearance (scope/visibility/sync
@@ -2514,6 +2582,14 @@ export function LoroAppSidebar({ className }: LoroAppSidebarProps) {
       connectionOffline: t('chat.mobileHome.connectionBanner.offline', 'Offline'),
       workspaceSyncing: t('sidebar.workspace.syncing', 'Syncing workspace…'),
       filter: filterLabels,
+      searchPlaceholder: t('sidebar.search.placeholder', 'Search chats'),
+      searchAriaLabel: t('sidebar.search.ariaLabel', 'Search chats'),
+      clearSearchAriaLabel: t('sidebar.search.clear', 'Clear search'),
+      searchEmptyTitle: t('sidebar.search.emptyTitle', 'No matching chats'),
+      searchEmptyDescription: t(
+        'sidebar.search.emptyDescription',
+        'Try a title, project, or agent name.'
+      ),
     };
   }, [t, filterLabels]);
 
@@ -2558,13 +2634,15 @@ export function LoroAppSidebar({ className }: LoroAppSidebarProps) {
       {showGithubWorktrees ? (
         <SidebarSectionHeader
           label={githubWorktreesLabel}
-          collapsed={githubWorktreesSectionCollapsed}
-          count={workspaceRepoSessions.length}
+          collapsed={searchActive ? false : githubWorktreesSectionCollapsed}
+          count={visibleWorkspaceRepoSessions.length}
           isMobile={isMobile}
           toggleLabel={toggleLabel}
           onToggleCollapsed={handleToggleGithubWorktreesSection}
           action={
-            localProjectSections.length === 0 ? (sidebarFilterPlaceholder ?? undefined) : undefined
+            visibleLocalProjectSections.length === 0
+              ? (sidebarFilterPlaceholder ?? undefined)
+              : undefined
           }
         />
       ) : null}
@@ -2575,13 +2653,13 @@ export function LoroAppSidebar({ className }: LoroAppSidebarProps) {
   // section in Workspace mode.
   const sidebarChatsContent = showChats ? (
     <SessionList
-      className={chatsCollapsed ? 'mb-1' : 'mb-3'}
-      sessions={workspaceChatSessions}
+      className={searchActive || !chatsCollapsed ? 'mb-3' : 'mb-1'}
+      sessions={visibleWorkspaceChatSessions}
       repos={[]}
       isLoading={sessionsListLoading}
-      chatsCollapsed={chatsCollapsed}
+      chatsCollapsed={searchActive ? false : chatsCollapsed}
       headerAction={
-        localProjectSections.length === 0 && !showGithubWorktrees
+        visibleLocalProjectSections.length === 0 && !showGithubWorktrees
           ? (sidebarFilterPlaceholder ?? undefined)
           : undefined
       }
@@ -2625,9 +2703,10 @@ export function LoroAppSidebar({ className }: LoroAppSidebarProps) {
 
   const sidebarSessionListProps = useMemo(
     () => ({
-      sessions: githubWorktreesSectionCollapsed ? [] : workspaceRepoSessions,
-      repos: githubWorktreesSectionCollapsed ? [] : repos,
-      isLoading: githubWorktreesSectionCollapsed ? false : sessionsListLoading,
+      sessions: searchActive || !githubWorktreesSectionCollapsed ? visibleWorkspaceRepoSessions : [],
+      repos: searchActive || !githubWorktreesSectionCollapsed ? repos : [],
+      isLoading:
+        searchActive || !githubWorktreesSectionCollapsed ? sessionsListLoading : false,
       selectedSessionId: selectedSessionId,
       activeGroupKey: activeNewSessionGroup,
       onSelectSession: handleNavigateToSession,
@@ -2657,10 +2736,11 @@ export function LoroAppSidebar({ className }: LoroAppSidebarProps) {
       handleOpenTaskPullRequest,
       handleNavigateToSession,
       handleToggleRepoCollapsed,
-      workspaceRepoSessions,
       repos,
+      searchActive,
       selectedSessionId,
       sessionsListLoading,
+      visibleWorkspaceRepoSessions,
     ]
   );
 
@@ -2713,14 +2793,15 @@ export function LoroAppSidebar({ className }: LoroAppSidebarProps) {
   // --- Keyboard navigation integration ---
   const keyboardNavLocalSections = useMemo<SidebarNavigationLocalSection[]>(() => {
     const result: SidebarNavigationLocalSection[] = [];
-    for (const section of localProjectSections) {
+    for (const section of visibleLocalProjectSections) {
       const machineId = section.machineId;
       if (!machineId) continue;
       const projects: SidebarNavigationLocalSection['projects'] = [];
       for (const project of section.projects) {
         const projectKey = `${machineId}:${project.id}`;
-        const collapsed = localProjectCollapseState[projectKey] ?? false;
-        const sessionsForProject = workspaceLocalProjectSessionsByKey.get(projectKey) ?? [];
+        const collapsed = searchActive ? false : (localProjectCollapseState[projectKey] ?? false);
+        const sessionsForProject =
+          visibleWorkspaceLocalProjectSessionsByKey.get(projectKey) ?? [];
         projects.push({
           machineId,
           localProjectId: project.id,
@@ -2736,18 +2817,21 @@ export function LoroAppSidebar({ className }: LoroAppSidebarProps) {
         });
       }
       result.push({
-        collapsed: localProjectsSectionCollapseState[section.sectionKey] ?? false,
+        collapsed: searchActive
+          ? false
+          : (localProjectsSectionCollapseState[section.sectionKey] ?? false),
         projects,
       });
     }
     return result;
   }, [
     childSessionsByParent,
-    localProjectSections,
     localProjectCollapseState,
     localProjectsSectionCollapseState,
     resolveOpenerRowId,
-    workspaceLocalProjectSessionsByKey,
+    searchActive,
+    visibleLocalProjectSections,
+    visibleWorkspaceLocalProjectSessionsByKey,
   ]);
 
   const selectedSessionIdRef = useRef(selectedSessionId);
@@ -2818,19 +2902,19 @@ export function LoroAppSidebar({ className }: LoroAppSidebarProps) {
         showFullSessionGroups,
         collapsedOpenedBySessions: collapsedOpenedBySessionIds,
         pinnedItems,
-        pinnedSectionCollapsed,
+        pinnedSectionCollapsed: searchActive ? false : pinnedSectionCollapsed,
         workspace: {
           localSections: keyboardNavLocalSections,
-          githubSectionCollapsed: githubWorktreesSectionCollapsed,
-          repoSessions: workspaceRepoSessions,
+          githubSectionCollapsed: searchActive ? false : githubWorktreesSectionCollapsed,
+          repoSessions: visibleWorkspaceRepoSessions,
           repos,
-          chatSessions: workspaceChatSessions,
-          chatsCollapsed,
+          chatSessions: visibleWorkspaceChatSessions,
+          chatsCollapsed: searchActive ? false : chatsCollapsed,
         },
         updated: {
           items: updatedItems,
-          collapsed: updatedBucketCollapseState.all ?? false,
-          showFull: updatedBucketShowFullState.all ?? false,
+          collapsed: searchActive ? false : (updatedBucketCollapseState.all ?? false),
+          showFull: searchActive ? true : (updatedBucketShowFullState.all ?? false),
         },
       }),
     [
@@ -2842,12 +2926,13 @@ export function LoroAppSidebar({ className }: LoroAppSidebarProps) {
       pinnedItems,
       pinnedSectionCollapsed,
       repos,
+      searchActive,
       showFullSessionGroups,
       updatedBucketCollapseState.all,
       updatedBucketShowFullState.all,
       updatedItems,
-      workspaceChatSessions,
-      workspaceRepoSessions,
+      visibleWorkspaceChatSessions,
+      visibleWorkspaceRepoSessions,
     ]
   );
 
@@ -2892,15 +2977,18 @@ export function LoroAppSidebar({ className }: LoroAppSidebarProps) {
         afterSessionListContent={sidebarChatsContent ?? undefined}
         bottomFloatingContent={sidebarBottomFloatingContent ?? undefined}
         labels={labels}
+        searchQuery={sidebarSearchQuery}
+        onSearchQueryChange={setSidebarSearchQuery}
+        searchEmpty={sidebarSearchEmpty}
         sessionListProps={sidebarSessionListProps}
         organizeMode={organizeMode}
         chatScope={chatScope}
         pinnedItems={pinnedItems}
-        pinnedSectionCollapsed={pinnedSectionCollapsed}
+        pinnedSectionCollapsed={searchActive ? false : pinnedSectionCollapsed}
         updatedItems={updatedItems}
         updatedSelectedItemId={updatedSelectedItemId}
-        updatedBucketsCollapsed={updatedBucketCollapseState}
-        updatedShowFullBuckets={updatedBucketShowFullState}
+        updatedBucketsCollapsed={searchActive ? { all: false } : updatedBucketCollapseState}
+        updatedShowFullBuckets={searchActive ? { all: true } : updatedBucketShowFullState}
         updatedIsLoading={organizeMode === 'updated' && sessionsListLoading}
         onOrganizeModeChange={handleOrganizeModeChange}
         onChatScopeChange={handleChatScopeChanged}

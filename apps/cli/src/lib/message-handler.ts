@@ -93,6 +93,9 @@ import {
   sessionForkFailure,
   type SessionEditAndResendResponse,
   sessionEditAndResendFailure,
+  type SessionSwitchAgentResponse,
+  type SessionSwitchAgentSpec,
+  sessionSwitchAgentFailure,
   type SessionPreparationSpec,
   type SessionPrepareCancelResponse,
   type SessionPrepareResponse,
@@ -297,6 +300,7 @@ import {
   SessionEditAndResendService,
   type SessionEditAndResendInput,
 } from '@/session/session-edit-and-resend-service';
+import { SessionAgentSwitchService } from '@/session/session-agent-switch-service';
 import { LodyOperationCoordinator } from '@/orchestration/operation-coordinator';
 import { getLodyOperationStorePath, LodyOperationStore } from '@/orchestration/operation-store';
 import {
@@ -895,6 +899,7 @@ export class MessageHandler {
   private sessionUserResolver: SessionUserResolver;
   private sessionForkService: SessionForkService;
   private sessionEditAndResendService: SessionEditAndResendService;
+  private sessionAgentSwitchService: SessionAgentSwitchService;
   private operationCoordinator: LodyOperationCoordinator;
   private autoPromptRunner: AutoPromptRunner;
   private turnPostProcessingService: TurnPostProcessingService;
@@ -2777,6 +2782,20 @@ export class MessageHandler {
     return await this.sessionEditAndResendService.editAndResend(args);
   }
 
+  private async switchSessionAgentWithAccessCheck(
+    args: SessionSwitchAgentSpec
+  ): Promise<SessionSwitchAgentResponse> {
+    const access = await this.verifySessionMachineAccess(args.sessionId, args.requestedByUserId);
+    if (access.outcome !== 'allowed') {
+      return sessionSwitchAgentFailure(
+        args,
+        'MACHINE_ACCESS_DENIED',
+        `Agent switch access verification ${access.outcome}.`
+      );
+    }
+    return await this.sessionAgentSwitchService.switchAgent(args);
+  }
+
   private async materializeOperationTarget(
     operation: StoredLodyOperation,
     item: Extract<LodyOperationItemResult, { status: 'active' }>,
@@ -3364,6 +3383,7 @@ export class MessageHandler {
         terminateSession: async ({ sessionId }) => await this.terminateAcpSession(sessionId),
         forkSession: async (args) => await this.forkSessionWithAccessCheck(args),
         editAndResendSession: async (args) => await this.editAndResendSessionWithAccessCheck(args),
+        switchSessionAgent: async (args) => await this.switchSessionAgentWithAccessCheck(args),
         dispatchSessionTurn: async ({ sessionId, userTurnId, userId, timestamp, inputConfig }) => {
           const disposition = await this.sessionDispatchWatcher.offerRpcTurn({
             sessionId,
@@ -3523,6 +3543,14 @@ export class MessageHandler {
       enqueueDispatch: (sessionId) => {
         void this.sessionDispatchWatcher.enqueueSessionCheck(sessionId);
       },
+    });
+    this.sessionAgentSwitchService = new SessionAgentSwitchService({
+      workspaceDocument: this.workspaceDocument,
+      sessionManager: this.sessionManager,
+      executionService: this.executionService,
+      logger: this.logger,
+      machineId: this.machineId,
+      hasPendingDispatch: (sessionId) => this.sessionDispatchWatcher.hasPendingDispatch(sessionId),
     });
     this.operationCoordinator = new LodyOperationCoordinator({
       workspaceId: this.workspaceId,
@@ -6602,6 +6630,8 @@ export class MessageHandler {
           inputConfig,
         });
       }
+      case 'session/switch-agent':
+        return await this.switchSessionAgentWithAccessCheck(request.params);
       default: {
         const exhaustive: never = request;
         throw new Error(`Unsupported local Machine RPC method: ${String(exhaustive)}`);

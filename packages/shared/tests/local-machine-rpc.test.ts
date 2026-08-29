@@ -17,6 +17,14 @@ describe('local Machine RPC', () => {
       },
     },
     {
+      method: 'session/switch-agent',
+      params: {
+        sessionId: 'session-1',
+        agentConfigId: 'claude-1',
+        requestedByUserId: 'user-1',
+      },
+    },
+    {
       method: 'session/dispatch-turn',
       params: {
         sessionId: 'session-1',

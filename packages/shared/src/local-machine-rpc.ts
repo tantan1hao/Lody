@@ -38,6 +38,10 @@ import {
   SessionSteerResponseSchema,
   SessionTerminateResponseSchema,
 } from './message-schemas';
+import {
+  SessionSwitchAgentResponseSchema,
+  SessionSwitchAgentSpecSchema,
+} from './session-agent-switch';
 
 export const LOCAL_MACHINE_RPC_PATH = '/machine-rpc';
 
@@ -136,6 +140,10 @@ export const LocalMachineRpcRequestSchema = z.discriminatedUnion('method', [
     params: SessionEditAndResendSpecSchema,
   }).strict(),
   BaseLocalMachineRpcRequestSchema.extend({
+    method: z.literal('session/switch-agent'),
+    params: SessionSwitchAgentSpecSchema,
+  }).strict(),
+  BaseLocalMachineRpcRequestSchema.extend({
     method: z.literal('session/dispatch-turn'),
     params: z
       .object({
@@ -218,6 +226,7 @@ export const LocalMachineRpcResultSchema = z.union([
   SessionCancelResponseSchema,
   SessionDispatchTurnResponseSchema,
   SessionEditAndResendResponseSchema,
+  SessionSwitchAgentResponseSchema,
   SessionForkResponseSchema,
   SessionPrepareResponseSchema,
   SessionPrepareCancelResponseSchema,

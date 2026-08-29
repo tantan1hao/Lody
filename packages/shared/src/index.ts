@@ -69,6 +69,7 @@ export * from './streams-snapshot-codec';
 export * from './presence';
 export * from './machine-monitor';
 export * from './machine-protocol-capabilities';
+export * from './session-agent-switch';
 export * from './repo-doc-meta';
 export * from './session-input';
 export * from './session-preparation';

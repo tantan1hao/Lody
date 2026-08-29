@@ -378,6 +378,8 @@ export interface SessionChatInputAreaProps {
   externalHistorySyncLabel?: string;
   isDark: boolean;
   isEmptyConversation: boolean;
+  /** Mid-session agent switch is available when the owning daemon advertises it. */
+  canSwitchSessionAgent?: boolean;
   selectedModeId: string | null;
   selectedModelId: string | null;
   modeOptions: AcpSessionSelectOption[];
@@ -421,7 +423,7 @@ export interface SessionChatInputAreaProps {
   onSendMessage: (inputBlocks: SessionInputBlock[]) => Promise<boolean>;
   onStop: () => void | Promise<void>;
   onRemoveQueueItem: (itemId: string) => Promise<void>;
-  /** When provided and conversation is empty, the agent config badge becomes a selector. */
+  /** When provided, the agent config badge becomes a selector (empty drafts or idle switch). */
   onAgentConfigChange?: (selection: AgentSelection) => void;
   initialInputText?: string;
   onInputValueChange?: (value: string) => void;
@@ -460,11 +462,13 @@ export const SessionChatInputArea = memo(
       session,
       sessionLocalProjectRootPath,
       isMachineRemoved,
+      isAgentBusy,
       canStopAgent = false,
       isExternalHistoryRefreshing = false,
       externalHistorySyncLabel,
       isDark,
       isEmptyConversation,
+      canSwitchSessionAgent = false,
       selectedModeId,
       selectedModelId,
       modeOptions,
@@ -2079,11 +2083,12 @@ export const SessionChatInputArea = memo(
       session.agentConfigId && session.machineId
         ? { agentId: session.agentConfigId, machineId: session.machineId }
         : null;
-    /* Role, in an EXISTING session. The agent is fixed here, so this offers
-       only Roles bound to an agent of the same TYPE and applies only their run
-       config — see `useSessionAgentRole`. The row is NOT gated on
-       `isEmptyConversation`: those values stay changeable every turn, so a Role
-       that packages them stays useful for the whole conversation. */
+    /* Role, in an EXISTING session. The agent can still change via soft
+       switch, but this offers only Roles bound to an agent of the same TYPE
+       and applies only their run config — see `useSessionAgentRole`. The row
+       is NOT gated on `isEmptyConversation`: those values stay changeable
+       every turn, so a Role that packages them stays useful for the whole
+       conversation. */
     const [agentRoleEditor, setAgentRoleEditor] = useState<AgentRoleEditorState | null>(null);
     const { roles: accessibleAgentRoles } = useWorkspaceAgentRoles();
     const sessionAgentRole = useSessionAgentRole({
@@ -2153,7 +2158,7 @@ export const SessionChatInputArea = memo(
       <MobileSessionRunConfig
         agentSelection={mobileAgentSelection}
         allowedMachineIds={session.machineId ? [session.machineId] : []}
-        agentLocked={!isEmptyConversation}
+        agentLocked={isAgentBusy || (!isEmptyConversation && !canSwitchSessionAgent)}
         onAgentConfigChange={onAgentConfigChange}
         modelOptions={modelOptions}
         selectedModelId={selectedModelId}
@@ -2187,7 +2192,7 @@ export const SessionChatInputArea = memo(
               : null
           }
           allowedMachineIds={desktopAgentMachineIds}
-          agentLocked={!isEmptyConversation}
+          agentLocked={isAgentBusy || (!isEmptyConversation && !canSwitchSessionAgent)}
           fallbackAgent={{ cliType: session.cliType, agentType: session.agentType }}
           onAgentConfigChange={onAgentConfigChange}
           modelOptions={modelOptions}

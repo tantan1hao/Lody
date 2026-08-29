@@ -29,7 +29,7 @@ import { LODY_EXTENSION_METHODS } from 'acp-extension-core';
 
 const ACP_OPERATION_TIMEOUT_MS = 120_000;
 const ACP_PROCESS_EXIT_TIMEOUT_MS = 3_000;
-export const MAX_LOCAL_PROJECT_HISTORY_CATALOG_SESSIONS = 100;
+export const MAX_LOCAL_PROJECT_HISTORY_CATALOG_SESSIONS = 300;
 
 function waitForChildProcessExit(child: ChildProcess, timeoutMs: number): Promise<boolean> {
   if (child.exitCode !== null) {

@@ -280,7 +280,8 @@ export type LoroRepoPersistReason =
   | 'session-fork-commit'
   | 'session-fork-rollback'
   | 'session-edit-and-resend-commit'
-  | 'session-edit-and-resend-rollback';
+  | 'session-edit-and-resend-rollback'
+  | 'session-switch-agent-commit';
 
 export class LoroDocumentManager {
   public readonly repo: LoroRepo;

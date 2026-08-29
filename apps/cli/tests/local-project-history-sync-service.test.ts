@@ -11,6 +11,7 @@ import type {
   SessionMeta,
 } from '@lody/shared';
 
+import { MAX_LOCAL_PROJECT_HISTORY_CATALOG_SESSIONS } from '../src/lib/history-session-catalog-client';
 import {
   buildExistingHistorySessionIndex,
   compareCatalogItems,
@@ -635,9 +636,10 @@ describe('compareCatalogItems', () => {
 });
 
 describe('selectLatestCatalogItems', () => {
-  it('keeps only the newest 100 sessions', () => {
+  it(`keeps only the newest ${MAX_LOCAL_PROJECT_HISTORY_CATALOG_SESSIONS} sessions`, () => {
+    const limit = MAX_LOCAL_PROJECT_HISTORY_CATALOG_SESSIONS;
     const items = Array.from(
-      { length: 101 },
+      { length: limit + 1 },
       (_, index): LocalProjectHistoryCatalogItem => ({
         acpSessionId: `acp-${index}`,
         title: `Session ${index}`,
@@ -647,8 +649,8 @@ describe('selectLatestCatalogItems', () => {
 
     const selected = selectLatestCatalogItems(items);
 
-    expect(selected).toHaveLength(100);
-    expect(selected[0]?.acpSessionId).toBe('acp-100');
+    expect(selected).toHaveLength(limit);
+    expect(selected[0]?.acpSessionId).toBe(`acp-${limit}`);
     expect(selected.at(-1)?.acpSessionId).toBe('acp-1');
     expect(selected.some((item) => item.acpSessionId === 'acp-0')).toBe(false);
   });

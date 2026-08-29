@@ -271,6 +271,11 @@ delegation proofs or a shared-machine gate without a new product and security de
   rooms or open docs to find candidates: each open joins the room and pulls its stream, so a full
   scan is O(all historical sessions) of Streams subscriptions at every daemon start, and it must
   never `cleanSessionDoc` a doc it did not exclusively own (see `../lib/loro/AGENTS.md`).
+- `session-agent-switch-service.ts` owns same-Lody-session mid-conversation agent changes.
+  It is idle-only, same-machine only, and never resumes the previous ACP session: terminate the
+  current process, rebind `agentConfigId`/`cliType`/`agentType`, clear `acpSessionId`, then let
+  the next turn start with `session/new` and replay Lody history. Provider-native memory is
+  lost on purpose; do not invent a portable ACP session id across agents.
 - `session-edit-and-resend-service.ts` owns same-Lody-session replacement of the last normal User
   turn for builtin Codex/Claude. Prepare provider `forkAtTurn` (or `session/new` for the first
   User) before cancelling the exact active turn, then wait for old ownership release before one

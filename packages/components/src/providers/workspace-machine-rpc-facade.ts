@@ -53,10 +53,13 @@ import {
   type SessionForkSpec,
   type SessionEditAndResendResponse,
   type SessionEditAndResendSpec,
+  type SessionSwitchAgentResponse,
+  type SessionSwitchAgentSpec,
   type SessionTurnInputConfig,
   type WorkspaceId,
   sessionForkFailure,
   sessionEditAndResendFailure,
+  sessionSwitchAgentFailure,
 } from '@lody/shared';
 import { createAsyncConcurrencyGate } from '@/lib/async-concurrency-gate';
 import { getIpcServices } from '@/lib/electron-ipc-client';
@@ -778,6 +781,37 @@ export function createWorkspaceMachineRpcFacade(deps: WorkspaceMachineRpcFacadeD
     }
   };
 
+  const requestSessionSwitchAgent = async (
+    machineId: MachineId,
+    args: SessionSwitchAgentSpec,
+    options?: { timeoutMs?: number }
+  ): Promise<SessionSwitchAgentResponse | null> => {
+    try {
+      if (await canUseLocalMachineRpc(machineId)) {
+        const response = await getLocalMachineRpcSender()?.({
+          machineId,
+          workspaceId,
+          method: 'session/switch-agent',
+          params: args,
+          timeoutMs: options?.timeoutMs ?? 60_000,
+        });
+        if (response && !response.ok) {
+          return sessionSwitchAgentFailure(args, 'INTERNAL_ERROR', response.error);
+        }
+        if (response?.ok) return response.result as SessionSwitchAgentResponse;
+      }
+      return await (
+        await getMachineRpcClient(machineId)
+      ).requestSessionSwitchAgent({ ...args, timeoutMs: options?.timeoutMs ?? 60_000 });
+    } catch (error) {
+      return sessionSwitchAgentFailure(
+        args,
+        'INTERNAL_ERROR',
+        error instanceof Error ? error.message : String(error)
+      );
+    }
+  };
+
   const requestSessionEditAndResend = async (
     machineId: MachineId,
     args: SessionEditAndResendSpec,
@@ -1110,6 +1144,7 @@ export function createWorkspaceMachineRpcFacade(deps: WorkspaceMachineRpcFacadeD
     requestSessionTerminate,
     requestSessionFork,
     requestSessionEditAndResend,
+    requestSessionSwitchAgent,
     requestSessionDispatchTurn,
     requestSessionPrepare,
     requestSessionPrepareCancel,

@@ -47,6 +47,8 @@ import type {
   SessionEditAndResendSpec,
   SessionForkResponse,
   SessionForkSpec,
+  SessionSwitchAgentResponse,
+  SessionSwitchAgentSpec,
   SessionSteerResponse,
   SessionId,
   SessionPreviewCreateResponse,
@@ -346,6 +348,7 @@ type RpcServerDeps = {
   editAndResendSession?: (
     args: SessionEditAndResendSpec & { inputConfig: SessionTurnInputConfig }
   ) => Promise<SessionEditAndResendResponse>;
+  switchSessionAgent?: (args: SessionSwitchAgentSpec) => Promise<SessionSwitchAgentResponse>;
   /**
    * Fast-path user-turn dispatch. Must ack-then-execute: validate + stash the
    * payload + wake the dispatch watcher and return immediately; never run the
@@ -1073,6 +1076,22 @@ export class LoroStreamsMachineRpcServer {
           await this.appendResultResponse(request.replyTo, request.id, request.method, response);
           return;
         }
+        case 'session/switch-agent': {
+          if (!this.deps.switchSessionAgent) {
+            await this.appendErrorResponse(request.replyTo, request.id, request.method, {
+              code: LORO_STREAMS_RPC_ERROR_CODES.methodUnavailable,
+              message: 'Session agent switch is not available on this machine.',
+            });
+            return;
+          }
+          const response = await this.deps.switchSessionAgent({
+            sessionId: request.params.sessionId,
+            agentConfigId: request.params.agentConfigId,
+            requestedByUserId: request.params.requestedByUserId,
+          });
+          await this.appendResultResponse(request.replyTo, request.id, request.method, response);
+          return;
+        }
         case 'session/dispatch-turn': {
           if (!this.deps.dispatchSessionTurn) {
             await this.appendErrorResponse(request.replyTo, request.id, request.method, {
@@ -1474,6 +1493,7 @@ export class LoroStreamsMachineRpcServer {
       | SessionTerminateResponse
       | SessionForkResponse
       | SessionEditAndResendResponse
+      | SessionSwitchAgentResponse
       | SessionDispatchTurnResponse
       | SessionPrepareResponse
       | SessionPrepareCancelResponse

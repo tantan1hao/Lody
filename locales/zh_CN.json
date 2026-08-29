@@ -1126,6 +1126,7 @@
   "sessions.editMessage": "编辑消息",
   "sessions.saveAndResend": "保存并重新发送",
   "sessions.editAndResendFailed": "无法编辑并重新发送此消息",
+  "sessions.switchAgentFailed": "无法在此会话中切换 Agent",
   "sessions.systemNotices.forkOrigin.prefix": "此对话分叉自",
   "sessions.addFile": "添加文件",
   "sessions.agentCannotChange": "此会话无法更改代理",

@@ -495,6 +495,67 @@ describe('LoroStreamsMachineRpcClient', () => {
     client.stop();
   });
 
+  it('round-trips session switch-agent requests', async () => {
+    const fake = createFakeStreamClient();
+    const client = new LoroStreamsMachineRpcClient({
+      workspaceId: 'workspace-1',
+      machineId: 'machine-1',
+      streamClient: fake.streamClient,
+    });
+    const responsePromise = client.requestSessionSwitchAgent({
+      sessionId: 'session-1' as SessionId,
+      agentConfigId: 'claude-1',
+      requestedByUserId: 'user-1',
+      timeoutMs: 5_000,
+    });
+    await vi.waitFor(() => expect(fake.appended).toHaveLength(1));
+
+    const request = fake.appended[0]?.value as { id: string };
+    expect(fake.appended[0]?.value).toEqual(
+      expect.objectContaining({
+        method: 'session/switch-agent',
+        params: {
+          sessionId: 'session-1',
+          agentConfigId: 'claude-1',
+          requestedByUserId: 'user-1',
+        },
+      })
+    );
+
+    fake.pushBatch({
+      messages: [
+        {
+          jsonrpc: '2.0',
+          id: request.id,
+          method: 'session/switch-agent',
+          rpcVersion: '1',
+          machineId: 'machine-1',
+          result: {
+            type: 'session/switch-agent_response',
+            sessionId: 'session-1',
+            success: true,
+            previousAgentConfigId: 'codex-1',
+            agentConfigId: 'claude-1',
+            replayed: true,
+          },
+        },
+      ],
+      nextOffset: '1',
+      cursor: 'cursor-1',
+      upToDate: true,
+    });
+
+    await expect(responsePromise).resolves.toEqual({
+      type: 'session/switch-agent_response',
+      sessionId: 'session-1',
+      success: true,
+      previousAgentConfigId: 'codex-1',
+      agentConfigId: 'claude-1',
+      replayed: true,
+    });
+    client.stop();
+  });
+
   it('sends machine status requests and resolves matching RPC responses', async () => {
     const fake = createFakeStreamClient();
     const client = new LoroStreamsMachineRpcClient({

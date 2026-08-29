@@ -1126,6 +1126,7 @@
   "sessions.editMessage": "Edit message",
   "sessions.saveAndResend": "Save & resend",
   "sessions.editAndResendFailed": "Unable to edit and resend this message",
+  "sessions.switchAgentFailed": "Unable to switch agent in this session",
   "sessions.systemNotices.forkOrigin.prefix": "This conversation was forked from",
   "sessions.addFile": "Add file",
   "sessions.agentCannotChange": "Agent cannot be changed for this session",
