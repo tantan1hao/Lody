@@ -38,6 +38,7 @@ import {
   getServerNow,
 } from '@lody/shared';
 import { getLocalControlSocketPath } from '@lody/shared/node/local-ipc';
+import { isAcpUsageUpdate, parseAcpContextWindowUsage } from './acp-usage-update';
 import { getLodyMcpHttpEndpoint } from '@/mcp/lody-mcp-http-server';
 import { buildLodyMcpHttpHeaders } from '@/mcp/lody-mcp-http-protocol';
 import { TerminalManager } from '@/session/terminal-manager';
@@ -1177,21 +1178,13 @@ export class AgentClient implements acp.Client {
   }
 
   private handleUsageUpdate(update: unknown): boolean {
-    if (!isUsageUpdate(update)) {
+    if (!isAcpUsageUpdate(update)) {
       return false;
     }
 
-    const size = typeof update.size === 'number' ? update.size : null;
-    const used = typeof update.used === 'number' ? update.used : null;
-    if (
-      size !== null &&
-      used !== null &&
-      Number.isFinite(size) &&
-      Number.isFinite(used) &&
-      size >= 0 &&
-      used >= 0
-    ) {
-      this.options.onContextWindowUsageUpdate?.({ size, used });
+    const usage = parseAcpContextWindowUsage(update);
+    if (usage) {
+      this.options.onContextWindowUsageUpdate?.(usage);
     }
     return true;
   }
@@ -2719,17 +2712,6 @@ export class AgentClient implements acp.Client {
     const base = this.sessionWorkdir ?? process.cwd();
     return path.resolve(base, inputPath);
   }
-}
-
-function isUsageUpdate(
-  update: unknown
-): update is { sessionUpdate: 'usage_update'; size?: unknown; used?: unknown } {
-  return (
-    typeof update === 'object' &&
-    update !== null &&
-    'sessionUpdate' in update &&
-    (update as { sessionUpdate?: unknown }).sessionUpdate === 'usage_update'
-  );
 }
 
 const sliceTextByLines = (content: string, line: number | null, limit: number | null): string => {

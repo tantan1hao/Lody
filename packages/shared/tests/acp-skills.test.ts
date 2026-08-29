@@ -68,6 +68,7 @@ describe('project skills helpers', () => {
       'gemini',
       'github-copilot-cli',
       'goose',
+      'grok',
       'kilo',
       'kimi',
       'kimi-code',
@@ -152,6 +153,24 @@ describe('project skills helpers', () => {
     expect(ALL_KNOWN_SYSTEM_SKILL_DIRS).toContain('~/.codex/skills/.system');
     // System dirs are their own scope; they must not leak into the global list.
     expect(ALL_KNOWN_GLOBAL_SKILL_DIRS).not.toContain('~/.codex/skills/.system');
+  });
+
+  it('aliases registry -acp ids onto the unsuffixed skill mapping', () => {
+    expect([
+      ...getRegisteredSkillDirs([{ cliType: 'registry', agentType: 'antigravity-acp' }]),
+    ]).toEqual([DEFAULT_PROJECT_SKILL_DIR]);
+    expect([
+      ...getRegisteredGlobalSkillDirs([{ cliType: 'registry', agentType: 'antigravity-acp' }]),
+    ]).toEqual(['~/.gemini/antigravity/skills']);
+  });
+
+  it('maps Cursor to project and user skill directories Lody can mention', () => {
+    expect([
+      ...getRegisteredSkillDirs([{ cliType: 'registry', agentType: 'cursor' }]),
+    ]).toEqual([DEFAULT_PROJECT_SKILL_DIR, '.cursor/skills']);
+    expect([
+      ...getRegisteredGlobalSkillDirs([{ cliType: 'registry', agentType: 'cursor' }]),
+    ]).toEqual([DEFAULT_AGENTS_GLOBAL_SKILL_DIR, '~/.cursor/skills']);
   });
 
   it('maps only codex agents to their system skill directory', () => {

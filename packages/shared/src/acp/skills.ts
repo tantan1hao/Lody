@@ -83,7 +83,10 @@ export const ACP_SKILL_DIRS_BY_AGENT_TYPE: Record<string, SkillDirsByAgentType> 
     ['~/.snowflake/cortex/skills']
   ),
   crush: skillDirs(['.crush/skills'], ['~/.config/crush/skills']),
-  cursor: skillDirs([DEFAULT_PROJECT_SKILL_DIR], ['~/.cursor/skills']),
+  cursor: skillDirs(
+    [DEFAULT_PROJECT_SKILL_DIR, '.cursor/skills'],
+    [DEFAULT_AGENTS_GLOBAL_SKILL_DIR, '~/.cursor/skills']
+  ),
   deepagents: skillDirs([], []),
   devin: skillDirs(
     ['.devin/skills', '.windsurf/skills'],
@@ -120,6 +123,8 @@ export const ACP_SKILL_DIRS_BY_AGENT_TYPE: Record<string, SkillDirsByAgentType> 
     [DEFAULT_PROJECT_SKILL_DIR, '.goose/skills'],
     ['~/.config/goose/skills', DEFAULT_AGENTS_GLOBAL_SKILL_DIR]
   ),
+  grok: skillDirs([DEFAULT_PROJECT_SKILL_DIR], [DEFAULT_AGENTS_GLOBAL_SKILL_DIR]),
+  'grok-build': skillDirs([DEFAULT_PROJECT_SKILL_DIR], [DEFAULT_AGENTS_GLOBAL_SKILL_DIR]),
   'hermes-agent': skillDirs(['.hermes/skills'], ['~/.hermes/skills']),
   iflow: skillDirs(['.iflow/skills'], ['~/.iflow/skills']),
   'iflow-cli': skillDirs(['.iflow/skills'], ['~/.iflow/skills']),
@@ -189,8 +194,10 @@ export const ACP_SKILL_DIRS_BY_AGENT_TYPE: Record<string, SkillDirsByAgentType> 
    v7: project `.agents/skills` is provider-specific, not a universal ACP fallback.
    v8: local/global scans include absolute SKILL.md paths for prompt expansion.
    v9: home scan also surfaces agent built-in `system` skills (codex
-   `~/.codex/skills/.system`) under the new `'system'` scope. */
-export const KNOWN_SKILL_DIRS_VERSION = 9;
+   `~/.codex/skills/.system`) under the new `'system'` scope.
+   v10: grok/grok-build get `.agents/skills`; registry `*-acp`/`*-cli` ids
+   inherit the unsuffixed provider mapping (e.g. antigravity-acp). */
+export const KNOWN_SKILL_DIRS_VERSION = 10;
 
 export const DEFAULT_PROJECT_SKILLS_CONTENT_BUDGET_BYTES = 2 * 1024 * 1024;
 export const DEFAULT_PROJECT_SKILLS_RESULT_MAX_SKILLS = 5_000;
@@ -343,12 +350,27 @@ export function getSkillScanCandidateDirs(): string[] {
   return ALL_KNOWN_PROJECT_SKILL_DIRS;
 }
 
+const SKILL_DIR_ALIAS_SUFFIXES = ['-acp', '-cli'] as const;
+
+export function resolveSkillDirMapping(agentType: string): SkillDirsByAgentType | undefined {
+  const direct = ACP_SKILL_DIRS_BY_AGENT_TYPE[agentType];
+  if (direct) return direct;
+  for (const suffix of SKILL_DIR_ALIAS_SUFFIXES) {
+    if (!agentType.endsWith(suffix)) continue;
+    const base = agentType.slice(0, -suffix.length);
+    if (base && ACP_SKILL_DIRS_BY_AGENT_TYPE[base]) {
+      return ACP_SKILL_DIRS_BY_AGENT_TYPE[base];
+    }
+  }
+  return undefined;
+}
+
 export function getRegisteredSkillDirs(
   agents: ReadonlyArray<{ cliType: AgentConfigCliType; agentType: string }>
 ): Set<string> {
   const projectDirs = new Set<string>();
   for (const agent of agents) {
-    const mapping = ACP_SKILL_DIRS_BY_AGENT_TYPE[agent.agentType];
+    const mapping = resolveSkillDirMapping(agent.agentType);
     if (!mapping) {
       continue;
     }
@@ -364,7 +386,7 @@ export function getRegisteredGlobalSkillDirs(
 ): Set<string> {
   const globalDirs = new Set<string>();
   for (const agent of agents) {
-    const mapping = ACP_SKILL_DIRS_BY_AGENT_TYPE[agent.agentType];
+    const mapping = resolveSkillDirMapping(agent.agentType);
     if (!mapping) {
       continue;
     }
@@ -380,7 +402,7 @@ export function getRegisteredSystemSkillDirs(
 ): Set<string> {
   const systemDirs = new Set<string>();
   for (const agent of agents) {
-    const mapping = ACP_SKILL_DIRS_BY_AGENT_TYPE[agent.agentType];
+    const mapping = resolveSkillDirMapping(agent.agentType);
     if (!mapping) {
       continue;
     }
