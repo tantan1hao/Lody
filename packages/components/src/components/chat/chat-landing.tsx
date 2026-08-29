@@ -103,6 +103,12 @@ import {
   useReconcileAcpSessionConfigSelection,
 } from '@/hooks/use-acp-session-config-selection';
 import { useOnlineMachineIds } from '@/hooks/use-machine-online-status';
+import {
+  planComposerSessionSkillApply,
+  type ComposerSessionSkill,
+} from '@/lib/composer-session-skill';
+import { orderAcpConfigOptionSelectors } from '@/lib/acp-selector-order';
+import { resolvePlanModeSelectorEnabled } from '@/components/shared/acp-selector-options';
 import { useResolvedWorkspaceScope } from '@/hooks/use-resolved-workspace-scope';
 import {
   getChatLandingAgentSelectionsForMachine,
@@ -1606,6 +1612,58 @@ function WorkspaceChatLanding({
     machine: selectedMachine,
   });
   const { modeOptions, modelOptions, configOptionSelectors } = selectorOptions;
+  const handleSessionSkill = useCallback(
+    (skill: ComposerSessionSkill) => {
+      const apply = planComposerSessionSkillApply({
+        skill,
+        modeOptions,
+        configOptionSelectors,
+        configOptionValues,
+        prompt,
+        debugPromptHint: t(
+          'chat.sessionSkill.debugPromptHint',
+          'Find the root cause first. Do not change the environment or guess before you have evidence.'
+        ),
+      });
+      if (apply.navigateMultitask) {
+        void navigate({
+          to: '/$workspaceName/tasks',
+          params: { workspaceName: workspaceSlug },
+        });
+        return;
+      }
+      if (apply.modeId) setSelectedModeId(apply.modeId);
+      if (apply.configOption) {
+        handleConfigOptionChange(apply.configOption.configId, apply.configOption.value);
+      }
+      if (apply.promptHint) setPrompt(apply.promptHint);
+    },
+    [
+      configOptionSelectors,
+      configOptionValues,
+      handleConfigOptionChange,
+      modeOptions,
+      navigate,
+      prompt,
+      setPrompt,
+      setSelectedModeId,
+      t,
+      workspaceSlug,
+    ]
+  );
+  const activeSessionSkill = useMemo<ComposerSessionSkill | null>(() => {
+    if (selectedModeId === 'plan' || selectedModeId === 'ask' || selectedModeId === 'debug') {
+      return selectedModeId;
+    }
+    const planSelector = orderAcpConfigOptionSelectors(configOptionSelectors).planModeSelectors[0];
+    if (
+      planSelector &&
+      resolvePlanModeSelectorEnabled(planSelector, configOptionValues?.[planSelector.configId])
+    ) {
+      return 'plan';
+    }
+    return null;
+  }, [configOptionSelectors, configOptionValues, selectedModeId]);
   const dispatchConfigOptionValues = useMemo(
     () => filterAcpSessionConfigOptionValues(configOptionValues, configOptionSelectors),
     [configOptionSelectors, configOptionValues]
@@ -6085,6 +6143,8 @@ function WorkspaceChatLanding({
             onFileRetry={submitting ? undefined : handleRetryFile}
             mcp={mcpSelection.menu}
             footerSelector={mobileSheetFooterSelectorNode}
+            onSessionSkill={handleSessionSkill}
+            activeSessionSkill={activeSessionSkill}
             statusMessage={visibleComposerStatus?.message}
             statusTone={visibleComposerStatus?.tone}
             primaryAction={
@@ -6528,6 +6588,8 @@ function WorkspaceChatLanding({
         topSelector={<div className="w-full min-w-0">{topSelectorNode}</div>}
         footerSelector={footerSelectorNode}
         bottomBar={bottomBarNode}
+        onSessionSkill={handleSessionSkill}
+        activeSessionSkill={activeSessionSkill}
         composerNotice={composerNoticeNode}
         composerStatusMessage={visibleComposerStatus?.message}
         composerStatusTone={visibleComposerStatus?.tone}

@@ -61,6 +61,8 @@ import {
   getChatComposerPromptPlaceholderKey,
   getChatComposerMobilePromptPlaceholderKey,
 } from '@/lib/chat-composer-placeholder';
+import { ComposerSessionSkills } from '@/components/composer-session-skills';
+import type { ComposerSessionSkill } from '@/lib/composer-session-skill';
 import { Kbd } from '@/components/commands/kbd';
 import { commands, formatKeyBinding } from '@/lib/commands';
 
@@ -186,6 +188,9 @@ export interface ChatComposerProps {
   skipNextViewportResizeAutoScrollRef?: MutableRefObject<boolean>;
   /** Focus the textarea when clicking the container background. */
   focusOnContainerClick?: boolean;
+  /** Plan / Debug / Multitask / Ask chips inside the input box. */
+  onSessionSkill?: (skill: ComposerSessionSkill) => void;
+  activeSessionSkill?: ComposerSessionSkill | null;
 }
 
 export function getChatComposerTextareaClassName({
@@ -281,6 +286,8 @@ export function ChatComposer({
   maxRows = 12,
   skipNextViewportResizeAutoScrollRef,
   focusOnContainerClick = false,
+  onSessionSkill,
+  activeSessionSkill,
 }: ChatComposerProps) {
   const { t, i18n } = useTranslation();
   const intlLocale = useMemo(
@@ -868,6 +875,14 @@ export function ChatComposer({
                     </div>
                   ))}
                 </div>
+              ) : null}
+
+              {onSessionSkill ? (
+                <ComposerSessionSkills
+                  activeSkill={activeSessionSkill}
+                  disabled={promptDisabled}
+                  onSelect={onSessionSkill}
+                />
               ) : null}
 
               <CombinedMentionTextarea

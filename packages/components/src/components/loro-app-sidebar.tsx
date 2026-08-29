@@ -145,6 +145,8 @@ import {
 import {
   Archive,
   ChevronDown,
+  Download,
+  Hash,
   Clock3,
   Folder,
   FolderPlus,
@@ -162,6 +164,10 @@ import { toast } from 'sonner';
 import { useOnlineMachineIds } from '@/hooks/use-machine-online-status';
 import { useStableNow } from '@/hooks/use-stable-now';
 import { writePreferredWorkspaceSlug } from '@/lib/workspace';
+import {
+  buildSidebarSessionBackup,
+  downloadSidebarSessionBackup,
+} from '@/lib/sidebar-session-backup';
 import {
   SessionOpenedByTreeRow,
   SessionPrIcon,
@@ -620,6 +626,8 @@ const LocalProjectSessionItem = memo(function LocalProjectSessionItem({
       unpin: t('sessions.contextMenu.unpin', 'Unpin Session'),
       archive: t('sessions.contextMenu.archive', 'Archive Session'),
       copyUrl: t('sessions.contextMenu.copyUrl', 'Copy Session URL'),
+      exportBackup: t('sessions.contextMenu.exportBackup', 'Export session backup'),
+      copySessionId: t('sessions.contextMenu.copySessionId', 'Copy session ID'),
       goToOpenerSession: t('sessions.contextMenu.goToOpenerSession', 'Go to Opener Session'),
       shareWithTeam: t('sessions.sharing.shareWithTeam', 'Share with team…'),
       onlyOwnerCanShare: t('sessions.sharing.onlyOwnerCanShare', 'Only the device owner can share'),
@@ -776,6 +784,44 @@ const LocalProjectSessionItem = memo(function LocalProjectSessionItem({
         >
           <Archive />
           {contextMenuLabels.archive}
+        </ContextMenuItem>
+        <ContextMenuItem
+          onSelect={() => {
+            downloadSidebarSessionBackup(
+              buildSidebarSessionBackup(
+                {
+                  id: session.id,
+                  title,
+                  machineId: session.machineId,
+                  projectName,
+                  repoFullName: resolveProjectGitHubRepo(session.project) ?? session.repoFullName,
+                  agentType: session.agentType,
+                  cliType: session.cliType,
+                  status: session.status,
+                  createdAt: session.createdAt,
+                },
+                new Date().toISOString()
+              )
+            );
+          }}
+        >
+          <Download />
+          {contextMenuLabels.exportBackup}
+        </ContextMenuItem>
+        <ContextMenuItem
+          onSelect={() => {
+            void navigator.clipboard.writeText(session.id).then(
+              () => {
+                toast.success(t('sessions.contextMenu.copySessionIdSuccess', 'Session ID copied'));
+              },
+              () => {
+                toast.error(t('sessions.contextMenu.copySessionIdFailed', 'Failed to copy session ID'));
+              }
+            );
+          }}
+        >
+          <Hash />
+          {contextMenuLabels.copySessionId}
         </ContextMenuItem>
         {canCopyUrl || shareMenuState ? <ContextMenuSeparator /> : null}
         {canCopyUrl ? (

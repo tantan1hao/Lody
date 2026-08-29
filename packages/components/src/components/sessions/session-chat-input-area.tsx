@@ -49,6 +49,13 @@ import {
   type PersistedMentionRange,
 } from '@/components/mentions/mention-persistence';
 import { useTranslation } from 'react-i18next';
+import { useNavigate, useParams } from '@tanstack/react-router';
+import {
+  planComposerSessionSkillApply,
+  type ComposerSessionSkill,
+} from '@/lib/composer-session-skill';
+import { orderAcpConfigOptionSelectors } from '@/lib/acp-selector-order';
+import { resolvePlanModeSelectorEnabled } from '@/components/shared/acp-selector-options';
 import { usePostHog } from '@posthog/react';
 import {
   capturePostHogEvent,
@@ -503,6 +510,8 @@ export const SessionChatInputArea = memo(
     ref: React.ForwardedRef<SessionChatInputAreaHandle>
   ) {
     const { t, i18n } = useTranslation();
+    const navigate = useNavigate();
+    const workspaceName = (useParams({ strict: false }) as { workspaceName?: string }).workspaceName;
     const intlLocale = useMemo(
       () => toIntlLocale(i18n.resolvedLanguage ?? i18n.language),
       [i18n.language, i18n.resolvedLanguage]
@@ -1661,6 +1670,61 @@ export const SessionChatInputArea = memo(
       },
       [isArchived, setUserInput]
     );
+    const handleSessionSkill = useCallback(
+      (skill: ComposerSessionSkill) => {
+        if (isArchived) return;
+        const apply = planComposerSessionSkillApply({
+          skill,
+          modeOptions,
+          configOptionSelectors,
+          configOptionValues,
+          prompt: userInput,
+          debugPromptHint: t(
+            'chat.sessionSkill.debugPromptHint',
+            'Find the root cause first. Do not change the environment or guess before you have evidence.'
+          ),
+        });
+        if (apply.navigateMultitask && workspaceName) {
+          void navigate({
+            to: '/$workspaceName/tasks',
+            params: { workspaceName },
+          });
+          return;
+        }
+        if (apply.modeId) onModeChange(apply.modeId);
+        if (apply.configOption) {
+          onConfigOptionChange?.(apply.configOption.configId, apply.configOption.value);
+        }
+        if (apply.promptHint) setUserInput(apply.promptHint);
+      },
+      [
+        configOptionSelectors,
+        configOptionValues,
+        isArchived,
+        modeOptions,
+        navigate,
+        onConfigOptionChange,
+        onModeChange,
+        setUserInput,
+        t,
+        userInput,
+        workspaceName,
+      ]
+    );
+    const activeSessionSkill = useMemo<ComposerSessionSkill | null>(() => {
+      if (selectedModeId === 'plan' || selectedModeId === 'ask' || selectedModeId === 'debug') {
+        return selectedModeId;
+      }
+      const planSelector = orderAcpConfigOptionSelectors(configOptionSelectors ?? [])
+        .planModeSelectors[0];
+      if (
+        planSelector &&
+        resolvePlanModeSelectorEnabled(planSelector, configOptionValues?.[planSelector.configId])
+      ) {
+        return 'plan';
+      }
+      return null;
+    }, [configOptionSelectors, configOptionValues, selectedModeId]);
     const handlePastedTextDraftsChange = useCallback(
       (drafts: PastedTextDraft[]) => {
         updatePastedTextDraftsForSession(session.id, () =>
@@ -2385,6 +2449,8 @@ export const SessionChatInputArea = memo(
         onFileRetry={submissionPending || isArchived ? undefined : handleRetryFile}
         footerSelector={footerSelectorNode}
         bottomBar={bottomBarNode}
+        onSessionSkill={isArchived ? undefined : handleSessionSkill}
+        activeSessionSkill={activeSessionSkill}
         primaryAction={primaryActionNode}
         autoResize
         maxRows={11}
