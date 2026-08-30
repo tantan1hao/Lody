@@ -797,7 +797,11 @@ const LocalProjectSessionItem = memo(function LocalProjectSessionItem({
                   repoFullName: resolveProjectGitHubRepo(session.project) ?? session.repoFullName,
                   agentType: session.agentType,
                   cliType: session.cliType,
-                  status: session.status,
+                  // Store only the discriminant. session.status is a union
+                  // ({type:'running', activity}, ...) while the payload is a
+                  // version:1 export; embedding an internal union would make
+                  // that format drift with every change to the union.
+                  status: session.status?.type ?? null,
                   createdAt: session.createdAt,
                 },
                 new Date().toISOString()

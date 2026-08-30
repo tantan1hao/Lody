@@ -20,7 +20,11 @@ export type OrderedAcpConfigOptionSelectors = {
 };
 
 export const orderAcpConfigOptionSelectors = (
-  selectors: AcpConfigOptionSelector[]
+  // readonly: this function only iterates the input, pushing elements into
+  // freshly built arrays, and never mutates it. Declaring it mutable blocks
+  // every caller holding a readonly list -- which is what the ACP selector
+  // list is -- forcing a copy at the call site for nothing.
+  selectors: readonly AcpConfigOptionSelector[]
 ): OrderedAcpConfigOptionSelectors => {
   const ordered: OrderedAcpConfigOptionSelectors = {
     modelSelectors: [],
