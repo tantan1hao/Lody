@@ -40,7 +40,12 @@ import { formatErrorMessage } from '@/utils/format-error';
 import { findWorkspacesBySelector, formatWorkspaceCandidate } from '@/lib/workspace-selector';
 import { listAliveRoomIds } from '@/lib/loro/repo-existence';
 import { createCloudBillingPort, createCloudStreamsTokenPort } from '@/lib/cloud-cli-port';
-import { getCliPlatformKind } from '@/lib/cli-platform';
+import {
+  ensureImplicitLocalWorkspace,
+  getCliPlatformKind,
+  loadOrCreateLocalIdentity,
+} from '@/lib/cli-platform';
+import { makeLocalWorkspaceCatalog } from '@/lib/local-workspace-catalog';
 import { loadCliSelfHostedConfig } from '@/lib/self-hosted-config';
 import { getOrCreateStableMachineIdAsync } from '@/utils/const';
 import { hostname } from 'node:os';
@@ -226,6 +231,69 @@ export function getAuthContextOrThrow(loggerName: string): AuthContext {
   };
 }
 
+/**
+ * The identity workspace commands author under, on every platform.
+ *
+ * There is no account on the local platform, so `getAuthContextOrThrow` --
+ * which reads a login token -- can never succeed there. `lody start` already
+ * authors under the persisted synthetic identity; the one-shot commands were
+ * never taught the same path, so every one of them died on
+ * "LODY_AUTH_URL is not defined" in a local install.
+ *
+ * The empty token is safe for the same reason it is in `start`: on the local
+ * platform every cloud endpoint is unset, so token consumers are inert.
+ */
+export async function getCommandIdentityOrThrow(loggerName: string): Promise<AuthContext> {
+  if (getCliPlatformKind() === 'self-hosted') {
+    return (await getSelfHostedCommandContext(loggerName)).auth;
+  }
+  if (getCliPlatformKind() !== 'local') return getAuthContextOrThrow(loggerName);
+
+  const logger = getLogger(loggerName);
+  const identity = await loadOrCreateLocalIdentity(logger);
+  const machineId = (await getOrCreateStableMachineIdAsync()) as MachineId;
+  return {
+    token: '',
+    userId: identity.userId,
+    userName: 'local',
+    userEmail: '',
+    machineId,
+    machineName: hostname(),
+  };
+}
+
+/**
+ * Every workspace the caller can reach, on every platform.
+ *
+ * The cloud path asks Convex what the token can see. The local platform has
+ * exactly one implicit workspace and no Convex to ask, so listing it means
+ * provisioning-or-reading it -- the same idempotent call `lody start` makes.
+ */
+export async function listWorkspacesForIdentity(auth: AuthContext): Promise<WorkspaceSummary[]> {
+  const platformKind = getCliPlatformKind();
+  if (platformKind === 'cloud') return await listWorkspacesForToken(auth.token);
+  if (platformKind === 'self-hosted' && auth.selfHostedWorkspaceId) {
+    return [
+      {
+        id: auth.selfHostedWorkspaceId,
+        name: 'Lody',
+        slug: 'local',
+        role: 'owner',
+      } as WorkspaceSummary,
+    ];
+  }
+  const workspace = await ensureImplicitLocalWorkspace({
+    catalog: makeLocalWorkspaceCatalog(),
+    identity: { userId: auth.userId, createdAt: new Date().toISOString() },
+    machineId: auth.machineId,
+    machineName: auth.machineName,
+    logger: getLogger('workspace'),
+  });
+  return [
+    { id: workspace.id, name: workspace.name, slug: workspace.slug, role: workspace.role } as WorkspaceSummary,
+  ];
+}
+
 export async function getSelfHostedCommandContext(
   loggerName: string
 ): Promise<SelfHostedCommandContext> {
@@ -260,7 +328,7 @@ export async function resolveWorkspaceOrThrow(
   auth: AuthContext,
   selector?: string
 ): Promise<WorkspaceSummary> {
-  const workspaces = await listWorkspacesForToken(auth.token);
+  const workspaces = await listWorkspacesForIdentity(auth);
   const effectiveSelector =
     normalizeCliValue(selector) ?? normalizeCliValue(process.env.LODY_WORKSPACE_ID);
   return selectWorkspaceSummary(workspaces, effectiveSelector);
@@ -290,7 +358,26 @@ export async function withWorkspaceManager<T>(
     streamsTokens = createSelfHostedStreamsTokenPort(auth.selfHostedControlOrigin);
   } else {
     if (platformKind === 'local') {
-      throw new Error('Workspace synchronization is unavailable in offline local mode.');
+      // No remote to attach: on the local platform the SQLite store IS the
+      // destination, so there is nothing for a write to strand behind. Refusing
+      // here made every one-shot workspace command unusable in a local install.
+      const localManager = await LoroDocumentManager.create(
+        workspace.id as WorkspaceId,
+        auth.userId,
+        logger,
+        { streamsTokens: null, cloudBilling: null }
+      );
+      try {
+        return await fn(localManager);
+      } finally {
+        await localManager
+          .cleanUp({ fast: true, preserveSessionStatus: true })
+          .catch((error: unknown) => {
+            logger.debug(
+              `Failed to clean up workspace manager for ${workspace.id}: ${formatErrorMessage(error)}`
+            );
+          });
+      }
     }
     if (!LODY_AUTH_URL) {
       throw new Error('Cloud workspace commands require LODY_AUTH_URL');
@@ -329,6 +416,12 @@ export async function ensureWorkspaceMetaSynced(
   manager: Pick<LoroDocumentManager, 'waitUntilMetaSynced'>,
   reason: string
 ): Promise<void> {
+  // Nothing to confirm on the local platform: the SQLite store the write
+  // already landed in is the destination, and no Streams transport is attached
+  // to acknowledge it. Waiting there always times out, which turned a
+  // successful local write into "check your network connectivity".
+  if (getCliPlatformKind() === 'local') return;
+
   const synced = await manager.waitUntilMetaSynced({ reason });
   if (!synced) {
     throw new Error(
@@ -348,6 +441,10 @@ export async function syncWorkspaceMetaForRead(
   manager: Pick<LoroDocumentManager, 'syncMetaOrThrow'>,
   reason: string
 ): Promise<void> {
+  // Same reasoning as ensureWorkspaceMetaSynced: local reads already read the
+  // authoritative store.
+  if (getCliPlatformKind() === 'local') return;
+
   try {
     await manager.syncMetaOrThrow({ reason });
   } catch (error) {
