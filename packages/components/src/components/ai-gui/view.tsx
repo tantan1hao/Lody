@@ -2295,15 +2295,28 @@ const ChatFailedNoticeView = ({
   };
 
   const reasonMessage = getReasonMessage(meta?.reason);
-  const actionMessage = diagnosticCopy
-    ? t(diagnosticCopy.actionKey, diagnosticCopy.action)
-    : undefined;
   const rawMessage = meta?.message?.trim() ? meta.message : undefined;
   const detailMessage = (() => {
     if (!rawMessage) return undefined;
     const extracted = extractReadableChatFailedMessage(rawMessage);
     return extracted !== reasonMessage ? extracted : undefined;
   })();
+  /**
+   * Longest agent-supplied explanation shown inline. Past this it is a payload
+   * rather than a sentence, and the details modal is the right place for it.
+   */
+  const INLINE_AGENT_MESSAGE_MAX = 240;
+  const actionMessage = diagnosticCopy
+    ? t(diagnosticCopy.actionKey, diagnosticCopy.action)
+    : // No diagnostic copy for this code, but the agent may have explained
+      // itself. Its own sentence beats the generic protocol label: a read-only
+      // agent answering "session/prompt" with "this provider serves history
+      // only, switch agents to continue" is actionable, while "Agent protocol
+      // method not found" reads as a malfunction. It was already carried in
+      // `message` and only reachable behind a click.
+      detailMessage && detailMessage.length <= INLINE_AGENT_MESSAGE_MAX
+      ? detailMessage
+      : undefined;
   // The raw error only lives behind the modal, so open it whenever there is a
   // raw message at all — even one whose readable extract equals the title, the
   // full payload (stack, upstream JSON) is still worth reading and copying.
