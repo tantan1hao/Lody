@@ -4063,26 +4063,17 @@ export const SessionChatInterface = memo(
         const config = agentConfigs.find((c) => c.id === selection.agentId);
         if (!config) return;
         const roomId = getSessionRoomId(session.id);
-        const previous = {
-          agentConfigId: session.agentConfigId,
-          cliType: session.cliType,
-          agentType: session.agentType,
-        };
         const nextMeta = {
           agentConfigId: config.id,
           cliType: config.cliType,
           agentType: config.agentType,
         } as Partial<SessionMeta>;
-        const revertMeta = () => {
-          void runtime.writer.upsertDocMeta(roomId, previous as Partial<SessionMeta>);
-        };
-        void runtime.writer.upsertDocMeta(roomId, nextMeta);
         if (isEmptyConversation) {
+          void runtime.writer.upsertDocMeta(roomId, nextMeta);
           return;
         }
         const requesterUserId = currentUser?.id ?? session.userId;
         if (!requesterUserId || !session.machineId) {
-          revertMeta();
           toast.error(t('sessions.switchAgentFailed', 'Unable to switch agent in this session'));
           return;
         }
@@ -4094,7 +4085,6 @@ export const SessionChatInterface = memo(
           })
           .then((response) => {
             if (response?.success) return;
-            revertMeta();
             toast.error(
               response?.error?.message ??
                 t('sessions.switchAgentFailed', 'Unable to switch agent in this session')
@@ -4102,7 +4092,6 @@ export const SessionChatInterface = memo(
           })
           .catch((error: unknown) => {
             console.warn('Switch agent RPC failed', error);
-            revertMeta();
             toast.error(t('sessions.switchAgentFailed', 'Unable to switch agent in this session'));
           });
       },
@@ -4111,9 +4100,6 @@ export const SessionChatInterface = memo(
         currentUser?.id,
         isEmptyConversation,
         runtime,
-        session.agentConfigId,
-        session.agentType,
-        session.cliType,
         session.id,
         session.machineId,
         session.userId,
