@@ -3738,6 +3738,11 @@ function WorkspaceChatLanding({
           onChange={handleMachineChange}
           disabled={isInitialDataLoading}
           onAddMachine={handleAddMachine}
+          addMachineLabel={
+            managedMachineEnrollment
+              ? undefined
+              : t('machinePairing.downloadDesktop', 'Download Lody Desktop')
+          }
         />
         <UnifiedProjectSelectorView
           value={desktopProjectSelection}

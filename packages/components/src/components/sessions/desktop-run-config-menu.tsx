@@ -219,6 +219,7 @@ export function DesktopMachineMenu({
   disabled = false,
   disabledReason,
   onAddMachine,
+  addMachineLabel,
 }: {
   value: MachineId | null;
   visibleLocalMachineId?: MachineId | null;
@@ -228,6 +229,7 @@ export function DesktopMachineMenu({
   disabled?: boolean;
   disabledReason?: string;
   onAddMachine?: () => void;
+  addMachineLabel?: string;
 }) {
   const { t } = useTranslation();
   const remoteMachinesAvailable = useAppCapability('remoteMachines');
@@ -322,7 +324,7 @@ export function DesktopMachineMenu({
             <DropdownMenuItem onSelect={onAddMachine}>
               <Plus className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
               <span className="min-w-0 flex-1 truncate">
-                {t('machinePairing.addMachine', 'Add machine')}
+                {addMachineLabel ?? t('machinePairing.addMachine', 'Add machine')}
               </span>
             </DropdownMenuItem>
           </>
