@@ -2455,7 +2455,16 @@ describe('SessionExecutionService', () => {
     expect(deps.clearSessionActivePresence).toHaveBeenCalledTimes(1);
   });
 
-  it('replays durable history when a fresh ACP restore has no resumable session id', async () => {
+  it.each([
+    {
+      name: 'replays durable history when a fresh ACP restore has no resumable session id',
+      requestedResumeSessionId: undefined,
+    },
+    {
+      name: 'replays durable history when the target agent returns a different ACP session id',
+      requestedResumeSessionId: 'acp-from-previous-agent' as ACPSessionId,
+    },
+  ])('$name', async ({ requestedResumeSessionId }) => {
     const meta = {
       repoFullName: 'owner/repo',
       isArchived: false,
@@ -2537,7 +2546,12 @@ describe('SessionExecutionService', () => {
       machineId: 'machine-1',
       workspaceId: 'workspace-1' as WorkspaceId,
       project: { kind: 'github', repoFullName: 'owner/repo', branch: 'main' },
-      acpSessionConfig: { prompt: '?', cliType: 'builtin', agentType: 'codex' },
+      acpSessionConfig: {
+        prompt: '?',
+        cliType: 'builtin',
+        agentType: 'codex',
+        ...(requestedResumeSessionId ? { resume: requestedResumeSessionId } : {}),
+      },
       userTurnId: 'turn-current',
       userId: 'user-1',
       userName: 'User',

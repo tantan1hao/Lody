@@ -3479,12 +3479,14 @@ export class SessionExecutionService {
             self.deps.logger.debug(
               `[${sessionId}] Session restore result (requestedAcpSessionId=none actualAcpSessionId=${actual ?? 'null'})`
             );
+          }
 
+          if (!requested || actual !== requested) {
             // An earlier turn can fail before ACP owns its prompt (for example
-            // while its process is starting). There is then no ACP session id
-            // to resume, even though the user turn is durable in Loro history.
-            // This freshly created ACP session has no knowledge of that turn,
-            // so reconstruct its context before sending the current request.
+            // while its process is starting), or a newly selected provider can
+            // ignore the previous provider's ACP session id. This freshly
+            // created ACP session has no knowledge of those turns, so
+            // reconstruct its context before sending the current request.
             const history = yield* self.tryPromise(() => sessionDoc.getHistory());
             if (history.length > 0) {
               replayPromptResult = buildReplayPromptFromHistory({
