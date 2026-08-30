@@ -83,6 +83,7 @@ import {
   type MachineAcpBinaryInstallRequestValidated,
   type LocalProjectControlErrorCode,
   type LocalProjectControlRequest,
+  type LocalProjectHistoryProvider,
   type LocalProjectControlResponse,
   type LocalMachineRpcRequestValidated,
   type LocalMachineRpcResponse,
