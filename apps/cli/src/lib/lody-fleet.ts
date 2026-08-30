@@ -20,6 +20,7 @@ import {
   type MachineLifecycleCapability,
   type SessionId,
   type SessionMeta,
+  type LocalProjectHistoryProvider,
 } from '@lody/shared';
 import type { LocalLoroDataPlaneServer } from '@lody/shared/local-loro-data-plane-server';
 import pkg from '@/pkg';
@@ -80,6 +81,7 @@ import {
 } from '@/lib/task-automation/task-automation-workspace';
 import { startDelegatedTask } from '@/lib/task-automation/task-automation-start';
 import { ACP_PLAN_PERMISSION_MODE_ID } from '@lody/shared';
+import type { LoroDocumentManager } from '@/lib/loro/doc';
 import { createReviewAutomation } from '@/lib/review-automation/create-review-automation';
 import type { ReviewAutomationWorkspaceHandle } from '@/lib/review-automation/review-automation-workspace';
 import { GitHubCredentialResolver } from '@/lib/pr-poller/github-credential-resolver';
@@ -1719,6 +1721,48 @@ export class LodyFleet {
     return rootPath;
   }
 
+  /**
+   * Fill in a history provider's launch spec when it needs one.
+   *
+   * A `custom` provider arrives as `cliType:agentType` with no executable:
+   * that pair resolves against a static table for builtin and registry
+   * agents, but a custom agent's command is user-defined and lives on its
+   * config. Read it here rather than threading it through the request -- the
+   * machine that owns the agent is the one that has to spawn it, the
+   * control-plane schema stays unchanged, and the spawn always uses the
+   * current command instead of one snapshotted by the caller.
+   *
+   * A miss is left alone so the launcher reports its own accurate error
+   * instead of this failing first with a vaguer one.
+   */
+  private async resolveHistoryProvider(
+    provider: LocalProjectHistoryProvider,
+    runtime: { lody: { documentManager: LoroDocumentManager } }
+  ): Promise<LocalProjectHistoryProvider> {
+    if (provider.cliType !== 'custom' || provider.customAcp) return provider;
+    try {
+      const config = await runtime.lody.documentManager.findAgentConfigByType(
+        provider.cliType,
+        provider.agentType,
+        this.machineId
+      );
+      if (!config?.customAcp) {
+        this.logger.warn(
+          `[history] no launch spec for ${provider.cliType}:${provider.agentType} on ` +
+            `machine ${this.machineId} (agent config found: ${config ? 'yes' : 'no'})`
+        );
+        return provider;
+      }
+      return { ...provider, customAcp: config.customAcp };
+    } catch (error) {
+      this.logger.debug(
+        `[history] failed to resolve launch spec for ${provider.cliType}:${provider.agentType}: ` +
+          formatErrorMessage(error)
+      );
+      return provider;
+    }
+  }
+
   private async dispatchLocalProjectControl(
     message: LocalProjectControlRequest
   ): Promise<LocalProjectControlResponse> {
@@ -1993,7 +2037,7 @@ export class LodyFleet {
             machineId: this.machineId,
             userId: this.userId,
           },
-          message.provider
+          await this.resolveHistoryProvider(message.provider, runtime)
         );
         const result = await service.syncLocalProject({
           localProjectId: message.localProjectId,
@@ -2020,7 +2064,7 @@ export class LodyFleet {
             machineId: this.machineId,
             userId: this.userId,
           },
-          message.provider
+          await this.resolveHistoryProvider(message.provider, runtime)
         );
         const result = await service.importLocalProjectSessions({
           localProjectId: message.localProjectId,
@@ -2048,7 +2092,7 @@ export class LodyFleet {
             machineId: this.machineId,
             userId: this.userId,
           },
-          message.provider
+          await this.resolveHistoryProvider(message.provider, runtime)
         );
         const result = await service.resolveHistoryConflict({
           localProjectId: message.localProjectId,

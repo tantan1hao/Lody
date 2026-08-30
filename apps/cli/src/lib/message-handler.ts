@@ -9456,6 +9456,45 @@ export class MessageHandler {
     }
   }
 
+  /**
+   * Fill in a history provider's launch spec when it needs one.
+   *
+   * Builtin and registry providers are returned untouched — their executables
+   * come from static tables keyed by `agentType`. Only `custom` needs the
+   * lookup, and a miss is left alone so the launcher reports the real problem
+   * ("no launch command configured") instead of this failing first with a
+   * vaguer one.
+   */
+  private async resolveHistoryProvider(
+    provider: LocalProjectHistoryProvider
+  ): Promise<LocalProjectHistoryProvider> {
+    if (provider.cliType !== 'custom' || provider.customAcp) return provider;
+    try {
+      const config = await this.workspaceDocument.findAgentConfigByType(
+        provider.cliType,
+        provider.agentType,
+        this.machineId
+      );
+      if (!config?.customAcp) {
+        this.logger.warn(
+          `[history] no launch spec for custom provider ${provider.cliType}:${provider.agentType} ` +
+            `on machine ${this.machineId} (config found: ${config ? 'yes' : 'no'})`
+        );
+        return provider;
+      }
+      this.logger.debug(
+        `[history] resolved launch spec for ${provider.cliType}:${provider.agentType}`
+      );
+      return { ...provider, customAcp: config.customAcp };
+    } catch (error) {
+      this.logger.debug(
+        `Failed to resolve launch spec for custom history provider ` +
+          `${provider.cliType}:${provider.agentType}: ${formatErrorMessage(error)}`
+      );
+      return provider;
+    }
+  }
+
   cancelPendingPermissionRequests(): void {
     this.permissionRequestStartTimes.clear();
   }
