@@ -21,7 +21,7 @@ import type { LocalWorkspaceCatalogService } from '@/lib/local-workspace-catalog
  * instead of silently talking to the cloud.
  */
 export function getCliPlatformKind(): PlatformKind {
-  return resolvePlatformKind(process.env.LODY_PLATFORM);
+  return resolvePlatformKind(process.env['LODY_PLATFORM']);
 }
 
 /**

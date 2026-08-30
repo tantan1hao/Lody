@@ -25,3 +25,7 @@ void test('renderer CSP allows reading preview object URLs for image export', ()
 void test('renderer CSP allows the Codex reset forecast API', () => {
   assert.ok(getDirectiveSources('connect-src').includes('https://codex-resets.com'))
 })
+
+void test('renderer CSP receives the configured self-hosted control origin at build time', () => {
+  assert.ok(getDirectiveSources('connect-src').includes('__LODY_OSS_CONTROL_ORIGIN__'))
+})

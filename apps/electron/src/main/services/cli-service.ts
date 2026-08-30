@@ -33,6 +33,7 @@ import {
   makeLocalProbeClientAuto
 } from '@lody/shared/node/local-ipc'
 import { getLodyDataDir } from '@lody/shared/node/installation-profile'
+import { mergeLoopbackNoProxy } from '@lody/shared/proxy-env'
 import type {
   LocalProjectControlRequest,
   LocalProjectControlResponse,
@@ -1030,6 +1031,12 @@ export class CliService {
     }
     delete env.LODY_DAEMON_SUPERVISED
     applyProxyEnvFallback(env, await resolveSystemProxyEnv(buildSystemProxyProbeUrls()))
+    if (isSelfHostedPlatform()) {
+      const controlHost = new URL(import.meta.env.VITE_LODY_OSS_CONTROL_URL!).hostname
+      const noProxy = mergeLoopbackNoProxy(`${env.NO_PROXY ?? ''},${controlHost}`, env.no_proxy)
+      env.NO_PROXY = noProxy
+      env.no_proxy = noProxy
+    }
     throwIfAborted(options?.signal)
 
     return {

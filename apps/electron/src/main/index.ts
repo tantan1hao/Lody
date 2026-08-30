@@ -1,4 +1,4 @@
-import { app, BrowserWindow, safeStorage } from 'electron'
+import { app, BrowserWindow, safeStorage, session } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import dns from 'node:dns'
 import { existsSync } from 'node:fs'
@@ -17,6 +17,7 @@ import { AuthService } from './services/auth-service'
 import { authClient } from './auth'
 import { AppUpdaterService } from './services/app-updater-service'
 import { DeviceBackupService } from './services/device-backup-service'
+import { resolveSystemProxyEnv } from './services/system-proxy-env'
 import { GlobalShortcutsService } from './services/global-shortcuts-service'
 import { WindowsTrayService } from './services/windows-tray-service'
 import {
@@ -154,11 +155,28 @@ if (hasSingleInstanceLock) {
 }
 
 if (hasSingleInstanceLock) {
-  void app.whenReady().then(() => {
+  void app.whenReady().then(async () => {
     logDeepLinkDebug('app.whenReady resolved', {
       isDefaultProtocolClient: app.isDefaultProtocolClient(LODY_PROTOCOL),
       protocol: LODY_PROTOCOL
     })
+    if (isSelfHostedPlatform()) {
+      const controlHost = new URL(import.meta.env.VITE_LODY_OSS_CONTROL_URL!).hostname
+      const systemProxyEnv = await resolveSystemProxyEnv()
+      const proxyRules =
+        systemProxyEnv.HTTPS_PROXY ?? systemProxyEnv.HTTP_PROXY ?? systemProxyEnv.ALL_PROXY
+      if (proxyRules) {
+        await session.defaultSession.setProxy({
+          mode: 'fixed_servers',
+          proxyRules,
+          proxyBypassRules: `<local>,${controlHost}`
+        })
+      }
+      console.info('[Electron] Self-hosted control host proxy route configured', {
+        controlHost,
+        proxyMode: proxyRules ? 'fixed_servers' : 'system-direct'
+      })
+    }
     const authService = new AuthService()
     const cliService = new CliService({
       resolveBootstrapSession: async () => {

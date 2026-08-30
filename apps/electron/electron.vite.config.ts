@@ -40,6 +40,7 @@ function getAppVersion(): string {
 
 const OSS_BUILD_MODE = 'oss'
 const LOCAL_BUILD_MODE = 'local'
+const SELF_HOSTED_CONTROL_ORIGIN_PLACEHOLDER = '__LODY_OSS_CONTROL_ORIGIN__'
 const LOCAL_BUILD_ENV: Record<string, string> = {
   VITE_LODY_PLATFORM: 'local',
   VITE_PREVIEW_PUBLIC_BASE_DOMAIN: 'local.invalid'
@@ -92,12 +93,15 @@ function buildViteEnvDefine(env: Record<string, string>): Record<string, string>
   return define
 }
 
-function previewPublicBaseDomainHtmlPlugin(baseDomain: string): Plugin {
+function rendererSecurityHtmlPlugin(baseDomain: string, controlOrigin: string): Plugin {
   return {
-    name: 'lody-preview-public-base-domain-html',
+    name: 'lody-renderer-security-html',
     enforce: 'pre',
     transformIndexHtml(html) {
-      return injectPreviewPublicBaseDomain(html, baseDomain)
+      return injectPreviewPublicBaseDomain(html, baseDomain).replaceAll(
+        SELF_HOSTED_CONTROL_ORIGIN_PLACEHOLDER,
+        controlOrigin
+      )
     }
   }
 }
@@ -112,6 +116,7 @@ export default defineConfig(({ mode }) => {
 
   const buildEnv = buildMode === LOCAL_BUILD_MODE ? { ...LOCAL_BUILD_ENV } : buildOssEnv()
   const previewPublicBaseDomain = buildEnv.VITE_PREVIEW_PUBLIC_BASE_DOMAIN
+  const rendererControlOrigin = buildEnv.VITE_LODY_OSS_CONTROL_URL ?? 'https://local.invalid'
   const viteEnvDefine = {
     ...buildViteEnvDefine(buildEnv),
     'import.meta.env.VITE_PREVIEW_PUBLIC_BASE_DOMAIN': JSON.stringify(previewPublicBaseDomain)
@@ -213,7 +218,7 @@ export default defineConfig(({ mode }) => {
       },
       // Tailwind via Vite plugin so @fontsource url() assets are emitted by Vite.
       plugins: [
-        previewPublicBaseDomainHtmlPlugin(previewPublicBaseDomain),
+        rendererSecurityHtmlPlugin(previewPublicBaseDomain, rendererControlOrigin),
         tailwindcss(),
         loroCrdtWasmUrlWorkaround(),
         react(),

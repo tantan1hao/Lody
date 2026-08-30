@@ -13,7 +13,9 @@ import {
 import { StreamsTransportAdapter } from 'loro-repo/transport/streams';
 import type { Logger } from '@/utils/logger';
 import type { LoroStreamsTokenProvider } from '@lody/platform';
+import { getCliPlatformKind } from '@/lib/cli-platform';
 import { prepareCliStreamsGatewayBaseUrl } from './streams-access';
+import { readTimeoutEnv } from './timeout-utils';
 
 export type CliStreamsTransport = {
   adapter: StreamsTransportAdapter;
@@ -51,6 +53,15 @@ export async function createCliStreamsTransport(args: {
       snapshotCodec: streamsSnapshotCodec,
       baseUrl: gatewayBaseUrl,
       shardUrls: getLoroStreamsShardUrls(gatewayBaseUrl, tokenProvider.getShardHostSuffix()),
+      reconnectConfig:
+        getCliPlatformKind() === 'self-hosted'
+          ? {
+              connectTimeoutMs: readTimeoutEnv(
+                'LODY_LORO_STREAMS_CONNECT_TIMEOUT_MS',
+                120_000
+              ),
+            }
+          : undefined,
       snapshotUpload: {
         canUpload: async () => true,
         debounceMs: 5_000,
