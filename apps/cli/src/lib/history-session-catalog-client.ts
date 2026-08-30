@@ -29,7 +29,21 @@ import { LODY_EXTENSION_METHODS } from 'acp-extension-core';
 
 const ACP_OPERATION_TIMEOUT_MS = 120_000;
 const ACP_PROCESS_EXIT_TIMEOUT_MS = 3_000;
-export const MAX_LOCAL_PROJECT_HISTORY_CATALOG_SESSIONS = 100;
+/**
+ * Upper bound on how many sessions one project's history catalog keeps.
+ *
+ * The catalog lives in the workspace doc, so this bounds that doc's growth
+ * rather than what a provider is able to report. It is deliberately generous:
+ * a provider that indexes several agents at once (a machine with years of
+ * Claude Code, Codex and Cursor history behind one custom ACP agent) hits a
+ * few hundred immediately, and a silently truncated catalog reads as "sync is
+ * broken" -- the sessions are simply absent with nothing saying why.
+ *
+ * Explicit imports are unaffected either way: importLocalProjectSessions
+ * passes the requested ids as requiredSessionIds, so a session past this
+ * bound can still be imported by id.
+ */
+export const MAX_LOCAL_PROJECT_HISTORY_CATALOG_SESSIONS = 2000;
 
 function waitForChildProcessExit(child: ChildProcess, timeoutMs: number): Promise<boolean> {
   if (child.exitCode !== null) {

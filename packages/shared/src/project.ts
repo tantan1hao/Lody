@@ -1,4 +1,4 @@
-import type { AgentConfigCliType, AgentType } from './ai';
+import type { AgentConfigCliType, AgentType, CustomAcpLaunchSpec } from './ai';
 
 export type LocalProjectId = string & { __brand: 'LocalProjectId' };
 
@@ -62,6 +62,24 @@ export type LocalProjectGitState =
 export type LocalProjectHistoryProvider = {
   cliType: AgentConfigCliType;
   agentType: AgentType;
+  /**
+   * Launch spec for a `cliType: 'custom'` provider. Builtin and registry
+   * providers resolve their executable from static tables keyed by
+   * `agentType`; a custom one is user-defined, so it has to come from the
+   * agent config.
+   *
+   * Never sent over the wire — the daemon fills it in at launch time from the
+   * configs on the machine that owns the agent (see
+   * `MessageHandler.resolveHistoryProvider`). Keeping it off the request means
+   * the control-plane schema is unchanged, and the spawn always uses the
+   * current command rather than one snapshotted when the request was built.
+   *
+   * Deliberately excluded from {@link getLocalProjectHistoryProviderKey}: that
+   * key identifies *which* provider a catalog belongs to, and re-pointing a
+   * custom agent at a new binary must not orphan the sessions already imported
+   * under it.
+   */
+  customAcp?: CustomAcpLaunchSpec;
 };
 
 export type LocalProjectHistoryProviderKey = string & { __brand: 'LocalProjectHistoryProviderKey' };

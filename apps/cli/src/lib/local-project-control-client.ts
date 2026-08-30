@@ -21,6 +21,35 @@ export type WorkspaceCandidate = {
   name: string;
 };
 
+/**
+ * Send one machine RPC to the local daemon.
+ *
+ * Same transport and failure handling as {@link sendLocalProjectControl};
+ * the machine channel carries session-level operations (fork, switch-agent,
+ * edit-and-resend) that previously had no CLI entry point at all.
+ */
+export async function sendLocalMachineRpc(message: unknown): Promise<unknown> {
+  await ensureDaemonReachable();
+  return await Effect.runPromise(
+    makeLocalControlClientAuto()
+      .machineRpc(message as never, { timeoutMs: LOCAL_CONTROL_TIMEOUT_MS })
+      .pipe(
+        Effect.catchTag('IpcTimeoutError', () =>
+          Effect.succeed({
+            success: false,
+            error: { code: 'TIMEOUT', message: 'Timed out while waiting for local CLI daemon' },
+          })
+        ),
+        Effect.catchTag('IpcProtocolError', (error) =>
+          Effect.succeed({
+            success: false,
+            error: { code: 'INVALID_RESPONSE', message: error.message },
+          })
+        )
+      )
+  );
+}
+
 export async function sendLocalProjectControl(
   message: LocalProjectControlRequest
 ): Promise<LocalProjectControlResponse> {

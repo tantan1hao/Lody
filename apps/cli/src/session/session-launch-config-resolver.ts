@@ -182,6 +182,18 @@ export async function resolveSessionLaunchConfig(input: {
     };
   }
 
+  // A session imported from an external history provider records the exact
+  // launch spec the import ran under. Prefer it over any lookup: it is what
+  // actually produced this transcript, it cannot go stale behind a renamed or
+  // deleted agent config, and it needs no round trip.
+  const importedSpec = input.sessionMeta?.externalHistory?.provider?.customAcp;
+  if (importedSpec && !snapshot.resolution.config?.customAcp) {
+    return {
+      config: { ...(snapshot.resolution.config ?? {}), customAcp: importedSpec },
+      source: snapshot.resolution.source === 'none' ? 'legacy-session' : snapshot.resolution.source,
+    };
+  }
+
   if (!input.sessionMeta?.agentConfigId) {
     // A session imported from another agent's history has no agentConfigId --
     // nothing created it through an agent config. For builtin and registry

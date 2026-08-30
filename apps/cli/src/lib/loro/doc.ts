@@ -280,7 +280,8 @@ export type LoroRepoPersistReason =
   | 'session-fork-commit'
   | 'session-fork-rollback'
   | 'session-edit-and-resend-commit'
-  | 'session-edit-and-resend-rollback';
+  | 'session-edit-and-resend-rollback'
+  | 'session-switch-agent-commit';
 
 export class LoroDocumentManager {
   public readonly repo: LoroRepo;
@@ -1325,6 +1326,32 @@ export class LoroDocumentManager {
       }
     }
     return false;
+  }
+
+  /**
+   * The agent config a `cliType:agentType` pair resolves to on one machine.
+   *
+   * History sync identifies a provider by that pair alone, but a
+   * `cliType: 'custom'` provider cannot be launched from the pair: its
+   * executable lives in the config's `customAcp` and is not in any static
+   * table. Reading it here — at launch time, from the machine that owns the
+   * agent — keeps the wire contract unchanged and always picks up the current
+   * command rather than one snapshotted when the request was built.
+   */
+  async findAgentConfigByType(
+    cliType: AgentConfigCliType,
+    agentType: string,
+    machineId: MachineId
+  ): Promise<AgentConfigMeta | null> {
+    const configs = await listMergedAgentConfigs(this.repo, this.workspaceId, [machineId]);
+    return (
+      configs.find(
+        (meta) =>
+          meta.cliType === cliType &&
+          meta.agentType === agentType &&
+          meta.machineId === machineId
+      ) ?? null
+    );
   }
 
   async getAgentConfigById(

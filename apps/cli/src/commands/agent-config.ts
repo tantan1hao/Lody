@@ -17,7 +17,7 @@ import {
 import {
   dispatchLocalControl,
   ensureWorkspaceMetaSynced,
-  getAuthContextOrThrow,
+  getCommandIdentityOrThrow,
   listAliveDocMetas,
   normalizeCliValue,
   printJson,
@@ -51,6 +51,8 @@ type AgentConfigCreateOptions = AgentConfigCommandOptions & {
   prompt?: string;
   promptFile?: string;
   titleConfigOption?: string[];
+  command?: string;
+  arg?: string[];
 };
 
 type AgentConfigUpdateOptions = AgentConfigCommandOptions & {
@@ -451,7 +453,7 @@ const agentConfigListCommand = new Command('list')
   .option('--debug', 'Enable debug output')
   .action(async (options: AgentConfigListOptions) => {
     await runOneShotCommand('agent-config', options, async () => {
-      const auth = getAuthContextOrThrow('agent-config');
+      const auth = await getCommandIdentityOrThrow('agent-config');
       const workspace = await resolveWorkspaceOrThrow(auth, options.workspace);
 
       await withWorkspaceManager(auth, workspace, 'agent-config', async (manager) => {
@@ -506,7 +508,7 @@ const agentConfigShowCommand = new Command('show')
   .argument('[idOrName]', 'Agent config id or name; falls back to LODY_AGENT_CONFIG_ID')
   .action(async (selector: string | undefined, options: AgentConfigCommandOptions) => {
     await runOneShotCommand('agent-config', options, async () => {
-      const auth = getAuthContextOrThrow('agent-config');
+      const auth = await getCommandIdentityOrThrow('agent-config');
       const workspace = await resolveWorkspaceOrThrow(auth, options.workspace);
 
       await withWorkspaceManager(auth, workspace, 'agent-config', async (manager) => {
@@ -543,7 +545,7 @@ const agentConfigRefreshCapabilitiesCommand = new Command('refresh-capabilities'
   .action(async (selector: string | undefined, options: AgentConfigRefreshOptions) => {
     await runOneShotCommand('agent-config', options, async () => {
       const outputMode = resolveStructuredOutputMode(options);
-      const auth = getAuthContextOrThrow('agent-config');
+      const auth = await getCommandIdentityOrThrow('agent-config');
       const workspace = await resolveWorkspaceOrThrow(auth, options.workspace);
 
       await withWorkspaceManager(auth, workspace, 'agent-config', async (manager) => {
@@ -641,18 +643,39 @@ const agentConfigCreateCommand = new Command('create')
     collectListOption,
     []
   )
+  .option(
+    '--command <path>',
+    'Executable for a custom ACP agent. Implies cliType "custom"; the agent type stays a free-form slug'
+  )
+  .option(
+    '--arg <value>',
+    'Argument passed to --command; repeatable, order preserved',
+    collectListOption,
+    []
+  )
   .option('--json', 'Print JSON output')
   .option('--debug', 'Enable debug output')
   .action(async (options: AgentConfigCreateOptions) => {
     await runOneShotCommand('agent-config', options, async () => {
-      const auth = getAuthContextOrThrow('agent-config');
+      const auth = await getCommandIdentityOrThrow('agent-config');
       const workspace = await resolveWorkspaceOrThrow(auth, options.workspace);
 
       const agentType = normalizeCliValue(options.agentType);
       if (!agentType) {
         throw new Error('Missing --agent-type.');
       }
-      const cliType = inferAgentConfigCliType(agentType);
+      // `--command` is what separates a custom agent from a registry one: the
+      // executable is user-defined, so it cannot be inferred from agentType
+      // the way builtin and registry launches are. Without this the CLI could
+      // only ever create builtin/registry configs, and a custom ACP agent had
+      // to be added by hand in the desktop UI.
+      const customCommand = normalizeCliValue(options.command);
+      const cliType: AgentConfigCliType = customCommand
+        ? 'custom'
+        : inferAgentConfigCliType(agentType);
+      const customAcp = customCommand
+        ? { command: customCommand, ...(options.arg?.length ? { args: [...options.arg] } : {}) }
+        : undefined;
 
       const fileEnv = options.envFile
         ? parseEnvFileText(await fs.readFile(options.envFile, 'utf8'))
@@ -681,6 +704,7 @@ const agentConfigCreateCommand = new Command('create')
           cliType,
           agentType,
           env: applyEnvUpdates({}, fileEnv, inlineEnv),
+          ...(customAcp ? { customAcp } : {}),
           ...(prompt ? { prompt } : {}),
           ...(titleGeneration ? { titleGeneration } : {}),
         };
@@ -729,7 +753,7 @@ const agentConfigUpdateCommand = new Command('update')
   .argument('[idOrName]', 'Agent config id or name; falls back to LODY_AGENT_CONFIG_ID')
   .action(async (selector: string | undefined, options: AgentConfigUpdateOptions) => {
     await runOneShotCommand('agent-config', options, async () => {
-      const auth = getAuthContextOrThrow('agent-config');
+      const auth = await getCommandIdentityOrThrow('agent-config');
       const workspace = await resolveWorkspaceOrThrow(auth, options.workspace);
 
       const requestedEnvUpdate =
@@ -822,7 +846,7 @@ const agentConfigDeleteCommand = new Command('delete')
   .argument('[idOrName]', 'Agent config id or name; falls back to LODY_AGENT_CONFIG_ID')
   .action(async (selector: string | undefined, options: AgentConfigCommandOptions) => {
     await runOneShotCommand('agent-config', options, async () => {
-      const auth = getAuthContextOrThrow('agent-config');
+      const auth = await getCommandIdentityOrThrow('agent-config');
       const workspace = await resolveWorkspaceOrThrow(auth, options.workspace);
 
       await withWorkspaceManager(auth, workspace, 'agent-config', async (manager) => {

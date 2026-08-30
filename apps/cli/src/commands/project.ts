@@ -10,10 +10,14 @@ import {
   type WorkspaceId,
 } from '@lody/shared';
 import { AuthClient } from '@/lib/auth';
+import { getCliPlatformKind } from '@/lib/cli-platform';
+import { getCommandIdentityOrThrow, resolveWorkspaceOrThrow } from '@/lib/command-runtime';
+import { getOrCreateStableMachineIdAsync } from '@/utils/const';
 import {
   extractWorkspaceCandidates,
   printWorkspaceCandidates,
   promptWorkspaceSelection,
+  sendLocalMachineRpc,
   sendLocalProjectControl,
 } from '@/lib/local-project-control-client';
 import { renderTerminalTable } from '@/lib/terminal-table';
@@ -44,8 +48,14 @@ function setDebugIfEnabled(options: CommonOptions): void {
   }
 }
 
-function resolveMachineIdOrExit(): MachineId {
+async function resolveMachineIdOrExit(): Promise<MachineId> {
   const logger = getLogger('project');
+  // The local platform has no account to read a machine id from; the stable
+  // per-install id is the same one `lody start` registers under, so the
+  // daemon recognises it.
+  if (getCliPlatformKind() === 'local') {
+    return (await getOrCreateStableMachineIdAsync()) as MachineId;
+  }
   const authClient = new AuthClient(logger);
   const authInfo = authClient.getAuthInfo();
   if (!authInfo) {
@@ -186,7 +196,7 @@ const projectAddCommand = new Command('add')
       process.exit(1);
     }
 
-    const machineId = resolveMachineIdOrExit();
+    const machineId = await resolveMachineIdOrExit();
     const rootPath = path.resolve(projectPath ?? '.');
 
     let response = await sendLocalProjectControl(
@@ -250,7 +260,7 @@ const projectDeleteCommand = new Command('delete')
       process.exit(1);
     }
 
-    const machineId = resolveMachineIdOrExit();
+    const machineId = await resolveMachineIdOrExit();
     const listResponse = await sendLocalProjectControl({
       type: 'local-project/list',
       machineId,
@@ -353,7 +363,7 @@ const projectListCommand = new Command('list')
   .action(async (options: CommonOptions) => {
     setDebugIfEnabled(options);
 
-    const machineId = resolveMachineIdOrExit();
+    const machineId = await resolveMachineIdOrExit();
     const response = await sendLocalProjectControl({
       type: 'local-project/list',
       machineId,
@@ -410,8 +420,253 @@ const projectListCommand = new Command('list')
     );
   });
 
+/**
+ * History sync and import, over the same project-control RPC the desktop UI
+ * uses. There was no CLI entry point for either, so importing an external
+ * agent's history meant clicking through project settings -- unusable on a
+ * headless machine and unscriptable anywhere.
+ */
+type HistoryOptions = CommonOptions & {
+  workspace?: string;
+  agent: string;
+  cliType?: string;
+  session?: string[];
+  all?: boolean;
+};
+
+async function resolveProjectOrExit(
+  rootPath: string,
+  workspaceSelector?: string
+): Promise<{ workspaceId: WorkspaceId; localProjectId: LocalProjectId }> {
+  const logger = getLogger('project');
+  const machineId = await resolveMachineIdOrExit();
+  const response = await sendLocalProjectControl({
+    type: 'local-project/list',
+    machineId,
+  } as LocalProjectControlRequest);
+  if (!response.ok) {
+    printProjectControlError('list local projects', response);
+    process.exit(1);
+  }
+  const resolved = path.resolve(rootPath);
+  const workspaces = (response as { result: { workspaces: WorkspaceProjects[] } }).result.workspaces;
+  const matches: { workspaceId: string; localProjectId: string }[] = [];
+  for (const workspace of workspaces) {
+    if (workspaceSelector && workspace.workspaceId !== workspaceSelector) continue;
+    for (const project of workspace.projects) {
+      if (path.resolve(project.rootPath) === resolved) {
+        matches.push({
+          workspaceId: workspace.workspaceId,
+          localProjectId: project.localProjectId,
+        });
+      }
+    }
+  }
+  if (matches.length === 0) {
+    logger.error(`No registered local project at ${resolved}. Run \`lody project add\` first.`);
+    process.exit(1);
+  }
+  if (matches.length > 1) {
+    logger.error(`${resolved} is registered in several workspaces; pass --workspace.`);
+    process.exit(1);
+  }
+  return {
+    workspaceId: matches[0]!.workspaceId as WorkspaceId,
+    localProjectId: matches[0]!.localProjectId as LocalProjectId,
+  };
+}
+
+const projectHistoryListCommand = new Command('list')
+  .description("List an agent's importable sessions for a local project")
+  .argument('[path]', 'Project root path (defaults to the current directory)')
+  .requiredOption('--agent <type>', 'Agent type, as shown by `lody agent-config list`')
+  .option('--cli-type <type>', 'builtin | registry | custom (default: custom)', 'custom')
+  .option('--workspace <id>', 'Workspace id when the path is registered more than once')
+  .option('--json', 'Print JSON output')
+  .option('--debug', 'Enable debug output')
+  .action(async (projectPath: string | undefined, options: HistoryOptions) => {
+    if (options.debug) rootLogger.setLevel('debug');
+    const logger = getLogger('project');
+    const machineId = await resolveMachineIdOrExit();
+    const { workspaceId, localProjectId } = await resolveProjectOrExit(
+      projectPath ?? '.',
+      options.workspace
+    );
+
+    const response = await sendLocalProjectControl({
+      type: 'local-project/sync-history',
+      machineId,
+      workspaceId,
+      localProjectId,
+      provider: { cliType: options.cliType ?? 'custom', agentType: options.agent },
+    } as LocalProjectControlRequest);
+
+    if (!response.ok) {
+      printProjectControlError('sync history', response);
+      process.exit(1);
+    }
+    if (options.json) {
+      console.log(JSON.stringify(response, null, 2));
+      return;
+    }
+    // 注意：RPC 回的 sessions 是**数组**。类型层的
+    // LocalProjectHistoryCatalog.sessions 是 Record，两者不是一回事 ——
+    // 照着类型写 Object.values 会在数组上得到一堆下标，静默变成空表。
+    const sessions = (response as { result: { sessions?: HistoryCatalogRow[] } }).result.sessions ?? [];
+    if (sessions.length === 0) {
+      logger.info('No importable sessions found for this agent and project.');
+      return;
+    }
+    console.log(
+      renderTerminalTable(
+        [{ header: 'Status' }, { header: 'Updated' }, { header: 'Title' }, { header: 'Session' }],
+        sessions
+          .sort((a, b) => String(b.updatedAt ?? '').localeCompare(String(a.updatedAt ?? '')))
+          .map((session) => [
+            session.status ?? 'available',
+            String(session.updatedAt ?? '').slice(0, 16).replace('T', ' '),
+            String(session.title ?? '').slice(0, 60),
+            session.acpSessionId,
+          ])
+      )
+    );
+  });
+
+const projectHistoryImportCommand = new Command('import')
+  .description("Import an agent's sessions into this local project")
+  .argument('[path]', 'Project root path (defaults to the current directory)')
+  .requiredOption('--agent <type>', 'Agent type, as shown by `lody agent-config list`')
+  .option('--cli-type <type>', 'builtin | registry | custom (default: custom)', 'custom')
+  .option('--session <id>', 'Session id to import; repeatable', collectSessionId, [])
+  .option('--all', 'Import every session the agent reports as available')
+  .option('--workspace <id>', 'Workspace id when the path is registered more than once')
+  .option('--json', 'Print JSON output')
+  .option('--debug', 'Enable debug output')
+  .action(async (projectPath: string | undefined, options: HistoryOptions) => {
+    if (options.debug) rootLogger.setLevel('debug');
+    const logger = getLogger('project');
+    const machineId = await resolveMachineIdOrExit();
+    const { workspaceId, localProjectId } = await resolveProjectOrExit(
+      projectPath ?? '.',
+      options.workspace
+    );
+    const provider = { cliType: options.cliType ?? 'custom', agentType: options.agent };
+
+    let acpSessionIds = options.session ?? [];
+    if (options.all) {
+      // The catalog has to be refreshed first: import only accepts ids the
+      // provider has already reported, so importing "everything" means asking
+      // what everything is right now rather than trusting a stale list.
+      const listed = await sendLocalProjectControl({
+        type: 'local-project/sync-history',
+        machineId,
+        workspaceId,
+        localProjectId,
+        provider,
+      } as LocalProjectControlRequest);
+      if (!listed.ok) {
+        printProjectControlError('sync history', listed);
+        process.exit(1);
+      }
+      acpSessionIds = ((listed as { result: { sessions?: HistoryCatalogRow[] } }).result.sessions ?? [])
+        .filter((session) => session.status !== 'imported')
+        .map((session) => session.acpSessionId);
+    }
+    if (acpSessionIds.length === 0) {
+      logger.info('Nothing to import (pass --session <id> or --all).');
+      return;
+    }
+
+    logger.info(`Importing ${acpSessionIds.length} session(s)...`);
+    const response = await sendLocalProjectControl({
+      type: 'local-project/import-history',
+      machineId,
+      workspaceId,
+      localProjectId,
+      provider,
+      acpSessionIds,
+    } as LocalProjectControlRequest);
+
+    if (!response.ok) {
+      printProjectControlError('import history', response);
+      process.exit(1);
+    }
+    if (options.json) {
+      console.log(JSON.stringify(response, null, 2));
+      return;
+    }
+    logger.success(`Imported ${acpSessionIds.length} session(s).`);
+  });
+
+function collectSessionId(value: string, previous: string[]): string[] {
+  return [...previous, value];
+}
+
+type HistoryCatalogRow = {
+  acpSessionId: string;
+  title?: string;
+  updatedAt?: string;
+  status?: string;
+};
+
+type WorkspaceProjects = {
+  workspaceId: string;
+  projects: { localProjectId: string; rootPath: string }[];
+};
+
+/**
+ * Switch which agent owns a session.
+ *
+ * The RPC already exists and the desktop composer calls it; there was no CLI
+ * entry point. That matters most for sessions imported from a read-only
+ * history provider: such an agent serves `session/list` and `session/load`
+ * but refuses `session/prompt`, so the imported session cannot be continued
+ * until it is handed to an agent that can actually run a turn.
+ */
+const projectSwitchAgentCommand = new Command('switch-agent')
+  .description('Hand a session to a different agent config')
+  .argument('<sessionId>', 'Session to move')
+  .requiredOption('--agent-config <id>', 'Target agent config id (see `lody agent-config list`)')
+  .option('--json', 'Print JSON output')
+  .option('--debug', 'Enable debug output')
+  .action(async (sessionId: string, options: CommonOptions & { agentConfig: string }) => {
+    if (options.debug) rootLogger.setLevel('debug');
+    const logger = getLogger('project');
+    const auth = await getCommandIdentityOrThrow('project');
+    const workspace = await resolveWorkspaceOrThrow(auth);
+    const response = await sendLocalMachineRpc({
+      method: 'session/switch-agent',
+      machineId: auth.machineId,
+      workspaceId: workspace.id,
+      params: {
+        sessionId,
+        agentConfigId: options.agentConfig,
+        requestedByUserId: auth.userId,
+      },
+    });
+    if (options.json) {
+      console.log(JSON.stringify(response, null, 2));
+      return;
+    }
+    const ok = (response as { success?: boolean } | null)?.success;
+    if (ok) {
+      logger.success(`Session ${sessionId} now runs on agent config ${options.agentConfig}.`);
+      return;
+    }
+    const err = (response as { error?: { message?: string } } | null)?.error;
+    logger.error(`Failed to switch agent: ${err?.message ?? 'unknown error'}`);
+    process.exit(1);
+  });
+
+const projectHistoryCommand = new Command('history')
+  .description("Sync and import another agent's session history")
+  .addCommand(projectHistoryListCommand)
+  .addCommand(projectHistoryImportCommand);
+
 export const projectCommand = new Command('project')
   .description('Manage local projects')
   .addCommand(projectAddCommand)
   .addCommand(projectDeleteCommand)
-  .addCommand(projectListCommand);
+  .addCommand(projectListCommand)
+  .addCommand(projectHistoryCommand)
+  .addCommand(projectSwitchAgentCommand);
