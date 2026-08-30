@@ -78,9 +78,12 @@ import {
 } from '@lody/shared';
 import { prepareCliStreamsGatewayBaseUrl } from '@/lib/loro/streams-access';
 import { AuthClient } from '@/lib/auth';
+import { getCliPlatformKind } from '@/lib/cli-platform';
 import {
   dispatchLocalControl,
   ensureWorkspaceMetaSynced,
+  getCommandIdentityOrThrow,
+  listWorkspacesForIdentity,
   listAliveDocMetas,
   listAliveSessionMetas,
   listAliveRoomIds,
@@ -101,7 +104,6 @@ import {
   canRequestMachineForCliToken,
   type WorkspaceBillingEntitlement,
   listWorkspaceGitHubRepositoriesForCliToken,
-  listWorkspacesForToken,
   type MachineAccessCheckResult,
   type WorkspaceSummary,
 } from '@/lib/workspace';
@@ -780,21 +782,14 @@ export async function rollbackPendingSessionCreate(
   }
 }
 
-function getAuthContextOrThrow(): AuthContext {
-  const authClient = new AuthClient(getLogger('session'));
-  const authInfo = authClient.getAuthInfo();
-  if (!authInfo) {
-    throw new Error('Not logged in. Run `lody login` first.');
-  }
-
-  return {
-    token: authInfo.token,
-    userId: authInfo.user.id,
-    userName: normalizeCliValue(authInfo.user.name ?? undefined) ?? authInfo.user.email,
-    userEmail: authInfo.user.email,
-    machineId: authInfo.machine.machineId as MachineId,
-    machineName: authInfo.machine.machineName,
-  };
+/**
+ * This file keeps its own copy of the identity and manager helpers. Delegate
+ * the identity half so the local platform (no account, synthetic identity)
+ * takes the same path the shared helper already implements, instead of
+ * failing here on a login token that can never exist.
+ */
+async function getAuthContextOrThrow(): Promise<AuthContext> {
+  return await getCommandIdentityOrThrow('session');
 }
 
 async function withWorkspaceManager<T>(
@@ -802,26 +797,32 @@ async function withWorkspaceManager<T>(
   workspace: WorkspaceSummary,
   fn: (manager: LoroDocumentManager) => Promise<T>
 ): Promise<T> {
+  const logger = getLogger('session');
+  const local = getCliPlatformKind() === 'local';
+
   // One-shot commands need the remote Streams transport so their writes reach
   // the cloud (and the daemon) instead of stranding in the local SQLite store.
-  if (!LODY_AUTH_URL) {
+  // That reasoning is cloud-only: on the local platform the SQLite store IS
+  // the destination, so there is nothing to strand behind.
+  if (!local && !LODY_AUTH_URL) {
     throw new Error('Cloud session commands require LODY_AUTH_URL');
   }
-  const logger = getLogger('session');
   const manager = await LoroDocumentManager.create(
     workspace.id as WorkspaceId,
     auth.userId,
     logger,
-    {
-      attachRemoteOnCreate: true,
-      streamsTokens: createCloudStreamsTokenPort({
-        token: auth.token,
-        authBaseUrl: LODY_AUTH_URL,
-        authSiteUrl: LODY_AUTH_SITE_URL,
-        logger,
-      }),
-      cloudBilling: createCloudBillingPort({ token: auth.token }),
-    }
+    local
+      ? { streamsTokens: null, cloudBilling: null }
+      : {
+          attachRemoteOnCreate: true,
+          streamsTokens: createCloudStreamsTokenPort({
+            token: auth.token,
+            authBaseUrl: LODY_AUTH_URL!,
+            authSiteUrl: LODY_AUTH_SITE_URL,
+            logger,
+          }),
+          cloudBilling: createCloudBillingPort({ token: auth.token }),
+        }
   );
   try {
     return await fn(manager);
@@ -1137,7 +1138,7 @@ async function resolveWorkspaceOrThrow(
   auth: AuthContext,
   selector?: string
 ): Promise<WorkspaceSummary> {
-  const workspaces = await listWorkspacesForToken(auth.token);
+  const workspaces = await listWorkspacesForIdentity(auth);
   const effectiveSelector =
     normalizeCliValue(selector) ?? normalizeCliValue(process.env.LODY_WORKSPACE_ID);
   return selectWorkspaceSummary(workspaces, effectiveSelector);
@@ -1148,7 +1149,7 @@ async function resolveWorkspaceForSessionOrThrow(
   sessionId: SessionId,
   options?: ResolveWorkspaceForSessionOptions
 ): Promise<WorkspaceSummary> {
-  const workspaces = await listWorkspacesForToken(auth.token);
+  const workspaces = await listWorkspacesForIdentity(auth);
   const selector = typeof options === 'string' ? options : options?.workspace;
   const shouldSync = typeof options === 'object' && options.offline !== true;
   const syncReason = typeof options === 'object' ? options.reason : undefined;
@@ -3561,7 +3562,7 @@ const sessionCreateCommand = new Command('create')
       const createStartMs = Date.now();
       captureSessionCommandEvent('session_create_started', { output_mode: outputMode });
       try {
-        const auth = getAuthContextOrThrow();
+        const auth = await getAuthContextOrThrow();
         const workspace = await resolveWorkspaceOrThrow(auth, options.workspace);
         const prompt = await readPromptText(options, promptArg);
         await withWorkspaceManager(auth, workspace, async (manager) => {
@@ -3727,7 +3728,7 @@ const sessionChatCommand = new Command('chat')
     ) => {
       await runSessionCommand(options, async () => {
         const outputMode = resolveStructuredOutputMode(options);
-        const auth = getAuthContextOrThrow();
+        const auth = await getAuthContextOrThrow();
         const stdinState = shouldReadStdinForChatArgResolution({
           sessionIdArg,
           promptArg,
@@ -3860,7 +3861,7 @@ const sessionCancelCommand = new Command('cancel')
   .action(
     async (sessionIdArg: string | undefined, options: CommonOptions & { turnId?: string }) => {
       await runSessionCommand(options, async () => {
-        const auth = getAuthContextOrThrow();
+        const auth = await getAuthContextOrThrow();
         const sessionId = (normalizeCliValue(sessionIdArg) ??
           normalizeCliValue(process.env.LODY_SESSION_ID)) as SessionId | undefined;
         if (!sessionId) {
@@ -3964,7 +3965,7 @@ const sessionListCommand = new Command('list')
   .option('--debug', 'Enable debug output')
   .action(async (options: ListOptions) => {
     await runSessionCommand(options, async () => {
-      const auth = getAuthContextOrThrow();
+      const auth = await getAuthContextOrThrow();
       const workspace = await resolveWorkspaceOrThrow(auth, options.workspace);
       if (options.openedBy && options.openedByCurrent === true) {
         throw new Error('Pass either --opened-by or --opened-by-current, not both.');
@@ -4027,7 +4028,7 @@ const sessionHistoryCommand = new Command('history')
         throw new Error('Pass either --limit or --all, not both.');
       }
 
-      const auth = getAuthContextOrThrow();
+      const auth = await getAuthContextOrThrow();
       const sessionId = (normalizeCliValue(sessionIdArg) ??
         normalizeCliValue(process.env.LODY_SESSION_ID)) as SessionId | undefined;
       if (!sessionId) {
@@ -4092,7 +4093,7 @@ const sessionShowCommand = new Command('show')
   .argument('[sessionId]', 'Session ID; falls back to LODY_SESSION_ID')
   .action(async (sessionIdArg: string | undefined, options: CommonOptions) => {
     await runSessionCommand(options, async () => {
-      const auth = getAuthContextOrThrow();
+      const auth = await getAuthContextOrThrow();
       const sessionId = (normalizeCliValue(sessionIdArg) ??
         normalizeCliValue(process.env.LODY_SESSION_ID)) as SessionId | undefined;
       if (!sessionId) {
@@ -4126,7 +4127,7 @@ const sessionStatusCommand = new Command('status')
   .argument('[sessionId]', 'Session ID; falls back to LODY_SESSION_ID')
   .action(async (sessionIdArg: string | undefined, options: CommonOptions) => {
     await runSessionCommand(options, async () => {
-      const auth = getAuthContextOrThrow();
+      const auth = await getAuthContextOrThrow();
       const sessionId = (normalizeCliValue(sessionIdArg) ??
         normalizeCliValue(process.env.LODY_SESSION_ID)) as SessionId | undefined;
       if (!sessionId) {
@@ -4171,7 +4172,7 @@ const sessionRenameCommand = new Command('rename')
       options: RenameOptions
     ) => {
       await runSessionCommand(options, async () => {
-        const auth = getAuthContextOrThrow();
+        const auth = await getAuthContextOrThrow();
         const { sessionId, title } = resolveRenameArgs({
           sessionIdArg,
           titleArg,
@@ -4210,7 +4211,7 @@ const sessionArchiveCommand = new Command('archive')
   .argument('[sessionId]', 'Session ID; falls back to LODY_SESSION_ID')
   .action(async (sessionIdArg: string | undefined, options: CommonOptions) => {
     await runSessionCommand(options, async () => {
-      const auth = getAuthContextOrThrow();
+      const auth = await getAuthContextOrThrow();
       const sessionId = (normalizeCliValue(sessionIdArg) ??
         normalizeCliValue(process.env.LODY_SESSION_ID)) as SessionId | undefined;
       if (!sessionId) {
@@ -4272,7 +4273,7 @@ const sessionRestoreCommand = new Command('restore')
   .argument('[sessionId]', 'Session ID; falls back to LODY_SESSION_ID')
   .action(async (sessionIdArg: string | undefined, options: CommonOptions) => {
     await runSessionCommand(options, async () => {
-      const auth = getAuthContextOrThrow();
+      const auth = await getAuthContextOrThrow();
       const sessionId = (normalizeCliValue(sessionIdArg) ??
         normalizeCliValue(process.env.LODY_SESSION_ID)) as SessionId | undefined;
       if (!sessionId) {
@@ -4331,7 +4332,7 @@ const sessionDeleteCommand = new Command('delete')
   .argument('[sessionId]', 'Session ID; falls back to LODY_SESSION_ID')
   .action(async (sessionIdArg: string | undefined, options: CommonOptions) => {
     await runSessionCommand(options, async () => {
-      const auth = getAuthContextOrThrow();
+      const auth = await getAuthContextOrThrow();
       const sessionId = (normalizeCliValue(sessionIdArg) ??
         normalizeCliValue(process.env.LODY_SESSION_ID)) as SessionId | undefined;
       if (!sessionId) {

@@ -37,6 +37,11 @@ type WorkspaceDocumentLike = {
     agentConfigId: AgentConfigId,
     machineId?: MachineId
   ): Promise<AgentConfigLaunchFields | null>;
+  findAgentConfigByType?(
+    cliType: string,
+    agentType: string,
+    machineId: MachineId
+  ): Promise<AgentConfigLaunchFields | null>;
 };
 
 export type SessionLaunchConfigResolution = {
@@ -178,7 +183,40 @@ export async function resolveSessionLaunchConfig(input: {
   }
 
   if (!input.sessionMeta?.agentConfigId) {
-    return snapshot.resolution;
+    // A session imported from another agent's history has no agentConfigId --
+    // nothing created it through an agent config. For builtin and registry
+    // agents that is harmless: the executable resolves from a static table
+    // keyed by agentType. A custom agent's command is user-defined, so
+    // resuming one of its imported sessions failed with "no launch command
+    // configured" the moment it was opened.
+    //
+    // Fall back to the agent config that owns this cliType:agentType on the
+    // session's machine. It is the same config the import ran under, so this
+    // recovers the command without writing anything back onto the session.
+    if (snapshot.resolution.config?.customAcp) return snapshot.resolution;
+    const cliType = input.sessionMeta?.cliType;
+    const agentType = input.sessionMeta?.agentType;
+    if (cliType !== 'custom' || !agentType || !input.workspaceDocument.findAgentConfigByType) {
+      return snapshot.resolution;
+    }
+    try {
+      const owner = await input.workspaceDocument.findAgentConfigByType(
+        cliType,
+        agentType,
+        machineId
+      );
+      if (!owner?.customAcp) return snapshot.resolution;
+      return {
+        config: { ...(snapshot.resolution.config ?? {}), customAcp: owner.customAcp },
+        source: 'agent-config',
+      };
+    } catch (error) {
+      input.logger.debug(
+        `[${input.sessionId}] Failed to recover a custom launch spec for ${cliType}:${agentType}: ` +
+          formatErrorMessage(error)
+      );
+      return snapshot.resolution;
+    }
   }
 
   if (snapshot.agentConfig) {
