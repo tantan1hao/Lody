@@ -18,6 +18,7 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import type { MentionProjectSource } from '@/components/mentions/mention-project-file-source';
 import { ArrowUp, Bug, Download, ExternalLink, Loader2, Settings } from 'lucide-react';
 import type { PastedTextDraft } from '@/lib/pasted-text-draft';
+import type { ComposerSessionSkill } from '@/lib/composer-session-skill';
 import { MobileChatLandingScreen } from '@/components/mobile/mobile-chat-landing-screen';
 import { WebChatLandingScreen } from './web-chat-landing-screen';
 
@@ -147,6 +148,8 @@ export interface ChatLandingViewProps {
    * desktop layout stays header-less.
    */
   leftSidebarExpandSlot?: ReactNode;
+  onSessionSkill?: (skill: ComposerSessionSkill) => void;
+  activeSessionSkill?: ComposerSessionSkill | null;
   /** Error boundary reset keys */
   resetKeys?: unknown[];
   /** Labels for error boundary fallback */
@@ -238,6 +241,8 @@ export function ChatLandingView({
   onGoToAgentSettings,
   onOpenMobileDrawer,
   leftSidebarExpandSlot,
+  onSessionSkill,
+  activeSessionSkill,
   resetKeys = [],
   errorLabels = {},
 }: ChatLandingViewProps) {
@@ -453,6 +458,8 @@ export function ChatLandingView({
         topSelector={topSelector}
         footerSelector={footerSelector ?? selector}
         bottomBar={bottomBar}
+        onSessionSkill={onSessionSkill}
+        activeSessionSkill={activeSessionSkill}
         statusMessage={composerStatusMessage}
         statusTone={composerStatusTone}
         primaryAction={primaryActionNode}

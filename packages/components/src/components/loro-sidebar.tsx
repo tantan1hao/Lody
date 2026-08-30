@@ -44,6 +44,7 @@ import {
   Settings,
   Users,
 } from 'lucide-react';
+import { SidebarSearchInput } from '@/components/sidebar-search-input';
 import {
   SessionList,
   type SessionListProps,
@@ -125,6 +126,11 @@ export type LoroSidebarLabels = {
   workspaceSyncing: string;
   filter: SidebarFilterLabels;
   updated: SidebarUpdatedSessionListLabels;
+  searchPlaceholder: string;
+  searchAriaLabel: string;
+  clearSearchAriaLabel: string;
+  searchEmptyTitle: string;
+  searchEmptyDescription: string;
 };
 
 export interface LoroSidebarProps {
@@ -225,6 +231,12 @@ export interface LoroSidebarProps {
   onOpenUpdatedItemPullRequest?: (request: SessionListPullRequestOpen) => void;
   getUpdatedItemHref?: (id: string) => string | undefined;
 
+  /** Filters the visible session lists. Empty string shows everything. */
+  searchQuery?: string;
+  onSearchQueryChange?: (next: string) => void;
+  /** True when a non-empty query matched no rows, projects, or repos. */
+  searchEmpty?: boolean;
+
   labels?: Partial<LoroSidebarLabels>;
 
   onWorkspaceSelected?: (workspaceId: string) => void;
@@ -304,6 +316,11 @@ const defaultLabels: LoroSidebarLabels = {
     emptyTitle: 'Nothing yet',
     emptyDescription: 'Start a chat or open a worktree to see it here.',
   },
+  searchPlaceholder: 'Search chats',
+  searchAriaLabel: 'Search chats',
+  clearSearchAriaLabel: 'Clear search',
+  searchEmptyTitle: 'No matching chats',
+  searchEmptyDescription: 'Try a title, project, or agent name.',
 };
 
 const PINNED_BUCKETS_COLLAPSED: Partial<Record<SidebarUpdatedBucketKey, boolean>> = {
@@ -656,6 +673,9 @@ export const LoroSidebar = memo(function LoroSidebar({
   onShareUpdatedItemWithTeam,
   onOpenUpdatedItemPullRequest,
   getUpdatedItemHref,
+  searchQuery = '',
+  onSearchQueryChange,
+  searchEmpty = false,
   labels,
   onWorkspaceSelected,
   onCreateWorkspaceClicked,
@@ -693,6 +713,22 @@ export const LoroSidebar = memo(function LoroSidebar({
   );
   const [isResizing, setIsResizing] = useState(false);
   const resizeStateRef = useRef({ pointerId: -1, startX: 0, startWidth: 0 });
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!onSearchQueryChange) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
+      if (event.key !== '/') return;
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      if (target.closest('input, textarea, select, [contenteditable="true"]')) return;
+      event.preventDefault();
+      searchInputRef.current?.focus();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onSearchQueryChange]);
 
   useEffect(() => {
     setSidebarWidth(clamp(defaultWidth, resolvedMinWidth, resolvedMaxWidth));
@@ -1020,6 +1056,25 @@ export const LoroSidebar = memo(function LoroSidebar({
           ) : null}
         </div>
 
+        {onSearchQueryChange ? (
+          <div
+            className={cn(
+              isMobile
+                ? 'mt-2 pl-[calc(12px+var(--safe-area-left))] pr-[calc(12px+var(--safe-area-right))]'
+                : 'mt-1 px-1.5'
+            )}
+          >
+            <SidebarSearchInput
+              value={searchQuery}
+              onChange={onSearchQueryChange}
+              placeholder={mergedLabels.searchPlaceholder}
+              ariaLabel={mergedLabels.searchAriaLabel}
+              clearAriaLabel={mergedLabels.clearSearchAriaLabel}
+              inputRef={searchInputRef}
+            />
+          </div>
+        ) : null}
+
         <ScrollArea
           className={cn(
             'min-h-0 flex-1',
@@ -1046,11 +1101,23 @@ export const LoroSidebar = memo(function LoroSidebar({
           )}
         >
           <div className="relative">
+            {searchEmpty ? (
+              <div className="px-2 py-6 text-center">
+                <div className="text-xs font-medium text-sidebar-foreground/80">
+                  {mergedLabels.searchEmptyTitle}
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {mergedLabels.searchEmptyDescription}
+                </div>
+              </div>
+            ) : null}
             {!isMobile && desktopFilterNode ? (
               <div className="pointer-events-none absolute right-[9px] top-1 z-10 flex h-7 items-center">
                 <div className="pointer-events-auto flex">{desktopFilterNode}</div>
               </div>
             ) : null}
+            {searchEmpty ? null : (
+              <>
             {hasPinnedItems ? (
               <div className={cn('pt-1', pinnedSectionCollapsed ? 'pb-1' : 'pb-3')}>
                 <SidebarUpdatedSessionList
@@ -1196,6 +1263,8 @@ export const LoroSidebar = memo(function LoroSidebar({
                 </div>
               </div>
             ) : null}
+              </>
+            )}
           </div>
         </ScrollArea>
 

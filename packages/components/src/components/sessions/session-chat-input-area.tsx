@@ -49,6 +49,13 @@ import {
   type PersistedMentionRange,
 } from '@/components/mentions/mention-persistence';
 import { useTranslation } from 'react-i18next';
+import { useNavigate, useParams } from '@tanstack/react-router';
+import {
+  planComposerSessionSkillApply,
+  type ComposerSessionSkill,
+} from '@/lib/composer-session-skill';
+import { orderAcpConfigOptionSelectors } from '@/lib/acp-selector-order';
+import { resolvePlanModeSelectorEnabled } from '@/components/shared/acp-selector-options';
 import { usePostHog } from '@posthog/react';
 import {
   capturePostHogEvent,
@@ -378,6 +385,8 @@ export interface SessionChatInputAreaProps {
   externalHistorySyncLabel?: string;
   isDark: boolean;
   isEmptyConversation: boolean;
+  /** Mid-session agent switch is available when the owning daemon advertises it. */
+  canSwitchSessionAgent?: boolean;
   selectedModeId: string | null;
   selectedModelId: string | null;
   modeOptions: AcpSessionSelectOption[];
@@ -421,7 +430,7 @@ export interface SessionChatInputAreaProps {
   onSendMessage: (inputBlocks: SessionInputBlock[]) => Promise<boolean>;
   onStop: () => void | Promise<void>;
   onRemoveQueueItem: (itemId: string) => Promise<void>;
-  /** When provided and conversation is empty, the agent config badge becomes a selector. */
+  /** When provided, the agent config badge becomes a selector (empty drafts or idle switch). */
   onAgentConfigChange?: (selection: AgentSelection) => void;
   initialInputText?: string;
   onInputValueChange?: (value: string) => void;
@@ -460,11 +469,13 @@ export const SessionChatInputArea = memo(
       session,
       sessionLocalProjectRootPath,
       isMachineRemoved,
+      isAgentBusy,
       canStopAgent = false,
       isExternalHistoryRefreshing = false,
       externalHistorySyncLabel,
       isDark,
       isEmptyConversation,
+      canSwitchSessionAgent = false,
       selectedModeId,
       selectedModelId,
       modeOptions,
@@ -499,6 +510,8 @@ export const SessionChatInputArea = memo(
     ref: React.ForwardedRef<SessionChatInputAreaHandle>
   ) {
     const { t, i18n } = useTranslation();
+    const navigate = useNavigate();
+    const workspaceName = (useParams({ strict: false }) as { workspaceName?: string }).workspaceName;
     const intlLocale = useMemo(
       () => toIntlLocale(i18n.resolvedLanguage ?? i18n.language),
       [i18n.language, i18n.resolvedLanguage]
@@ -1657,6 +1670,61 @@ export const SessionChatInputArea = memo(
       },
       [isArchived, setUserInput]
     );
+    const handleSessionSkill = useCallback(
+      (skill: ComposerSessionSkill) => {
+        if (isArchived) return;
+        const apply = planComposerSessionSkillApply({
+          skill,
+          modeOptions,
+          configOptionSelectors,
+          configOptionValues,
+          prompt: userInput,
+          debugPromptHint: t(
+            'chat.sessionSkill.debugPromptHint',
+            'Find the root cause first. Do not change the environment or guess before you have evidence.'
+          ),
+        });
+        if (apply.navigateMultitask && workspaceName) {
+          void navigate({
+            to: '/$workspaceName/tasks',
+            params: { workspaceName },
+          });
+          return;
+        }
+        if (apply.modeId) onModeChange(apply.modeId);
+        if (apply.configOption) {
+          onConfigOptionChange?.(apply.configOption.configId, apply.configOption.value);
+        }
+        if (apply.promptHint) setUserInput(apply.promptHint);
+      },
+      [
+        configOptionSelectors,
+        configOptionValues,
+        isArchived,
+        modeOptions,
+        navigate,
+        onConfigOptionChange,
+        onModeChange,
+        setUserInput,
+        t,
+        userInput,
+        workspaceName,
+      ]
+    );
+    const activeSessionSkill = useMemo<ComposerSessionSkill | null>(() => {
+      if (selectedModeId === 'plan' || selectedModeId === 'ask' || selectedModeId === 'debug') {
+        return selectedModeId;
+      }
+      const planSelector = orderAcpConfigOptionSelectors(configOptionSelectors ?? [])
+        .planModeSelectors[0];
+      if (
+        planSelector &&
+        resolvePlanModeSelectorEnabled(planSelector, configOptionValues?.[planSelector.configId])
+      ) {
+        return 'plan';
+      }
+      return null;
+    }, [configOptionSelectors, configOptionValues, selectedModeId]);
     const handlePastedTextDraftsChange = useCallback(
       (drafts: PastedTextDraft[]) => {
         updatePastedTextDraftsForSession(session.id, () =>
@@ -2079,11 +2147,12 @@ export const SessionChatInputArea = memo(
       session.agentConfigId && session.machineId
         ? { agentId: session.agentConfigId, machineId: session.machineId }
         : null;
-    /* Role, in an EXISTING session. The agent is fixed here, so this offers
-       only Roles bound to an agent of the same TYPE and applies only their run
-       config — see `useSessionAgentRole`. The row is NOT gated on
-       `isEmptyConversation`: those values stay changeable every turn, so a Role
-       that packages them stays useful for the whole conversation. */
+    /* Role, in an EXISTING session. The agent can still change via soft
+       switch, but this offers only Roles bound to an agent of the same TYPE
+       and applies only their run config — see `useSessionAgentRole`. The row
+       is NOT gated on `isEmptyConversation`: those values stay changeable
+       every turn, so a Role that packages them stays useful for the whole
+       conversation. */
     const [agentRoleEditor, setAgentRoleEditor] = useState<AgentRoleEditorState | null>(null);
     const { roles: accessibleAgentRoles } = useWorkspaceAgentRoles();
     const sessionAgentRole = useSessionAgentRole({
@@ -2153,7 +2222,7 @@ export const SessionChatInputArea = memo(
       <MobileSessionRunConfig
         agentSelection={mobileAgentSelection}
         allowedMachineIds={session.machineId ? [session.machineId] : []}
-        agentLocked={!isEmptyConversation}
+        agentLocked={isAgentBusy || (!isEmptyConversation && !canSwitchSessionAgent)}
         onAgentConfigChange={onAgentConfigChange}
         modelOptions={modelOptions}
         selectedModelId={selectedModelId}
@@ -2187,7 +2256,7 @@ export const SessionChatInputArea = memo(
               : null
           }
           allowedMachineIds={desktopAgentMachineIds}
-          agentLocked={!isEmptyConversation}
+          agentLocked={isAgentBusy || (!isEmptyConversation && !canSwitchSessionAgent)}
           fallbackAgent={{ cliType: session.cliType, agentType: session.agentType }}
           onAgentConfigChange={onAgentConfigChange}
           modelOptions={modelOptions}
@@ -2380,6 +2449,8 @@ export const SessionChatInputArea = memo(
         onFileRetry={submissionPending || isArchived ? undefined : handleRetryFile}
         footerSelector={footerSelectorNode}
         bottomBar={bottomBarNode}
+        onSessionSkill={isArchived ? undefined : handleSessionSkill}
+        activeSessionSkill={activeSessionSkill}
         primaryAction={primaryActionNode}
         autoResize
         maxRows={11}

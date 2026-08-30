@@ -313,6 +313,11 @@ export type WorkspaceRuntime = {
     args: import('@lody/shared').SessionEditAndResendSpec,
     options?: { timeoutMs?: number }
   ) => Promise<import('@lody/shared').SessionEditAndResendResponse | null>;
+  requestSessionSwitchAgent: (
+    machineId: MachineId,
+    args: import('@lody/shared').SessionSwitchAgentSpec,
+    options?: { timeoutMs?: number }
+  ) => Promise<import('@lody/shared').SessionSwitchAgentResponse | null>;
   requestSessionDispatchTurn: (
     machineId: MachineId,
     args: {

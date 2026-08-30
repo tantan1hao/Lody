@@ -582,7 +582,11 @@ const summarizeAcpAuthMethod = (method: unknown): MachineAcpAuthMethodSummary =>
     record.type === 'terminal' || record.type === 'env_var' ? record.type : ('agent' as const);
   return {
     type,
-    ...(typeof record.id === 'string' ? { id: record.id } : {}),
+    ...(typeof record.methodId === 'string'
+      ? { id: record.methodId }
+      : typeof record.id === 'string'
+        ? { id: record.id }
+        : {}),
     ...(typeof record.name === 'string' ? { name: record.name } : {}),
     ...(typeof record.description === 'string' ? { description: record.description } : {}),
     ...(Array.isArray(record.args) && record.args.every((arg) => typeof arg === 'string')

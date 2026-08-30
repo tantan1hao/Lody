@@ -356,6 +356,20 @@ describe('AgentClient plan mode permission restoration', () => {
       expect(onContextWindowUsageUpdate).not.toHaveBeenCalled();
       expect(onUpdateMessage).not.toHaveBeenCalled();
     });
+
+    it('reads Cursor-style nested usage aliases', async () => {
+      const { client, onContextWindowUsageUpdate } = createTestClient();
+
+      await client.sessionUpdate({
+        sessionId: 'acp-test',
+        update: {
+          sessionUpdate: 'usage_update',
+          usage: { usedTokens: 12_000, contextWindow: 200_000 },
+        },
+      } as SessionNotification);
+
+      expect(onContextWindowUsageUpdate).toHaveBeenCalledWith({ size: 200_000, used: 12_000 });
+    });
   });
 
   describe('ACP extension updates', () => {

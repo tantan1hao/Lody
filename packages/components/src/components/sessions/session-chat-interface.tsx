@@ -105,6 +105,7 @@ import {
   resolveActiveAssistantTurnId,
   resolveBaseBranchPreference,
   resolveProjectGitHubRepo,
+  machineSupportsSessionAgentSwitchProtocol,
 } from '@lody/shared';
 import { useIsMobile } from '../../hooks/use-mobile';
 import { useStableCallback } from '@/hooks/use-stable-callback';
@@ -4042,7 +4043,6 @@ export const SessionChatInterface = memo(
       [captureSessionEvent, runtime, session.id, session.dismissedGoalThreadId]
     );
 
-    // Allow child sessions to change agent config before first message
     const isChildSession = isChildTab || !!session.parentSessionId;
     const handleChildEmptyStateSuggest = useCallback((text: string) => {
       inputAreaRef.current?.setInputText(text);
@@ -4056,19 +4056,69 @@ export const SessionChatInterface = memo(
         ),
       [handleChildEmptyStateSuggest, isChildSession]
     );
+    const canSwitchSessionAgent = machineSupportsSessionAgentSwitchProtocol(sessionMachine);
     const handleAgentConfigChange = useCallback(
       (selection: AgentSelection) => {
         if (!runtime) return;
         const config = agentConfigs.find((c) => c.id === selection.agentId);
         if (!config) return;
         const roomId = getSessionRoomId(session.id);
-        void runtime.writer.upsertDocMeta(roomId, {
+        const previous = {
+          agentConfigId: session.agentConfigId,
+          cliType: session.cliType,
+          agentType: session.agentType,
+        };
+        const nextMeta = {
           agentConfigId: config.id,
           cliType: config.cliType,
           agentType: config.agentType,
-        } as Partial<SessionMeta>);
+        } as Partial<SessionMeta>;
+        const revertMeta = () => {
+          void runtime.writer.upsertDocMeta(roomId, previous as Partial<SessionMeta>);
+        };
+        void runtime.writer.upsertDocMeta(roomId, nextMeta);
+        if (isEmptyConversation) {
+          return;
+        }
+        const requesterUserId = currentUser?.id ?? session.userId;
+        if (!requesterUserId || !session.machineId) {
+          revertMeta();
+          toast.error(t('sessions.switchAgentFailed', 'Unable to switch agent in this session'));
+          return;
+        }
+        void runtime
+          .requestSessionSwitchAgent(session.machineId, {
+            sessionId: session.id,
+            agentConfigId: config.id,
+            requestedByUserId: requesterUserId,
+          })
+          .then((response) => {
+            if (response?.success) return;
+            revertMeta();
+            toast.error(
+              response?.error?.message ??
+                t('sessions.switchAgentFailed', 'Unable to switch agent in this session')
+            );
+          })
+          .catch((error: unknown) => {
+            console.warn('Switch agent RPC failed', error);
+            revertMeta();
+            toast.error(t('sessions.switchAgentFailed', 'Unable to switch agent in this session'));
+          });
       },
-      [runtime, agentConfigs, session.id]
+      [
+        agentConfigs,
+        currentUser?.id,
+        isEmptyConversation,
+        runtime,
+        session.agentConfigId,
+        session.agentType,
+        session.cliType,
+        session.id,
+        session.machineId,
+        session.userId,
+        t,
+      ]
     );
 
     // ── Pin management ──────────────────────────────────────────────────
@@ -5794,6 +5844,7 @@ export const SessionChatInterface = memo(
                       externalHistorySyncLabel={externalHistorySyncLabel}
                       isDark={isDark}
                       isEmptyConversation={isEmptyConversation}
+                      canSwitchSessionAgent={canSwitchSessionAgent && !isSessionWorking}
                       selectedModeId={selectedModeId}
                       selectedModelId={selectedModelId}
                       modeOptions={modeOptions}
@@ -5836,7 +5887,7 @@ export const SessionChatInterface = memo(
                         void handleStop();
                       }}
                       onRemoveQueueItem={handleRemoveQueueItem}
-                      onAgentConfigChange={isChildSession ? handleAgentConfigChange : undefined}
+                      onAgentConfigChange={handleAgentConfigChange}
                       onNavigateToComment={onNavigateToComment}
                       onCommentReferencesChange={onCommentReferencesChange}
                       onVisualAnnotationReferencesChange={onVisualAnnotationReferencesChange}

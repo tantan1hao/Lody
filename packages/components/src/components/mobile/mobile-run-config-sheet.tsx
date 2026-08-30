@@ -59,7 +59,7 @@ import {
  * `orderAcpConfigOptionSelectors` buckets + mode/model fallbacks the button
  * face uses, so values stay in lock-step with the collapsed control.
  *
- * - Agent: read-only when `agentLocked` (mid-session); a picker while empty
+ * - Agent: read-only when `agentLocked` (busy or unsupported daemon); a picker when idle switch is allowed
  *   or on new-chat. Options are scoped by `allowedMachineIds` when set.
  * - Model / Interaction / Reasoning / Permission: inline pickers (full names
  *   live here — the button face only shows an icon / short label).

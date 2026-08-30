@@ -66,3 +66,16 @@ export const supportsBuiltinAuthentication = (input: {
   // the env check above for Claude, and means nothing on Codex, Kimi, or Grok.
   return !isAgentBrandId(input.brandId);
 };
+
+/**
+ * True when the provider can run an interactive login from Settings or a
+ * session `Authentication required` notice. Managed builtins use their CLI
+ * login; registry ACP agents use protocol `authenticate` / `auth/login`.
+ */
+export const supportsInteractiveAcpAuthentication = (input: {
+  cliType: AgentConfigCliType | null | undefined;
+  agentType: string | null | undefined;
+  brandId?: AgentBrandId | undefined;
+  env?: Record<string, string | undefined> | undefined;
+}): boolean =>
+  supportsBuiltinAuthentication(input) || input.cliType === 'registry';

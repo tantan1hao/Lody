@@ -58,6 +58,8 @@ import type {
   SessionEditAndResendSpec,
   SessionForkResponse,
   SessionForkSpec,
+  SessionSwitchAgentResponse,
+  SessionSwitchAgentSpec,
   SessionId,
   SessionSteerResponse,
   SessionPreviewCreateResponse,
@@ -108,9 +110,12 @@ import {
   SessionEditAndResendSpecSchema,
   SessionForkResponseSchema,
   SessionForkSpecSchema,
+  SessionSwitchAgentResponseSchema,
+  SessionSwitchAgentSpecSchema,
   SessionIdSchema,
   sessionEditAndResendFailure,
   sessionForkFailure,
+  sessionSwitchAgentFailure,
   SessionSteerResponseSchema,
   SessionPreviewCreateResponseSchema,
   SessionPreviewRevokeResponseSchema,
@@ -194,6 +199,7 @@ export const LoroStreamsRpcMethodSchema = z.enum([
   'session/terminate',
   'session/fork',
   'session/edit-and-resend',
+  'session/switch-agent',
   'session/dispatch-turn',
   'session/prepare',
   'session/prepare-cancel',
@@ -476,6 +482,11 @@ export const LoroSessionEditAndResendRpcRequestSchema = BaseRpcRequestSchema.ext
   params: SessionEditAndResendSpecSchema,
 }).strict();
 
+export const LoroSessionSwitchAgentRpcRequestSchema = BaseRpcRequestSchema.extend({
+  method: z.literal('session/switch-agent'),
+  params: SessionSwitchAgentSpecSchema,
+}).strict();
+
 /**
  * Fast-path dispatch of a user turn: carries the full turn input so the
  * machine can start executing before the session-doc history CRDT syncs.
@@ -588,6 +599,7 @@ export const LoroStreamsRpcRequestSchema = z.discriminatedUnion('method', [
   LoroSessionTerminateRpcRequestSchema,
   LoroSessionForkRpcRequestSchema,
   LoroSessionEditAndResendRpcRequestSchema,
+  LoroSessionSwitchAgentRpcRequestSchema,
   LoroSessionDispatchTurnRpcRequestSchema,
   LoroSessionPrepareRpcRequestSchema,
   LoroSessionPrepareCancelRpcRequestSchema,
@@ -724,6 +736,9 @@ export type LoroSessionTerminateRpcRequest = z.infer<typeof LoroSessionTerminate
 export type LoroSessionForkRpcRequest = z.infer<typeof LoroSessionForkRpcRequestSchema>;
 export type LoroSessionEditAndResendRpcRequest = z.infer<
   typeof LoroSessionEditAndResendRpcRequestSchema
+>;
+export type LoroSessionSwitchAgentRpcRequest = z.infer<
+  typeof LoroSessionSwitchAgentRpcRequestSchema
 >;
 export type LoroSessionPrepareRpcRequest = z.infer<typeof LoroSessionPrepareRpcRequestSchema>;
 export type LoroSessionPrepareCancelRpcRequest = z.infer<
@@ -1430,6 +1445,7 @@ export type LoroMachineRpcResult =
   | SessionTerminateResponse
   | SessionForkResponse
   | SessionEditAndResendResponse
+  | SessionSwitchAgentResponse
   | SessionDispatchTurnResponse
   | SessionPrepareResponse
   | SessionPrepareCancelResponse
@@ -1453,6 +1469,7 @@ const toLegacyRpcErrorResponse = (
   cancelContext?: { sessionId: string },
   forkContext?: { sourceSessionId: string; targetSessionId: string },
   editAndResendContext?: { sessionId: string; replacementUserTurnId: string },
+  switchAgentContext?: { sessionId: string },
   steerContext?: { sessionId: string; userTurnId: string },
   previewContext?: { sessionId: string },
   localProjectContext?: {
@@ -1600,6 +1617,16 @@ const toLegacyRpcErrorResponse = (
         sessionId: (editAndResendContext?.sessionId ??
           '') as SessionEditAndResendResponse['sessionId'],
         replacementUserTurnId: editAndResendContext?.replacementUserTurnId ?? '',
+      },
+      'INTERNAL_ERROR',
+      `${error.code}: ${error.message}`
+    );
+  }
+
+  if (method === 'session/switch-agent') {
+    return sessionSwitchAgentFailure(
+      {
+        sessionId: (switchAgentContext?.sessionId ?? '') as SessionSwitchAgentResponse['sessionId'],
       },
       'INTERNAL_ERROR',
       `${error.code}: ${error.message}`
@@ -1803,6 +1830,10 @@ const parseRpcSuccessResult = async (
     const parsed = SessionEditAndResendResponseSchema.safeParse(response.result);
     return parsed.success ? (parsed.data as SessionEditAndResendResponse) : null;
   }
+  if (response.method === 'session/switch-agent') {
+    const parsed = SessionSwitchAgentResponseSchema.safeParse(response.result);
+    return parsed.success ? (parsed.data as SessionSwitchAgentResponse) : null;
+  }
   if (response.method === 'session/dispatch-turn') {
     const parsed = SessionDispatchTurnResponseSchema.safeParse(response.result);
     return parsed.success ? (parsed.data as SessionDispatchTurnResponse) : null;
@@ -1863,6 +1894,7 @@ export type LoroStreamsRpcPendingRegistration = {
   cancelContext?: { sessionId: string };
   forkContext?: { sourceSessionId: string; targetSessionId: string };
   editAndResendContext?: { sessionId: string; replacementUserTurnId: string };
+  switchAgentContext?: { sessionId: string };
   steerContext?: { sessionId: string; userTurnId: string };
   previewContext?: { sessionId: string };
   localProjectContext?: {
@@ -2197,6 +2229,7 @@ export class LoroStreamsRpcResponseDispatcher {
           finalPending.cancelContext,
           finalPending.forkContext,
           finalPending.editAndResendContext,
+          finalPending.switchAgentContext,
           finalPending.steerContext,
           finalPending.previewContext,
           finalPending.localProjectContext,
@@ -2229,6 +2262,7 @@ export class LoroStreamsRpcResponseDispatcher {
           finalPending.cancelContext,
           finalPending.forkContext,
           finalPending.editAndResendContext,
+          finalPending.switchAgentContext,
           finalPending.steerContext,
           finalPending.previewContext,
           finalPending.localProjectContext,
@@ -2597,6 +2631,20 @@ export class LoroStreamsMachineRpcClient {
         inputConfig: options.inputConfig,
       },
     })) as SessionEditAndResendResponse | null;
+  }
+
+  async requestSessionSwitchAgent(
+    options: SessionSwitchAgentSpec & { timeoutMs?: number }
+  ): Promise<SessionSwitchAgentResponse | null> {
+    return (await this.sendRequest({
+      method: 'session/switch-agent',
+      timeoutMs: options.timeoutMs ?? 60_000,
+      params: {
+        sessionId: options.sessionId,
+        agentConfigId: options.agentConfigId,
+        requestedByUserId: options.requestedByUserId,
+      },
+    })) as SessionSwitchAgentResponse | null;
   }
 
   /**
@@ -3041,6 +3089,11 @@ export class LoroStreamsMachineRpcClient {
           params: SessionEditAndResendSpec;
         }
       | {
+          method: 'session/switch-agent';
+          timeoutMs: number;
+          params: SessionSwitchAgentSpec;
+        }
+      | {
           method: 'session/dispatch-turn';
           timeoutMs: number;
           params: {
@@ -3231,6 +3284,12 @@ export class LoroStreamsMachineRpcClient {
               replacementUserTurnId: args.params.replacementUserTurnId,
             }
           : undefined,
+      switchAgentContext:
+        args.method === 'session/switch-agent'
+          ? {
+              sessionId: args.params.sessionId,
+            }
+          : undefined,
       steerContext:
         args.method === 'session/steer'
           ? { sessionId: args.params.sessionId, userTurnId: args.params.userTurnId }
@@ -3350,6 +3409,9 @@ export class LoroStreamsMachineRpcClient {
           request = { ...envelope, method: args.method, params: args.params };
           break;
         case 'session/edit-and-resend':
+          request = { ...envelope, method: args.method, params: args.params };
+          break;
+        case 'session/switch-agent':
           request = { ...envelope, method: args.method, params: args.params };
           break;
         case 'session/dispatch-turn':
@@ -3530,6 +3592,7 @@ export class LoroStreamsMachineRpcClient {
         pending.cancelContext,
         pending.forkContext,
         pending.editAndResendContext,
+        pending.switchAgentContext,
         pending.steerContext,
         pending.previewContext,
         pending.localProjectContext,

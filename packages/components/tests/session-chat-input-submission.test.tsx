@@ -19,6 +19,11 @@ const sessionAgentRoleState = vi.hoisted(() => ({
 
 vi.mock('@posthog/react', () => ({ usePostHog: () => null }));
 
+vi.mock('@tanstack/react-router', () => ({
+  useNavigate: () => vi.fn(),
+  useParams: () => ({ workspaceName: 'workspace' }),
+}));
+
 vi.mock('../src/components/mentions/mention-session-source', async (importOriginal) => ({
   ...(await importOriginal()),
   useSessionMentionItems: () => [],

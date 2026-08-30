@@ -15,7 +15,7 @@ import {
   isAcpCapabilityCacheEntryCurrent,
   parseCustomAcpCommandLine,
   serializeCustomAcpLaunchSpec,
-  supportsBuiltinAuthentication,
+  supportsInteractiveAcpAuthentication,
   usesAcpProvidedSessionTitle,
   REGISTRY_ACP_AGENTS,
   type AgentBrandId,
@@ -967,13 +967,13 @@ export function AgentConfigDialog(props: AgentConfigDialogProps) {
   // the single way to unblock the creation-time verification gate.
   const showAuthenticationPanel =
     mode.kind === 'edit'
-      ? supportsBuiltinAuthentication({
+      ? supportsInteractiveAcpAuthentication({
           cliType: formData.cliType,
           agentType: formData.agentType,
           brandId: resolvedBrandId,
           env: formData.env,
         })
-      : authRequired && isManagedBuiltin;
+      : authRequired && (isManagedBuiltin || formData.cliType === 'registry');
   const builtinRuntimeOverrideKey =
     formData.cliType !== 'builtin'
       ? null

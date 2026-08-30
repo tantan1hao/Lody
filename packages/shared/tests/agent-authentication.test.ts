@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   hasBuiltinEnvAuthentication,
   supportsBuiltinAuthentication,
+  supportsInteractiveAcpAuthentication,
 } from '../src/agent-authentication';
 
 describe('hasBuiltinEnvAuthentication', () => {
@@ -99,5 +100,33 @@ describe('supportsBuiltinAuthentication', () => {
     expect(supportsBuiltinAuthentication({ cliType: 'custom', agentType: 'my-agent' })).toBe(false);
     expect(supportsBuiltinAuthentication({ cliType: 'builtin', agentType: 'auggie' })).toBe(false);
     expect(supportsBuiltinAuthentication({ cliType: undefined, agentType: undefined })).toBe(false);
+  });
+});
+
+describe('supportsInteractiveAcpAuthentication', () => {
+  it('keeps managed builtin sign-in and adds registry ACP agents', () => {
+    expect(
+      supportsInteractiveAcpAuthentication({ cliType: 'builtin', agentType: 'claude', env: {} })
+    ).toBe(true);
+    expect(
+      supportsInteractiveAcpAuthentication({
+        cliType: 'registry',
+        agentType: 'antigravity-acp',
+      })
+    ).toBe(true);
+  });
+
+  it('still refuses custom and env-credential presets', () => {
+    expect(
+      supportsInteractiveAcpAuthentication({ cliType: 'custom', agentType: 'my-agent' })
+    ).toBe(false);
+    expect(
+      supportsInteractiveAcpAuthentication({
+        cliType: 'builtin',
+        agentType: 'claude',
+        brandId: 'deepseek',
+        env: { ANTHROPIC_AUTH_TOKEN: 'sk-test' },
+      })
+    ).toBe(false);
   });
 });

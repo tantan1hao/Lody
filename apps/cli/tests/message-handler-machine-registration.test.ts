@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  CURRENT_MACHINE_PROTOCOL_CAPABILITIES,
   type LocalProjectId,
   type MachineLegacyMetaFields,
   type MachineId,
@@ -179,10 +180,7 @@ describe('MessageHandler machine registration', () => {
 
     expect(registeredMeta.rpcVersion).toBe('1');
     expect(registeredMeta.name).toBe('machine-name');
-    expect(registeredMeta.protocolCapabilities).toEqual({
-      localProjectRemoval: 1,
-      providerSetup: 1,
-    });
+    expect(registeredMeta.protocolCapabilities).toEqual(CURRENT_MACHINE_PROTOCOL_CAPABILITIES);
 
     await handler.cleanup();
   });

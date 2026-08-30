@@ -718,6 +718,31 @@ describe('AgentConfigDialog', () => {
     }
   );
 
+  it('offers Google sign-in while editing a registry Antigravity provider', async () => {
+    await renderDialog(
+      {
+        kind: 'edit',
+        config: {
+          id: 'antigravity-config' as AgentConfigId,
+          machineId,
+          name: 'Google Antigravity',
+          description: undefined,
+          cliType: 'registry',
+          agentType: 'antigravity-acp',
+          env: {},
+        } as AgentConfigMeta,
+      },
+      createMachine('Workstation')
+    );
+
+    const signInButton = Array.from(document.body.querySelectorAll('button')).find(
+      (button) =>
+        button.textContent?.trim() === 'Sign in with Google' ||
+        button.textContent?.trim() === 'Sign in again'
+    );
+    expect(signInButton).toBeDefined();
+  });
+
   it.each([
     {
       label: 'a DeepSeek preset',

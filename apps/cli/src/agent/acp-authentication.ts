@@ -13,6 +13,10 @@ import {
   hasBuiltinEnvAuthentication,
   isManagedBuiltinAgentType,
 } from '@lody/shared';
+import {
+  authenticateAcpProtocol,
+  getRegistryAcpDisplayName,
+} from './acp-protocol-authentication';
 
 import { withoutElectronBootstrapCredentials } from '@/electron-bootstrap-env';
 import type { Logger } from '@/utils/logger';
@@ -94,6 +98,7 @@ const BUILTIN_AUTH_METHODS = {
 
 type RunningAuthentication = {
   child?: ChildProcess;
+  abort?: AbortController;
   requestId: string;
   cancelled: boolean;
   timedOut: boolean;
@@ -107,6 +112,7 @@ type AcpAuthenticationManagerOptions = {
   terminationGraceMs?: number;
   spawnProcess?: typeof spawn;
   resolveLoginShellEnv?: typeof getLoginShellEnv;
+  authenticateProtocol?: typeof authenticateAcpProtocol;
 };
 
 export type BuiltinAuthenticationProbeResult =
@@ -289,6 +295,7 @@ export class AcpAuthenticationManager {
   private readonly terminationGraceMs: number;
   private readonly spawnProcess: typeof spawn;
   private readonly resolveLoginShellEnv: typeof getLoginShellEnv;
+  private readonly authenticateProtocol: typeof authenticateAcpProtocol;
 
   constructor(
     private readonly logger: Logger,
@@ -304,6 +311,7 @@ export class AcpAuthenticationManager {
     );
     this.spawnProcess = options.spawnProcess ?? spawn;
     this.resolveLoginShellEnv = options.resolveLoginShellEnv ?? getLoginShellEnv;
+    this.authenticateProtocol = options.authenticateProtocol ?? authenticateAcpProtocol;
   }
 
   async authenticate(options: {
@@ -315,7 +323,11 @@ export class AcpAuthenticationManager {
     env?: Record<string, string>;
     onProgress?: (event: AcpAuthenticationProgressEvent) => void;
   }): Promise<AcpAuthenticationResult> {
-    if (options.cliType !== 'builtin' || !isManagedBuiltinAgentType(options.agentType)) {
+    const isManagedBuiltin =
+      options.cliType === 'builtin' && isManagedBuiltinAgentType(options.agentType);
+    const usesProtocolAuthentication =
+      options.cliType === 'registry' || options.cliType === 'custom';
+    if (!isManagedBuiltin && !usesProtocolAuthentication) {
       return {
         success: false,
         disposition: 'error',
@@ -323,8 +335,9 @@ export class AcpAuthenticationManager {
       };
     }
 
-    const displayName = getBuiltinDisplayName(options.agentType);
-    const agentType: BuiltinCliType = options.agentType;
+    const displayName = isManagedBuiltin
+      ? getBuiltinDisplayName(options.agentType)
+      : getRegistryAcpDisplayName(options.agentType);
 
     if (this.runningByAgentType.has(options.agentType)) {
       return {
@@ -336,6 +349,7 @@ export class AcpAuthenticationManager {
 
     const running: RunningAuthentication = {
       requestId: options.requestId,
+      abort: usesProtocolAuthentication ? new AbortController() : undefined,
       cancelled: false,
       timedOut: false,
       terminating: false,
@@ -363,6 +377,7 @@ export class AcpAuthenticationManager {
     timeoutHandle = setTimeout(() => {
       if (running.cancelled) return;
       running.timedOut = true;
+      running.abort?.abort();
       if (!running.child && this.runningByAgentType.get(options.agentType) === running) {
         this.runningByAgentType.delete(options.agentType);
       }
@@ -371,6 +386,26 @@ export class AcpAuthenticationManager {
     timeoutHandle.unref?.();
 
     try {
+      if (usesProtocolAuthentication) {
+        const protocolResult = await this.authenticateProtocol({
+          cliType: options.cliType,
+          agentType: options.agentType,
+          customAcp: options.customAcp,
+          runtimeOverrides: options.runtimeOverrides,
+          env: options.env,
+          logger: this.logger,
+          signal: running.abort?.signal,
+          onChild: (child) => {
+            running.child = child;
+          },
+          onProgress: options.onProgress,
+        });
+        const protocolInterruption = interruptedResult();
+        if (protocolInterruption) return protocolInterruption;
+        return protocolResult;
+      }
+
+      const builtinAgentType = options.agentType as BuiltinCliType;
       const launch = await resolveBuiltinAuthenticationProcessLaunch({
         cliType: options.cliType,
         agentType: options.agentType,
@@ -407,7 +442,7 @@ export class AcpAuthenticationManager {
         );
       });
 
-      const outputParser = new BuiltinAuthenticationOutputParser(agentType);
+      const outputParser = new BuiltinAuthenticationOutputParser(builtinAgentType);
 
       const emitOutput = (stream: 'stdout' | 'stderr', chunk: unknown): void => {
         const output = String(chunk);
@@ -445,7 +480,7 @@ export class AcpAuthenticationManager {
         const error =
           exit.error !== undefined
             ? formatErrorMessage(exit.error)
-            : formatAuthenticationExitError(agentType, displayName, exit.code);
+            : formatAuthenticationExitError(builtinAgentType, displayName, exit.code);
         options.onProgress?.({ status: 'error', error });
         return { success: false, disposition: 'error', error };
       }
@@ -475,6 +510,7 @@ export class AcpAuthenticationManager {
     }
 
     running.cancelled = true;
+    running.abort?.abort();
     if (!running.child && this.runningByAgentType.get(agentType) === running) {
       this.runningByAgentType.delete(agentType);
     }

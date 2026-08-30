@@ -163,4 +163,19 @@ describe('LoroSidebar pinned section', () => {
     header?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(onTogglePinnedSection).toHaveBeenCalledOnce();
   });
+
+  it('renders a search field that filters to the empty state', () => {
+    const onSearchQueryChange = vi.fn();
+    renderSidebar({
+      searchQuery: 'xyzzy',
+      onSearchQueryChange,
+      searchEmpty: true,
+    });
+
+    const input = container?.querySelector<HTMLInputElement>('input[aria-label="Search chats"]');
+    expect(input).not.toBeNull();
+    expect(input?.value).toBe('xyzzy');
+    expect(container?.textContent).toContain('No matching chats');
+    expect(container?.querySelector('[data-sidebar-updated-id="pinned-session"]')).toBeNull();
+  });
 });

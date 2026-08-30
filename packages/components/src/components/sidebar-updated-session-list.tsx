@@ -10,7 +10,9 @@ import { useAtomValue, useSetAtom } from 'jotai';
 import { startSessionMentionDrag } from '@/lib/session-mention-drag';
 import {
   Archive,
+  Download,
   GitBranch,
+  Hash,
   GitPullRequest,
   Link2,
   Loader2,
@@ -75,6 +77,10 @@ import {
   RenameSessionDialogView,
   type RenameSessionDialogTarget,
 } from '@/components/sessions/rename-session-dialog';
+import {
+  buildSidebarSessionBackup,
+  downloadSidebarSessionBackup,
+} from '@/lib/sidebar-session-backup';
 
 export type SidebarUpdatedItemKind = SidebarRowKind;
 
@@ -162,6 +168,8 @@ export type SidebarUpdatedContextMenuLabels = {
   unpin: string;
   archive: string;
   copyUrl: string;
+  exportBackup: string;
+  copySessionId: string;
   shareWithTeam: string;
   onlyOwnerCanShare: string;
   registerDeviceToShare: string;
@@ -441,6 +449,8 @@ export const SidebarUpdatedSessionList = memo(function SidebarUpdatedSessionList
       unpin: t('sessions.contextMenu.unpin', 'Unpin Session'),
       archive: t('sessions.contextMenu.archive', 'Archive Session'),
       copyUrl: t('sessions.contextMenu.copyUrl', 'Copy Session URL'),
+      exportBackup: t('sessions.contextMenu.exportBackup', 'Export session backup'),
+      copySessionId: t('sessions.contextMenu.copySessionId', 'Copy session ID'),
       shareWithTeam: t('sessions.sharing.shareWithTeam', 'Share with team…'),
       onlyOwnerCanShare: t('sessions.sharing.onlyOwnerCanShare', 'Only the device owner can share'),
       registerDeviceToShare: t(
@@ -1026,6 +1036,33 @@ const UpdatedItemRow = memo(function UpdatedItemRow({
             {contextMenuLabels.archive}
           </ContextMenuItem>
         ) : null}
+        <ContextMenuItem
+          onSelect={() => {
+            downloadSidebarSessionBackup(
+              buildSidebarSessionBackup(
+                {
+                  id: item.id,
+                  title: item.title,
+                  projectName: item.subtitle ?? item.sectionLabel,
+                  repoFullName: item.repoFullName,
+                  branchName: item.branchName,
+                },
+                new Date().toISOString()
+              )
+            );
+          }}
+        >
+          <Download />
+          {contextMenuLabels.exportBackup}
+        </ContextMenuItem>
+        <ContextMenuItem
+          onSelect={() => {
+            void navigator.clipboard.writeText(item.id).catch(() => {});
+          }}
+        >
+          <Hash />
+          {contextMenuLabels.copySessionId}
+        </ContextMenuItem>
         {(canRename || canTogglePin || canArchive) && (canCopyUrl || branchName) ? (
           <ContextMenuSeparator />
         ) : null}

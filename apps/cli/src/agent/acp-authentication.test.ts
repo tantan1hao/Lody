@@ -321,6 +321,48 @@ describe('AcpAuthenticationManager', () => {
       disposition: 'authenticated',
     });
   });
+
+  it('uses protocol authentication for registry ACP agents', async () => {
+    const authenticateProtocol = vi.fn(async () => ({
+      success: true as const,
+      disposition: 'authenticated' as const,
+    }));
+    const manager = new AcpAuthenticationManager(createSilentLogger(), {
+      authenticateProtocol,
+    });
+
+    await expect(
+      manager.authenticate({
+        requestId: 'auth-1',
+        cliType: 'registry',
+        agentType: 'antigravity-acp',
+      })
+    ).resolves.toEqual({
+      success: true,
+      disposition: 'authenticated',
+    });
+    expect(authenticateProtocol).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cliType: 'registry',
+        agentType: 'antigravity-acp',
+      })
+    );
+  });
+
+  it('still refuses unmanaged builtin agents', async () => {
+    const manager = new AcpAuthenticationManager(createSilentLogger());
+    await expect(
+      manager.authenticate({
+        requestId: 'auth-1',
+        cliType: 'builtin',
+        agentType: 'auggie',
+      })
+    ).resolves.toEqual({
+      success: false,
+      disposition: 'error',
+      error: 'Authentication is not supported for auggie',
+    });
+  });
 });
 
 describe('probeBuiltinAuthentication', () => {
