@@ -34,6 +34,13 @@ export type SidebarNavigationLocalSection = {
   projects: SidebarNavigationLocalProject[];
 };
 
+export type SidebarNavigationMachineSection = {
+  collapsed: boolean;
+  localSections: SidebarNavigationLocalSection[];
+  repoSessions: SessionListRow[];
+  chatSessions: SessionListRow[];
+};
+
 export type SidebarNavigationModelOptions = {
   organizeMode: SidebarOrganizeMode;
   showFullSessionGroups: Record<string, boolean>;
@@ -51,6 +58,7 @@ export type SidebarNavigationModelOptions = {
     repos: SessionListRepoState[];
     chatSessions: SessionListRow[];
     chatsCollapsed: boolean;
+    machineSections?: SidebarNavigationMachineSection[];
   };
   updated: {
     items: SidebarUpdatedItem[];
@@ -143,6 +151,20 @@ export function buildSidebarNavigationItems({
       collapsedOpenedBySessions
     )) {
       items.push({ kind: 'session', sessionId: item.id, groupKey: '__updated__' });
+    }
+    return items;
+  }
+
+  if (workspace.machineSections) {
+    for (const section of workspace.machineSections) {
+      if (section.collapsed) continue;
+      emitLocalSections(items, section.localSections, collapsedOpenedBySessions);
+      for (const group of buildGroups(section.repoSessions, workspace.repos, false)) {
+        emitSessionGroup(items, group, showFullSessionGroups, collapsedOpenedBySessions);
+      }
+      for (const group of buildGroups(section.chatSessions, [], workspace.chatsCollapsed)) {
+        emitSessionGroup(items, group, showFullSessionGroups, collapsedOpenedBySessions);
+      }
     }
     return items;
   }
