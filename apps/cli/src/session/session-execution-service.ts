@@ -3482,6 +3482,15 @@ export class SessionExecutionService {
           }
 
           if (!requested || actual !== requested) {
+            // The Web RPC fast path can deliver the current turn before the
+            // owning machine has caught up the SessionDoc history. Pull the
+            // durable room first so a fresh provider never starts from the
+            // RPC-only turn stash and silently loses the prior conversation.
+            yield* self.tryPromise(() =>
+              self.deps.workspaceDocument.syncDocOrThrow(getSessionRoomId(sessionId), {
+                reason: 'fresh-acp-history-replay',
+              })
+            );
             // An earlier turn can fail before ACP owns its prompt (for example
             // while its process is starting), or a newly selected provider can
             // ignore the previous provider's ACP session id. This freshly

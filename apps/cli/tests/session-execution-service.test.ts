@@ -11,6 +11,7 @@ import {
 } from '../src/session/session-execution-service';
 import {
   getMachineRoomId,
+  getSessionRoomId,
   SessionStatusFactory,
   type ACPSessionId,
   type AgentConfigId,
@@ -174,6 +175,11 @@ const createBaseDeps = (
       flock: { scan: () => [] },
     }));
   }
+
+  const workspaceWithSync = deps.workspaceDocument as unknown as {
+    syncDocOrThrow?: (docId: string, options?: { reason?: string }) => Promise<void>;
+  };
+  workspaceWithSync.syncDocOrThrow ??= vi.fn(async () => {});
 
   const workspaceWithDocFactory = deps.workspaceDocument as unknown as {
     getOrCreateSessionDoc: (...args: unknown[]) => Promise<unknown>;
@@ -2469,7 +2475,7 @@ describe('SessionExecutionService', () => {
       repoFullName: 'owner/repo',
       isArchived: false,
     };
-    let history: SessionHistoryInput[] = [
+    const syncedHistory: SessionHistoryInput[] = [
       {
         id: 'turn-startup-failed',
         role: 'user',
@@ -2487,6 +2493,11 @@ describe('SessionExecutionService', () => {
         items: [{ type: 'text', text: '?' }],
       },
     ];
+    let history: SessionHistoryInput[] = [syncedHistory[1]!];
+    const syncDocOrThrow = vi.fn(async (docId: string) => {
+      expect(docId).toBe(getSessionRoomId('session-fresh-restore'));
+      history = syncedHistory;
+    });
     const sessionDoc = {
       getMetaState: vi.fn(async () => meta),
       setStatus: vi.fn(async () => {}),
@@ -2534,6 +2545,7 @@ describe('SessionExecutionService', () => {
           getDocMeta: vi.fn(async () => undefined),
         },
         getOrCreateSessionDoc: vi.fn(async () => sessionDoc),
+        syncDocOrThrow,
         updateAcpCapabilities: vi.fn(async () => {}),
       } as unknown as LoroDocumentManager,
       buildAcpPromptBlocks,
@@ -2563,6 +2575,7 @@ describe('SessionExecutionService', () => {
         replayPromptText: expect.stringContaining('Build this on the two MIT packages.'),
       })
     );
+    expect(syncDocOrThrow).toHaveBeenCalledTimes(1);
     expect(buildAcpPromptBlocks).toHaveBeenCalledWith(
       expect.objectContaining({
         replayPromptText: expect.not.stringContaining('[User]\n?'),
