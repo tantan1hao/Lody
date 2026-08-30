@@ -63,7 +63,6 @@ import { lodyPresenceNowMsAtom, lodyPresenceStatesAtom } from '@/atoms/presence'
 import {
   chatScopeAtom,
   chatsCollapsedAtom,
-  githubWorktreesSectionCollapsedAtom,
   localProjectCollapseStateAtom,
   localProjectsSectionCollapseStateAtom,
   pinnedSectionCollapsedAtom,
@@ -1830,7 +1829,6 @@ export function LoroAppSidebar({ className }: LoroAppSidebarProps) {
   const localProjectSections = useMemo(() => {
     if (sessionsListLoading) return [];
 
-    const localMachineMeta = localMachineId ? machineMetaMap.get(localMachineId) : undefined;
     const projectEntries = Array.from(visibleLocalProjectMap.values());
     for (const pending of pendingLocalProjectRemovals.values()) {
       if (visibleLocalProjectMap.has(pending.key)) continue;
@@ -1844,84 +1842,66 @@ export function LoroAppSidebar({ className }: LoroAppSidebarProps) {
         isMachineRegistered: true,
       });
     }
-    const localProjects = localMachineId
-      ? projectEntries.filter((entry) => entry.machineId === localMachineId)
-      : [];
 
-    const remoteProjectsByMachineId = new Map<MachineId, Array<(typeof localProjects)[number]>>();
+    const machineIds = new Set<MachineId>();
+    if (localMachineId) machineIds.add(localMachineId);
     for (const entry of projectEntries) {
-      if (localMachineId && entry.machineId === localMachineId) continue;
-      const existing = remoteProjectsByMachineId.get(entry.machineId);
-      if (existing) {
-        existing.push(entry);
-      } else {
-        remoteProjectsByMachineId.set(entry.machineId, [entry]);
-      }
+      machineIds.add(entry.machineId);
+    }
+    for (const session of [...workspaceRepoSessions, ...workspaceChatSessions]) {
+      if (session.machineId) machineIds.add(session.machineId);
+    }
+    for (const machineId of onlineMachineIds) {
+      if (machineMetaMap.has(machineId)) machineIds.add(machineId);
     }
 
-    const localSection =
-      isElectron || localMachineId
-        ? {
-            kind: 'local' as const,
-            sectionKey: localMachineId ?? 'local',
-            machineId: localMachineId,
-            sectionLabel: t('sidebar.localProjects', 'Local Projects'),
-            machineDisplayName:
-              typeof localMachineMeta?.name === 'string' && localMachineMeta.name.trim()
-                ? localMachineMeta.name.trim()
-                : null,
-            canImport: isElectron,
-            canNavigateProject: true,
-            canRemoveProject: machineSupportsLocalProjectRemovalProtocol(localMachineMeta),
-            projects: localProjects.map((entry) => entry.project),
-          }
-        : null;
+    return Array.from(machineIds)
+      .map((machineId) => {
+        const machine = machineMetaMap.get(machineId);
+        const isLocal = machineId === localMachineId;
+        const isOwnMachine = isLocal || (Boolean(userId) && machine?.ownerUserId === userId);
+        const machineName = machine?.name?.trim() || null;
+        const projects = projectEntries
+          .filter((entry) => entry.machineId === machineId)
+          .map((entry) => entry.project)
+          .sort((a, b) => {
+            const aTime = typeof a.createdAtMs === 'number' ? a.createdAtMs : 0;
+            const bTime = typeof b.createdAtMs === 'number' ? b.createdAtMs : 0;
+            if (aTime !== bTime) return aTime - bTime;
+            return a.name.localeCompare(b.name);
+          });
 
-    const remoteSections = Array.from(remoteProjectsByMachineId.entries())
-      .sort((left, right) => left[1][0]!.machine.name.localeCompare(right[1][0]!.machine.name))
-      .map(([machineId, entries]) => {
-        const machine = entries[0]!.machine;
-        const isOwnMachine = Boolean(userId) && machine.ownerUserId === userId;
         return {
-          kind: 'remote' as const,
+          kind: isLocal ? ('local' as const) : ('remote' as const),
           sectionKey: machineId,
           machineId,
-          // A machine grouping is labelled by the machine name alone — the leading
-          // machine icon already conveys "these projects live on a machine", so we
-          // drop the "projects"/"的项目" suffix the label used to carry.
-          sectionLabel: machine.name,
-          machineDisplayName:
-            typeof machine.name === 'string' && machine.name.trim() ? machine.name.trim() : null,
-          canImport: false,
+          sectionLabel:
+            machineName ??
+            (isLocal ? t('chat.machineSelector.local', 'This Mac') : String(machineId)),
+          machineDisplayName: machineName,
+          canImport: isElectron && isLocal,
           canNavigateProject: isOwnMachine,
-          // Only the machine owner can remove a remote device's projects; the
-          // request is queued on that device's machine Flock doc.
           canRemoveProject: isOwnMachine && machineSupportsLocalProjectRemovalProtocol(machine),
-          projects: entries.map((entry) => entry.project),
+          projects,
+          repoSessions: workspaceRepoSessions.filter((session) => session.machineId === machineId),
+          chatSessions: workspaceChatSessions.filter((session) => session.machineId === machineId),
         };
+      })
+      .sort((left, right) => {
+        if (left.kind !== right.kind) return left.kind === 'local' ? -1 : 1;
+        return left.sectionLabel.localeCompare(right.sectionLabel);
       });
-
-    // Hide any section that has no projects — empty placeholders/section labels
-    // should not appear in the sidebar.
-    const showLocalSection = localSection && localSection.projects.length > 0;
-
-    return [...(showLocalSection ? [localSection] : []), ...remoteSections].map((section) => ({
-      ...section,
-      projects: [...section.projects].sort((a, b) => {
-        const aTime = typeof a.createdAtMs === 'number' ? a.createdAtMs : 0;
-        const bTime = typeof b.createdAtMs === 'number' ? b.createdAtMs : 0;
-        if (aTime !== bTime) return aTime - bTime;
-        return a.name.localeCompare(b.name);
-      }),
-    }));
   }, [
     localMachineId,
     machineMetaMap,
+    onlineMachineIds,
     pendingLocalProjectRemovals,
     sessionsListLoading,
     t,
     userId,
     visibleLocalProjectMap,
+    workspaceChatSessions,
+    workspaceRepoSessions,
   ]);
 
   // Build one complete, mode-independent row model first. Pinned sessions are
@@ -2092,8 +2072,6 @@ export function LoroAppSidebar({ className }: LoroAppSidebarProps) {
     [setLocalProjectsSectionCollapseState]
   );
 
-  const showChats = sessionsListLoading || workspaceChatSessions.length > 0;
-  const showGithubWorktrees = sessionsListLoading || workspaceRepoSessions.length > 0;
   const filterLabels = useMemo(
     () => ({
       triggerAriaLabel: t('sidebar.filter.trigger', 'Filter sidebar'),
@@ -2110,126 +2088,6 @@ export function LoroAppSidebar({ className }: LoroAppSidebarProps) {
     !isMobile && pinnedItems.length === 0 ? (
       <span aria-hidden="true" className="block h-6 w-6" />
     ) : null;
-  const localProjectsTopContent =
-    localProjectSections.length === 0 ? null : (
-      // Sections carry their own bottom margin (see sidebarTopContent): 12px
-      // when expanded, 4px when collapsed so folded sections stack compactly.
-      <div>
-        {localProjectSections.map((section, sectionIndex) => {
-          const sectionCollapsed = localProjectsSectionCollapseState[section.sectionKey] ?? false;
-          const headerFilter = sectionIndex === 0 ? sidebarFilterPlaceholder : null;
-          const dividerRight =
-            section.canImport && isElectron ? (
-              <button
-                type="button"
-                className={cn(
-                  'inline-flex h-6 w-6 items-center justify-center rounded-sm',
-                  'text-muted-foreground/80 hover:bg-muted/30 hover:text-foreground',
-                  'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring/60'
-                )}
-                aria-label={importProjectLabel}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  void handleImportLocalProject();
-                }}
-              >
-                <FolderPlus className="h-4 w-4" />
-              </button>
-            ) : undefined;
-          const headerAction =
-            dividerRight || headerFilter ? (
-              <div className="flex items-center gap-1">
-                {dividerRight}
-                {headerFilter}
-              </div>
-            ) : undefined;
-
-          return (
-            <div
-              key={section.sectionKey}
-              className={cn('space-y-0.5', sectionCollapsed ? 'mb-1 last:mb-0' : 'mb-3 last:mb-0')}
-            >
-              <SidebarSectionHeader
-                icon={
-                  section.kind === 'remote' ? (
-                    <Monitor className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden="true" />
-                  ) : undefined
-                }
-                label={section.sectionLabel}
-                collapsed={sectionCollapsed}
-                action={headerAction}
-                isMobile={isMobile}
-                toggleLabel={toggleLabel}
-                onToggleCollapsed={() => handleToggleLocalProjectsSection(section.sectionKey)}
-              />
-
-              {sectionCollapsed ? null : (
-                <div className="space-y-1">
-                  {section.projects.map((project) => {
-                    const machineId = section.machineId;
-                    if (!machineId) return null;
-                    const projectKey = `${machineId}:${project.id}`;
-                    const collapsed = localProjectCollapseState[projectKey] ?? false;
-                    const sessionsForProject =
-                      workspaceLocalProjectSessionsByKey.get(projectKey) ?? [];
-                    const isSelected = projectKey === selectedLocalProjectKey;
-                    const rootPath =
-                      typeof project.rootPath === 'string' ? project.rootPath.trim() : '';
-                    const formattedPath = rootPath ? rootPath : null;
-
-                    return (
-                      <LocalProjectItem
-                        key={project.id}
-                        machineId={machineId}
-                        machineName={section.machineDisplayName}
-                        project={project}
-                        canRemoveProject={section.canRemoveProject}
-                        canNavigateProject={section.canNavigateProject}
-                        removalState={
-                          pendingLocalProjectRemovals.has(projectKey)
-                            ? onlineMachineIds.has(machineId)
-                              ? 'removing'
-                              : 'waiting_for_device'
-                            : null
-                        }
-                        collapsed={collapsed}
-                        isSelected={isSelected}
-                        sessionsForProject={sessionsForProject}
-                        childSessionsByParent={childSessionsByParent}
-                        liveSessionStatuses={liveSessionStatuses}
-                        resolveSessionAuthor={resolveSessionAuthor}
-                        formattedPath={formattedPath}
-                        defaultSessionTitle={defaultSessionTitle}
-                        selectedSessionId={selectedSessionId}
-                        removeProjectLabel={removeProjectLabel}
-                        archiveTooltipLabel={archiveTooltipLabel}
-                        archiveActionLabel={archiveActionLabel}
-                        archiveConfirmLabel={archiveConfirmLabel}
-                        isMobile={isMobile}
-                        toggleLabel={toggleLabel}
-                        onNavigateProject={handleNavigateToProject}
-                        onNavigateSession={handleNavigateToSession}
-                        onArchive={handleArchiveSession}
-                        onRenameSession={handleRenameSession}
-                        onToggleSessionPinned={handleTogglePinSession}
-                        onCopySessionUrl={handleCopySessionUrl}
-                        onShareSessionWithTeam={handleRequestShareSession}
-                        sessionSharingById={sessionSharingById}
-                        collapsedOpenedBySessionIds={collapsedOpenedBySessionIds}
-                        onToggleOpenedBySessions={handleToggleOpenedBySessions}
-                        resolveOpenerRowId={resolveOpenerRowId}
-                        onToggleCollapsed={toggleLocalProjectCollapsed}
-                        onRequestRemoval={handleRequestRemoval}
-                      />
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    );
 
   // Compute repos array from persisted state
   const repos = useMemo<SessionListRepoState[]>(() => {
@@ -2292,12 +2150,6 @@ export function LoroAppSidebar({ className }: LoroAppSidebarProps) {
   const handleTogglePinnedSection = useCallback(() => {
     setPinnedSectionCollapsed((prev) => !prev);
   }, [setPinnedSectionCollapsed]);
-  const [githubWorktreesSectionCollapsed, setGithubWorktreesSectionCollapsed] = useAtom(
-    githubWorktreesSectionCollapsedAtom
-  );
-  const handleToggleGithubWorktreesSection = useCallback(() => {
-    setGithubWorktreesSectionCollapsed((prev) => !prev);
-  }, [setGithubWorktreesSectionCollapsed]);
   const paidPlanTiers = useCloudQuery(cloudOperations.billing.getMyPaidWorkspacePlanTiers, {});
   const planTierByWorkspaceId = useMemo(
     () => new Map((paidPlanTiers ?? []).map((entry) => [entry.workspaceId, entry.planTier])),
@@ -2546,59 +2398,6 @@ export function LoroAppSidebar({ className }: LoroAppSidebarProps) {
     updateBanner,
   ]);
 
-  const githubWorktreesLabel = useMemo(() => t('sidebar.githubWorktrees', 'GitHub Worktrees'), [t]);
-  const sidebarTopContent = (
-    // Sections carry their own bottom margin: 12px expanded (wider than the
-    // 10px between repo groups and the 2-4px between a section header and its
-    // content, so headers bind to the list below them), 4px collapsed so a
-    // stack of folded sections reads as one compact block.
-    <div>
-      {localProjectsTopContent}
-
-      {showGithubWorktrees ? (
-        <SidebarSectionHeader
-          label={githubWorktreesLabel}
-          collapsed={githubWorktreesSectionCollapsed}
-          count={workspaceRepoSessions.length}
-          isMobile={isMobile}
-          toggleLabel={toggleLabel}
-          onToggleCollapsed={handleToggleGithubWorktreesSection}
-          action={
-            localProjectSections.length === 0 ? (sidebarFilterPlaceholder ?? undefined) : undefined
-          }
-        />
-      ) : null}
-    </div>
-  );
-
-  // Chats renders after the GitHub Worktrees list so it reads as the last
-  // section in Workspace mode.
-  const sidebarChatsContent = showChats ? (
-    <SessionList
-      className={chatsCollapsed ? 'mb-1' : 'mb-3'}
-      sessions={workspaceChatSessions}
-      repos={[]}
-      isLoading={sessionsListLoading}
-      chatsCollapsed={chatsCollapsed}
-      headerAction={
-        localProjectSections.length === 0 && !showGithubWorktrees
-          ? (sidebarFilterPlaceholder ?? undefined)
-          : undefined
-      }
-      selectedSessionId={selectedSessionId}
-      activeGroupKey={activeNewSessionGroup}
-      onSelectSession={handleNavigateToSession}
-      onNavigateSessionTab={handleNavigateToSession}
-      onArchiveSession={handleArchiveSession}
-      onRenameSession={handleRenameSession}
-      onTogglePinSession={handleTogglePinSession}
-      onCopySessionUrl={handleCopySessionUrl}
-      onShareSessionWithTeam={handleRequestShareSession}
-      onToggleChatsCollapsed={handleToggleChatsCollapsed}
-      getSessionHref={getSessionHref}
-    />
-  ) : null;
-
   const handleToggleRepoCollapsed = useCallback(
     (repoFullName: string) => {
       setRepoCollapseState((prev) => ({
@@ -2623,45 +2422,150 @@ export function LoroAppSidebar({ className }: LoroAppSidebarProps) {
     [setRepoOrder]
   );
 
-  const sidebarSessionListProps = useMemo(
-    () => ({
-      sessions: githubWorktreesSectionCollapsed ? [] : workspaceRepoSessions,
-      repos: githubWorktreesSectionCollapsed ? [] : repos,
-      isLoading: githubWorktreesSectionCollapsed ? false : sessionsListLoading,
-      selectedSessionId: selectedSessionId,
-      activeGroupKey: activeNewSessionGroup,
-      onSelectSession: handleNavigateToSession,
-      onNavigateSessionTab: handleNavigateToSession,
-      onArchiveSession: handleArchiveSession,
-      onRenameSession: handleRenameSession,
-      onTogglePinSession: handleTogglePinSession,
-      onCopySessionUrl: handleCopySessionUrl,
-      onShareSessionWithTeam: handleRequestShareSession,
-      onToggleRepoCollapsed: handleToggleRepoCollapsed,
-      onMoveRepo: handleMoveRepo,
-      onOpenPullRequest: handleOpenTaskPullRequest,
-      onNavigateToNewSession: handleNavigateToNewSession,
-      getSessionHref,
-    }),
-    [
-      activeNewSessionGroup,
-      getSessionHref,
-      githubWorktreesSectionCollapsed,
-      handleArchiveSession,
-      handleCopySessionUrl,
-      handleRenameSession,
-      handleRequestShareSession,
-      handleTogglePinSession,
-      handleMoveRepo,
-      handleNavigateToNewSession,
-      handleOpenTaskPullRequest,
-      handleNavigateToSession,
-      handleToggleRepoCollapsed,
-      workspaceRepoSessions,
-      repos,
-      selectedSessionId,
-      sessionsListLoading,
-    ]
+  const sidebarMachineContent = (
+    <div>
+      {localProjectSections.map((section, sectionIndex) => {
+        const sectionCollapsed = localProjectsSectionCollapseState[section.sectionKey] ?? false;
+        const headerFilter = sectionIndex === 0 ? sidebarFilterPlaceholder : null;
+        const importAction = section.canImport ? (
+          <button
+            type="button"
+            className={cn(
+              'inline-flex h-6 w-6 items-center justify-center rounded-sm',
+              'text-muted-foreground/80 hover:bg-muted/30 hover:text-foreground',
+              'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring/60'
+            )}
+            aria-label={importProjectLabel}
+            onClick={(event) => {
+              event.stopPropagation();
+              void handleImportLocalProject();
+            }}
+          >
+            <FolderPlus className="h-4 w-4" />
+          </button>
+        ) : null;
+
+        return (
+          <div
+            key={section.sectionKey}
+            className={cn('space-y-0.5', sectionCollapsed ? 'mb-1 last:mb-0' : 'mb-3 last:mb-0')}
+          >
+            <SidebarSectionHeader
+              icon={<Monitor className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden="true" />}
+              label={section.sectionLabel}
+              collapsed={sectionCollapsed}
+              action={
+                importAction || headerFilter ? (
+                  <div className="flex items-center gap-1">
+                    {importAction}
+                    {headerFilter}
+                  </div>
+                ) : undefined
+              }
+              isMobile={isMobile}
+              toggleLabel={toggleLabel}
+              onToggleCollapsed={() => handleToggleLocalProjectsSection(section.sectionKey)}
+            />
+
+            {sectionCollapsed ? null : (
+              <div className="space-y-1">
+                {section.projects.map((project) => {
+                  const machineId = section.machineId;
+                  const projectKey = `${machineId}:${project.id}`;
+                  const collapsed = localProjectCollapseState[projectKey] ?? false;
+                  const sessionsForProject =
+                    workspaceLocalProjectSessionsByKey.get(projectKey) ?? [];
+                  const rootPath =
+                    typeof project.rootPath === 'string' ? project.rootPath.trim() : '';
+
+                  return (
+                    <LocalProjectItem
+                      key={project.id}
+                      machineId={machineId}
+                      machineName={section.machineDisplayName}
+                      project={project}
+                      canRemoveProject={section.canRemoveProject}
+                      canNavigateProject={section.canNavigateProject}
+                      removalState={
+                        pendingLocalProjectRemovals.has(projectKey)
+                          ? onlineMachineIds.has(machineId)
+                            ? 'removing'
+                            : 'waiting_for_device'
+                          : null
+                      }
+                      collapsed={collapsed}
+                      isSelected={projectKey === selectedLocalProjectKey}
+                      sessionsForProject={sessionsForProject}
+                      childSessionsByParent={childSessionsByParent}
+                      liveSessionStatuses={liveSessionStatuses}
+                      resolveSessionAuthor={resolveSessionAuthor}
+                      formattedPath={rootPath || null}
+                      defaultSessionTitle={defaultSessionTitle}
+                      selectedSessionId={selectedSessionId}
+                      removeProjectLabel={removeProjectLabel}
+                      archiveTooltipLabel={archiveTooltipLabel}
+                      archiveActionLabel={archiveActionLabel}
+                      archiveConfirmLabel={archiveConfirmLabel}
+                      isMobile={isMobile}
+                      toggleLabel={toggleLabel}
+                      onNavigateProject={handleNavigateToProject}
+                      onNavigateSession={handleNavigateToSession}
+                      onArchive={handleArchiveSession}
+                      onRenameSession={handleRenameSession}
+                      onToggleSessionPinned={handleTogglePinSession}
+                      onCopySessionUrl={handleCopySessionUrl}
+                      onShareSessionWithTeam={handleRequestShareSession}
+                      sessionSharingById={sessionSharingById}
+                      collapsedOpenedBySessionIds={collapsedOpenedBySessionIds}
+                      onToggleOpenedBySessions={handleToggleOpenedBySessions}
+                      resolveOpenerRowId={resolveOpenerRowId}
+                      onToggleCollapsed={toggleLocalProjectCollapsed}
+                      onRequestRemoval={handleRequestRemoval}
+                    />
+                  );
+                })}
+
+                <SessionList
+                  sessions={section.repoSessions}
+                  repos={repos}
+                  selectedSessionId={selectedSessionId}
+                  activeGroupKey={activeNewSessionGroup}
+                  onSelectSession={handleNavigateToSession}
+                  onNavigateSessionTab={handleNavigateToSession}
+                  onArchiveSession={handleArchiveSession}
+                  onRenameSession={handleRenameSession}
+                  onTogglePinSession={handleTogglePinSession}
+                  onCopySessionUrl={handleCopySessionUrl}
+                  onShareSessionWithTeam={handleRequestShareSession}
+                  onToggleRepoCollapsed={handleToggleRepoCollapsed}
+                  onMoveRepo={handleMoveRepo}
+                  onOpenPullRequest={handleOpenTaskPullRequest}
+                  onNavigateToNewSession={handleNavigateToNewSession}
+                  getSessionHref={getSessionHref}
+                />
+
+                <SessionList
+                  sessions={section.chatSessions}
+                  repos={[]}
+                  chatsCollapsed={chatsCollapsed}
+                  selectedSessionId={selectedSessionId}
+                  activeGroupKey={activeNewSessionGroup}
+                  onSelectSession={handleNavigateToSession}
+                  onNavigateSessionTab={handleNavigateToSession}
+                  onArchiveSession={handleArchiveSession}
+                  onRenameSession={handleRenameSession}
+                  onTogglePinSession={handleTogglePinSession}
+                  onCopySessionUrl={handleCopySessionUrl}
+                  onShareSessionWithTeam={handleRequestShareSession}
+                  onToggleChatsCollapsed={handleToggleChatsCollapsed}
+                  getSessionHref={getSessionHref}
+                />
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 
   const updatedSelectedItemId = selectedSessionId ?? null;
@@ -2749,6 +2653,16 @@ export function LoroAppSidebar({ className }: LoroAppSidebarProps) {
     resolveOpenerRowId,
     workspaceLocalProjectSessionsByKey,
   ]);
+  const keyboardNavMachineSections = useMemo(
+    () =>
+      localProjectSections.map((section, index) => ({
+        collapsed: localProjectsSectionCollapseState[section.sectionKey] ?? false,
+        localSections: keyboardNavLocalSections[index] ? [keyboardNavLocalSections[index]] : [],
+        repoSessions: section.repoSessions,
+        chatSessions: section.chatSessions,
+      })),
+    [keyboardNavLocalSections, localProjectSections, localProjectsSectionCollapseState]
+  );
 
   const selectedSessionIdRef = useRef(selectedSessionId);
   selectedSessionIdRef.current = selectedSessionId;
@@ -2821,11 +2735,12 @@ export function LoroAppSidebar({ className }: LoroAppSidebarProps) {
         pinnedSectionCollapsed,
         workspace: {
           localSections: keyboardNavLocalSections,
-          githubSectionCollapsed: githubWorktreesSectionCollapsed,
+          githubSectionCollapsed: false,
           repoSessions: workspaceRepoSessions,
           repos,
           chatSessions: workspaceChatSessions,
           chatsCollapsed,
+          machineSections: keyboardNavMachineSections,
         },
         updated: {
           items: updatedItems,
@@ -2836,8 +2751,8 @@ export function LoroAppSidebar({ className }: LoroAppSidebarProps) {
     [
       chatsCollapsed,
       collapsedOpenedBySessionIds,
-      githubWorktreesSectionCollapsed,
       keyboardNavLocalSections,
+      keyboardNavMachineSections,
       organizeMode,
       pinnedItems,
       pinnedSectionCollapsed,
@@ -2887,12 +2802,10 @@ export function LoroAppSidebar({ className }: LoroAppSidebarProps) {
         // header inset so the sidebar's first row aligns with the top bar.
         isElectronMacOS={isElectronMacOS && !isElectronFullscreen}
         activeNav={activeNav}
-        topContent={sidebarTopContent ?? undefined}
+        topContent={sidebarMachineContent}
         desktopFilterPlaceholder={sidebarFilterPlaceholder ?? undefined}
-        afterSessionListContent={sidebarChatsContent ?? undefined}
         bottomFloatingContent={sidebarBottomFloatingContent ?? undefined}
         labels={labels}
-        sessionListProps={sidebarSessionListProps}
         organizeMode={organizeMode}
         chatScope={chatScope}
         pinnedItems={pinnedItems}

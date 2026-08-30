@@ -186,6 +186,9 @@ mobile surfaces.
   silent no-op.
 - Sidebar: `loro-sidebar.tsx`, `loro-app-sidebar.tsx`, and
   `sessions/session-list-rows.ts`. Sidebar rows are sessions, not Tasks.
+  Desktop Workspace mode is machine-first: each machine section owns its local
+  projects, GitHub groups, and chats; the same repository on two machines stays
+  in two sections. Updated mode remains the explicit flat recency view.
   EVERY desktop session row is a drag source for a session mention
   (`lib/session-mention-drag.ts`, dropped on the conversation page or the
   landing) — a new row renderer that omits it makes the gesture work in some

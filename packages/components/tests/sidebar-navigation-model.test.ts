@@ -108,6 +108,62 @@ describe('sidebar navigation model', () => {
     });
   });
 
+  it('keeps each machine projects, Git sessions, and chats together', () => {
+    const items = buildSidebarNavigationItems({
+      ...baseOptions,
+      workspace: {
+        ...baseOptions.workspace,
+        machineSections: [
+          {
+            collapsed: false,
+            localSections: [
+              {
+                collapsed: false,
+                projects: [
+                  {
+                    machineId: 'macbook',
+                    localProjectId: 'main-project',
+                    collapsed: false,
+                    sessions: [{ id: 'macbook-local' }],
+                  },
+                ],
+              },
+            ],
+            repoSessions: [sessionRow('macbook-git', '2026-07-16T11:00:00Z', 'tantan1hao/Lody')],
+            chatSessions: [sessionRow('macbook-chat', '2026-07-16T10:00:00Z')],
+          },
+          {
+            collapsed: false,
+            localSections: [
+              {
+                collapsed: false,
+                projects: [
+                  {
+                    machineId: 'mini',
+                    localProjectId: 'mini-project',
+                    collapsed: false,
+                    sessions: [{ id: 'mini-local' }],
+                  },
+                ],
+              },
+            ],
+            repoSessions: [sessionRow('mini-git', '2026-07-16T09:00:00Z', 'tantan1hao/Lody')],
+            chatSessions: [sessionRow('mini-chat', '2026-07-16T08:00:00Z')],
+          },
+        ],
+      },
+    });
+
+    expect(sessionIds(items)).toEqual([
+      'macbook-local',
+      'macbook-git',
+      'macbook-chat',
+      'mini-local',
+      'mini-git',
+      'mini-chat',
+    ]);
+  });
+
   it('uses the Updated projection instead of stale Workspace grouping', () => {
     const items = buildSidebarNavigationItems({
       ...baseOptions,
