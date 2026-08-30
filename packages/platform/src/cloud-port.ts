@@ -156,6 +156,14 @@ export interface CloudNotificationsPort {
     workspaceSlug: string;
     userId: string;
   }): Promise<void>;
+  notifySessionFailed(input: {
+    sessionId: SessionId;
+    occurrenceId: string;
+    sessionTitle?: string | null;
+    workspaceId: WorkspaceId;
+    workspaceSlug: string;
+    userId: string;
+  }): Promise<void>;
   notifyPermissionRequested(input: CloudPermissionRequestNotificationInput): Promise<void>;
   recordPermissionRequested(input: CloudPermissionRequestNotificationInput): Promise<void>;
   resolvePermissionRequested(input: CloudPermissionRequestResolutionInput): Promise<void>;

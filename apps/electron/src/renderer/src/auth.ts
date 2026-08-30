@@ -17,7 +17,8 @@ import { getIpcServices } from '@lody/components/lib/electron-ipc-client'
 import { createAuthCallbackTransaction } from './auth-callback-transaction'
 import { createAuthQueryGeneration } from './auth-query-generation'
 
-const ELECTRON_PROTOCOL_SCHEME = 'lody'
+const ELECTRON_PROTOCOL_SCHEME =
+  import.meta.env.VITE_LODY_PLATFORM === 'cloud' ? 'lody' : 'lody-oss'
 const SAFE_TELEMETRY_STRING_PATTERN = /^[A-Za-z0-9_.: -]+$/
 const ELECTRON_ACCOUNT_AUTH_METHODS = [
   'listAccounts',

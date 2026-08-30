@@ -11,16 +11,19 @@ import {
 import { listWorkspaceTaskIds } from '@/lib/task-doc';
 import {
   getAuthContextOrThrow,
+  getSelfHostedCommandContext,
   listAliveDocMetas,
   listAliveRoomIds,
   printJson,
   resolveStructuredOutputMode,
   resolveWorkspaceOrThrow,
   runOneShotCommand,
+  selectWorkspaceSummary,
   withWorkspaceManager,
   type AuthContext,
   type CommonCommandOptions,
 } from '@/lib/command-runtime';
+import { getCliPlatformKind } from '@/lib/cli-platform';
 import type { LoroDocumentManager } from '@/lib/loro/doc';
 import { mapWithConcurrency } from '@/lib/session-export/concurrency';
 import { formatErrorMessage } from '@/utils/format-error';
@@ -345,7 +348,7 @@ function createAlreadyPrintedError(): Error {
 }
 
 export const syncCommand = new Command('sync')
-  .description('Sync workspace Loro data to the local cache')
+  .description('Sync workspace Loro data with the configured Streams service')
   .option('--workspace <selector>', 'Target workspace id, slug, or name')
   .option('--all-workspace', 'Sync all accessible workspaces')
   .option(
@@ -360,14 +363,23 @@ export const syncCommand = new Command('sync')
   .action(async (options: SyncOptions) => {
     await runOneShotCommand('sync', options, async () => {
       const outputMode = resolveStructuredOutputMode(options);
-      const auth = getAuthContextOrThrow('sync');
       if (options.allWorkspace && options.workspace) {
         throw new Error('Pass either --workspace or --all-workspace, not both.');
       }
 
-      const workspaces = options.allWorkspace
-        ? await listWorkspacesForToken(auth.token)
-        : [await resolveWorkspaceOrThrow(auth, options.workspace)];
+      const selfHostedContext =
+        getCliPlatformKind() === 'self-hosted' ? await getSelfHostedCommandContext('sync') : null;
+      const auth = selfHostedContext?.auth ?? getAuthContextOrThrow('sync');
+      const workspaces = selfHostedContext
+        ? [
+            selectWorkspaceSummary(
+              [selfHostedContext.workspace],
+              options.workspace ?? process.env.LODY_WORKSPACE_ID
+            ),
+          ]
+        : options.allWorkspace
+          ? await listWorkspacesForToken(auth.token)
+          : [await resolveWorkspaceOrThrow(auth, options.workspace)];
       const workspaceSummaries: WorkspaceSyncSummary[] = [];
       for (const workspace of workspaces) {
         workspaceSummaries.push(

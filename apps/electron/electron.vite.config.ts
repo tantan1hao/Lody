@@ -39,9 +39,35 @@ function getAppVersion(): string {
 }
 
 const OSS_BUILD_MODE = 'oss'
-const OSS_BUILD_ENV: Record<string, string> = {
+const LOCAL_BUILD_MODE = 'local'
+const LOCAL_BUILD_ENV: Record<string, string> = {
   VITE_LODY_PLATFORM: 'local',
   VITE_PREVIEW_PUBLIC_BASE_DOMAIN: 'local.invalid'
+}
+
+function requireHttpsOrigin(name: string, value: string | undefined): string {
+  const trimmed = value?.trim()
+  if (!trimmed) {
+    throw new Error(`${name} is required for the self-hosted Electron build`)
+  }
+  const url = new URL(trimmed)
+  if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) {
+    throw new Error(`${name} must be a credential-free HTTPS URL`)
+  }
+  return url.toString().replace(/\/$/, '')
+}
+
+function buildOssEnv(): Record<string, string> {
+  const controlOrigin = requireHttpsOrigin('LODY_OSS_CONTROL_URL', process.env.LODY_OSS_CONTROL_URL)
+  const updateOrigin = requireHttpsOrigin('LODY_OSS_UPDATE_URL', process.env.LODY_OSS_UPDATE_URL)
+  return {
+    VITE_LODY_PLATFORM: 'self-hosted',
+    VITE_LODY_OSS_CONTROL_URL: controlOrigin,
+    VITE_LODY_OSS_RELEASE_MANIFEST_URL: `${updateOrigin}/release.json`,
+    VITE_ELECTRON_UPDATE_URL: `${updateOrigin}/`,
+    VITE_SITE_URL: controlOrigin,
+    VITE_PREVIEW_PUBLIC_BASE_DOMAIN: 'local.invalid'
+  }
 }
 
 function applyEnvToProcess(env: Record<string, string>): void {
@@ -78,11 +104,13 @@ function previewPublicBaseDomainHtmlPlugin(baseDomain: string): Plugin {
 
 export default defineConfig(({ mode }) => {
   const buildMode = mode || OSS_BUILD_MODE
-  if (buildMode !== OSS_BUILD_MODE) {
-    throw new Error(`The public Electron workspace only supports --mode ${OSS_BUILD_MODE}`)
+  if (buildMode !== OSS_BUILD_MODE && buildMode !== LOCAL_BUILD_MODE) {
+    throw new Error(
+      `The public Electron workspace only supports --mode ${OSS_BUILD_MODE} or --mode ${LOCAL_BUILD_MODE}`
+    )
   }
 
-  const buildEnv = { ...OSS_BUILD_ENV }
+  const buildEnv = buildMode === LOCAL_BUILD_MODE ? { ...LOCAL_BUILD_ENV } : buildOssEnv()
   const previewPublicBaseDomain = buildEnv.VITE_PREVIEW_PUBLIC_BASE_DOMAIN
   const viteEnvDefine = {
     ...buildViteEnvDefine(buildEnv),

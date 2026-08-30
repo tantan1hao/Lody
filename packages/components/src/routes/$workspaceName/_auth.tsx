@@ -36,7 +36,7 @@ import { writeLastAppRoutePath } from '@/lib/last-app-route';
 import { useWorkspaceBadge } from '@/hooks/use-workspace-badge';
 import { type LodyLiveActivityBridge, useLodyLiveActivity } from '@/hooks/use-lody-live-activity';
 import { isNativeIOSAppShell } from '@/lib/native-platform';
-import { isLocalAppPlatform } from '@/lib/app-platform';
+import { isAccountlessAppPlatform } from '@/lib/app-platform';
 import { useResolvedWorkspaceScope } from '../../hooks/use-resolved-workspace-scope';
 
 const AUTH_ROUTE_ONESIGNAL_LOGIN_IDLE_TIMEOUT_MS = 10_000;
@@ -69,7 +69,7 @@ function MainLayoutComponent() {
   // Local (open-source) platform: no cloud session/organization machinery.
   // The parent $workspaceName guard already resolved the implicit workspace,
   // so mount the layout directly.
-  if (isLocalAppPlatform()) {
+  if (isAccountlessAppPlatform()) {
     return <LocalPlatformLayoutContent workspaceName={workspaceName} />;
   }
   return <CloudMainLayoutComponent workspaceName={workspaceName} />;

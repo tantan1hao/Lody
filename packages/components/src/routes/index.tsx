@@ -8,11 +8,9 @@ import { useStableSession } from '@/hooks/useStableSession';
 import { getAppCurrentPathWithSearch } from '@/lib/app-location';
 import { readLastAppRoutePath } from '@/lib/last-app-route';
 import { LoadingPlaceholder } from '@/components/loading-placeholder';
-import { isLocalAppPlatform } from '@/lib/app-platform';
-import {
-  getLocalWorkspaceSlug,
-  useLocalPlatformWorkspacesState,
-} from '../providers/local-platform-provider';
+import { isAccountlessAppPlatform } from '@/lib/app-platform';
+import { usePlatformWorkspaces } from '@lody/platform/react';
+import { getLocalWorkspaceSlug } from '../providers/local-platform-provider';
 
 export const Route = createFileRoute('/')({
   component: HomeRoute,
@@ -21,7 +19,7 @@ export const Route = createFileRoute('/')({
 export function HomeRoute() {
   // Local (open-source) platform: no login route exists. Land straight on the
   // single implicit workspace once the CLI has provisioned it.
-  if (isLocalAppPlatform()) {
+  if (isAccountlessAppPlatform()) {
     return <LocalHomeRoute />;
   }
   return <CloudHomeRoute />;
@@ -29,7 +27,7 @@ export function HomeRoute() {
 
 function LocalHomeRoute() {
   const { t } = useTranslation();
-  const workspacesState = useLocalPlatformWorkspacesState();
+  const workspacesState = usePlatformWorkspaces();
   const workspace =
     workspacesState.status === 'ready' ? (workspacesState.workspaces[0] ?? null) : null;
 

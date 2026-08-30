@@ -23,6 +23,8 @@ export const PLATFORM_CAPABILITIES = [
   'githubIntegration',
   /** Dispatching work to machines other than the local one. */
   'remoteMachines',
+  /** Official machine pairing, credentials and hosted machine directory. */
+  'managedMachineEnrollment',
   /** Push notifications / live activity. */
   'notifications',
   /** In-app bug report upload. */
@@ -53,6 +55,11 @@ export function createCapabilitySet(
 
 /** The open-source local platform: no cloud-backed capability is available. */
 export const LOCAL_PLATFORM_CAPABILITIES: PlatformCapabilities = createCapabilitySet([]);
+
+/** Self-hosted single-user UI: remote dispatch is backed directly by machine Flocks. */
+export const SELF_HOSTED_PLATFORM_CAPABILITIES: PlatformCapabilities = createCapabilitySet([
+  'remoteMachines',
+]);
 
 /** The cloud platform baseline: every capability (entitlement gating happens elsewhere). */
 export const CLOUD_PLATFORM_CAPABILITIES: PlatformCapabilities =

@@ -3267,6 +3267,7 @@
   "machinePairing.cliOptionTitle": "Command line",
   "machinePairing.commandCopied": "Command copied",
   "machinePairing.commandCopyFailed": "Could not copy command",
+  "machinePairing.configUnavailable": "Download configuration is unavailable.",
   "machinePairing.configureDescription": "Configure the coding agents available on {{machine}}.",
   "machinePairing.configureAgents": "Configure agents",
   "machinePairing.connectedTitle": "Machine connected",

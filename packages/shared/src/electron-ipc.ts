@@ -378,6 +378,7 @@ export type ElectronAuthCallbackSession = z.infer<typeof ElectronAuthCallbackSes
 export type ElectronUpdaterPhase =
   | 'idle'
   | 'checking'
+  | 'available'
   | 'downloading'
   | 'downloaded'
   | 'up_to_date'
@@ -389,6 +390,8 @@ export type ElectronUpdaterState = {
   currentVersion: string;
   availableVersion?: string;
   downloadedVersion?: string;
+  /** HTTPS installer URL for platforms that require a manual update flow. */
+  manualDownloadUrl?: string;
   releaseName?: string;
   releaseDate?: string;
   releaseNotes?: string;

@@ -46,6 +46,7 @@ import {
   doesAgentRolePinPermissionMode,
   type ComposerAgentRoleItem,
 } from '@/lib/composer-agent-roles';
+import { useAppCapability } from '@/lib/app-platform';
 import { cn } from '@/lib/utils';
 import { useOnlineMachines } from '@/hooks/use-online-machines';
 import { Badge } from '@/ui/badge';
@@ -229,6 +230,9 @@ export function DesktopMachineMenu({
   onAddMachine?: () => void;
 }) {
   const { t } = useTranslation();
+  const remoteMachinesAvailable = useAppCapability('remoteMachines');
+  if (!remoteMachinesAvailable) return null;
+
   const selectedOption = options.find((option) => option.value === value);
   const selectedIsLocal = selectedOption?.value === visibleLocalMachineId;
   const label =

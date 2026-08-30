@@ -1,0 +1,7 @@
+base-url: "__NTFY_ORIGIN__"
+listen-http: "127.0.0.1:8094"
+cache-file: "/var/cache/ntfy/cache.db"
+behind-proxy: true
+upstream-base-url: "https://ntfy.sh"
+enable-login: false
+enable-signup: false

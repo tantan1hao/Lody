@@ -165,4 +165,7 @@ Lody 仍在走向完整的 local-first 支持。
 - `packages/shared` — 共享 Schema、协议与工具
 - `site-docs` — 官网、文档与博客
 
+自建 OSS 控制面、Web、多机器派活、ntfy、跨平台发布和加密备份见
+[SELF_HOSTING.md](./SELF_HOSTING.md)。
+
 如果希望参与开发，请阅读 [CONTRIBUTING.md](./CONTRIBUTING.md)。

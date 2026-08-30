@@ -10,7 +10,9 @@ import {
   type CloudQuery,
 } from './cloud-api';
 import type { PlatformProvider, PlatformSessionState, WorkspacesState } from './provider';
+import type { SelfHostedConfig, SelfHostedConfigState } from './self-hosted';
 import type { ReadonlyStore } from './store';
+import { createStaticStore } from './store';
 
 /**
  * React binding for the platform contracts. App entries put their assembled
@@ -43,13 +45,24 @@ export function usePlatformCapability(capability: PlatformCapability): boolean {
   return usePlatform().capabilities.has(capability);
 }
 
+const NO_SELF_HOSTED_CONFIG = createStaticStore<SelfHostedConfigState>({
+  status: 'error',
+  message: 'Self-hosted config is unavailable on this platform',
+});
+
+export function useSelfHostedConfig(): SelfHostedConfig | null {
+  const platform = usePlatform();
+  const state = useStoreValue(platform.selfHosted?.config ?? NO_SELF_HOSTED_CONFIG);
+  return state.status === 'ready' ? state.config : null;
+}
+
 function requireCloudApi(platform: PlatformProvider, capability: PlatformCapability) {
   if (!platform.capabilities.has(capability)) {
     throw new CloudCapabilityUnavailableError(capability);
   }
   if (!platform.cloudApi) {
     throw new Error(
-      `Platform ${JSON.stringify(platform.kind)} exposes capability ${JSON.stringify(capability)} without a CloudApi implementation`,
+      `Platform ${JSON.stringify(platform.kind)} exposes capability ${JSON.stringify(capability)} without a CloudApi implementation`
     );
   }
   return platform.cloudApi;
@@ -71,12 +84,12 @@ export function useCloudQuery<Args, Result>(
   }
   return requireCloudApi(platform, operation.capability).useQuery(
     operation,
-    (args[0] ?? {}) as Args | 'skip',
+    (args[0] ?? {}) as Args | 'skip'
   );
 }
 
 export function useCloudMutation<Args, Result>(
-  operation: CloudMutation<Args, Result>,
+  operation: CloudMutation<Args, Result>
 ): CloudMutationFunction<Args, Result> {
   const platform = usePlatform();
   if (!platform.capabilities.has(operation.capability)) {
@@ -86,7 +99,7 @@ export function useCloudMutation<Args, Result>(
 }
 
 export function useCloudAction<Args, Result>(
-  operation: CloudAction<Args, Result>,
+  operation: CloudAction<Args, Result>
 ): CloudActionFunction<Args, Result> {
   const platform = usePlatform();
   if (!platform.capabilities.has(operation.capability)) {

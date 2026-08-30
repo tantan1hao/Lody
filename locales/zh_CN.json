@@ -3267,6 +3267,7 @@
   "machinePairing.cliOptionTitle": "命令行",
   "machinePairing.commandCopied": "命令已复制",
   "machinePairing.commandCopyFailed": "无法复制命令",
+  "machinePairing.configUnavailable": "下载配置不可用。",
   "machinePairing.configureDescription": "配置 {{machine}} 上可用的编程 Agent。",
   "machinePairing.configureAgents": "配置 Agent",
   "machinePairing.connectedTitle": "机器已连接",

@@ -57,7 +57,12 @@ import {
   type PreparedLaunch
 } from '@lody/cli-supervisor'
 import type { BootstrapSession } from './auth-service'
-import { isLocalPlatform, mainPlatformKind } from '../platform'
+import {
+  isAccountlessPlatform,
+  isLocalPlatform,
+  isSelfHostedPlatform,
+  mainPlatformKind
+} from '../platform'
 import { getUserShellEnvCached, shouldUseWindowsShell } from './shell-env'
 import { applyProxyEnvFallback, resolveSystemProxyEnv } from './system-proxy-env'
 import type { CliOutputEvent, CliRunResult } from '../types'
@@ -257,8 +262,11 @@ function buildCliRuntimeEnvOverrides(): NodeJS.ProcessEnv {
     LODY_PLATFORM: mainPlatformKind
   }
 
-  if (isLocalPlatform()) {
+  if (isAccountlessPlatform()) {
     env.LODY_DATA_DIR = LODY_DATA_DIR
+    if (isSelfHostedPlatform()) {
+      assignEnvIfPresent(env, 'LODY_OSS_CONTROL_URL', import.meta.env.VITE_LODY_OSS_CONTROL_URL)
+    }
     return env
   }
 
@@ -272,11 +280,12 @@ function buildCliRuntimeEnvOverrides(): NodeJS.ProcessEnv {
 
 function buildSystemProxyProbeUrls(): string[] {
   const urls = new Set<string>(['https://registry.npmjs.org'])
-  if (!isLocalPlatform()) {
+  if (isSelfHostedPlatform()) {
+    const controlUrl = import.meta.env.VITE_LODY_OSS_CONTROL_URL?.trim()
+    if (controlUrl) urls.add(controlUrl)
+  } else if (!isLocalPlatform()) {
     const serverUrl = import.meta.env.VITE_SERVER_URL?.trim()
-    if (serverUrl) {
-      urls.add(serverUrl)
-    }
+    if (serverUrl) urls.add(serverUrl)
   }
   return [...urls]
 }
@@ -1109,9 +1118,9 @@ export class CliService {
   }
 
   private async resolveBootstrapSessionForAutoStart(): Promise<BootstrapSession | null> {
-    if (isLocalPlatform()) {
-      // Local platform: the CLI needs no credentials, so don't touch the auth
-      // service (its client is inert without cloud env).
+    if (isAccountlessPlatform()) {
+      // Local/self-hosted platforms use platform-owned identity, so don't touch
+      // the official auth service during Electron autostart.
       return null
     }
     if (!this.resolveBootstrapSession) {

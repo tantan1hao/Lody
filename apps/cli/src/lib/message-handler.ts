@@ -3098,6 +3098,8 @@ export class MessageHandler {
           await this.turnPostProcessingService.autoCommitAndPushForPR(ctx),
         notifySessionCompleted: async (sessionId, userId, occurrenceId) =>
           await this.notifySessionCompleted(sessionId, userId, occurrenceId),
+        notifySessionFailed: async (sessionId, occurrenceId) =>
+          await this.notifySessionFailed(sessionId, occurrenceId),
       },
       recordChatFailure: async (sessionDoc, reason, message, code) =>
         await this.recordChatFailure(sessionDoc, reason, message, code),
@@ -9679,6 +9681,23 @@ export class MessageHandler {
         userId,
       });
       await this.syncLiveActivitySummary(userId);
+    });
+  }
+
+  private async notifySessionFailed(sessionId: SessionId, occurrenceId: string): Promise<void> {
+    if (!this.notificationService) return;
+    const notificationService = this.notificationService;
+    await this.runTurnCloudSideEffect(sessionId, 'failure notification', async () => {
+      const sessionDoc = await this.workspaceDocument.getOrCreateSessionDoc(sessionId);
+      const meta = await sessionDoc.getMetaState();
+      await notificationService.notifySessionFailed({
+        sessionId,
+        occurrenceId,
+        sessionTitle: meta?.title,
+        workspaceId: this.workspaceId,
+        workspaceSlug: this.workspaceSlug?.trim() || this.workspaceId,
+        userId: this.cloudPort.identity.userId,
+      });
     });
   }
 

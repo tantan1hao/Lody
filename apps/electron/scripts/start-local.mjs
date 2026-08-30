@@ -30,7 +30,10 @@ function runScript(script, env) {
   }
 }
 
-runScript('build', process.env)
+runScript('build', {
+  ...process.env,
+  LODY_ELECTRON_BUILD_MODE: 'local'
+})
 
 runScript('preview:local', {
   ...process.env,

@@ -25,6 +25,7 @@ vi.mock('../src/providers/convex-provider', () => ({
 }));
 
 vi.mock('../src/lib/app-platform', () => ({
+  isAccountlessAppPlatform: () => false,
   isLocalAppPlatform: () => false,
 }));
 

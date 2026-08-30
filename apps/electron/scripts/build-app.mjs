@@ -10,7 +10,8 @@ const nodeOptions = /--max[-_]old[-_]space[-_]size(?:=|\s|$)/u.test(inheritedNod
   ? inheritedNodeOptions
   : `${inheritedNodeOptions} --max-old-space-size=8192`.trim()
 
-const result = spawnSync(process.execPath, [electronViteEntry, 'build', '--mode', 'oss'], {
+const buildMode = process.env.LODY_ELECTRON_BUILD_MODE?.trim() || 'oss'
+const result = spawnSync(process.execPath, [electronViteEntry, 'build', '--mode', buildMode], {
   cwd: electronDir,
   env: {
     ...process.env,

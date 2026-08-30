@@ -40,7 +40,7 @@ import {
   type WorktreeCleanupScriptConfig,
   type WorkspaceId,
 } from '@lody/shared';
-import { useCloudMutation, useCloudQuery } from '@lody/platform/react';
+import { useCloudMutation, useCloudQuery, useSelfHostedConfig } from '@lody/platform/react';
 import { usePostHog } from '@posthog/react';
 import {
   ArrowUp,
@@ -567,6 +567,8 @@ function WorkspaceChatLanding({
   const workspaceRuntime = useAtomValue(runtimeAtom);
   const postHog = usePostHog();
   const multiWorkspaceAvailable = useAppCapability('multiWorkspace');
+  const managedMachineEnrollment = useAppCapability('managedMachineEnrollment');
+  const selfHostedConfig = useSelfHostedConfig();
   const currentUser = useAtomValue(userAtom);
   const userId = currentUser?.id;
   const tasksFeatureEnabled = useAtomValue(tasksFeatureEnabledAtom);
@@ -1974,6 +1976,16 @@ function WorkspaceChatLanding({
   }, [authToken, workspaceId]);
 
   const handleAddMachine = useCallback(() => {
+    if (!managedMachineEnrollment) {
+      if (!selfHostedConfig) {
+        toast.error(
+          t('machinePairing.configUnavailable', 'Download configuration is unavailable.')
+        );
+        return;
+      }
+      void openExternalUrl(selfHostedConfig.downloads.pageUrl);
+      return;
+    }
     if (
       machinePairing &&
       (machinePairingStatus === 'pending' ||
@@ -1984,7 +1996,14 @@ function WorkspaceChatLanding({
       return;
     }
     void createNewMachinePairing();
-  }, [createNewMachinePairing, machinePairing, machinePairingStatus]);
+  }, [
+    createNewMachinePairing,
+    machinePairing,
+    machinePairingStatus,
+    managedMachineEnrollment,
+    selfHostedConfig,
+    t,
+  ]);
 
   useEffect(() => {
     if (
@@ -6587,24 +6606,26 @@ function WorkspaceChatLanding({
         onAdded={handleLocalProjectAdded}
         onLocated={handleLocalProjectAdded}
       />
-      <MachinePairingDialog
-        open={machinePairingDialogOpen}
-        onOpenChange={handleMachinePairingOpenChange}
-        requestId={machinePairing?.requestId ?? null}
-        status={machinePairingStatus}
-        machineId={pairedMachineId}
-        machineName={observedMachinePairing?.machineName}
-        command={machinePairingStatus === 'pending' ? (machinePairing?.command ?? null) : null}
-        expiresAt={machinePairing?.expiresAt ?? null}
-        creating={machinePairingCreating}
-        createError={machinePairingCreateError}
-        onRetry={() => void createNewMachinePairing()}
-        onCancelRequest={async () => {
-          if (!machinePairing) return;
-          await cancelMachinePairingRequest({ requestId: machinePairing.requestId });
-        }}
-        onConfigureAgents={() => openSettings('agents')}
-      />
+      {managedMachineEnrollment ? (
+        <MachinePairingDialog
+          open={machinePairingDialogOpen}
+          onOpenChange={handleMachinePairingOpenChange}
+          requestId={machinePairing?.requestId ?? null}
+          status={machinePairingStatus}
+          machineId={pairedMachineId}
+          machineName={observedMachinePairing?.machineName}
+          command={machinePairingStatus === 'pending' ? (machinePairing?.command ?? null) : null}
+          expiresAt={machinePairing?.expiresAt ?? null}
+          creating={machinePairingCreating}
+          createError={machinePairingCreateError}
+          onRetry={() => void createNewMachinePairing()}
+          onCancelRequest={async () => {
+            if (!machinePairing) return;
+            await cancelMachinePairingRequest({ requestId: machinePairing.requestId });
+          }}
+          onConfigureAgents={() => openSettings('agents')}
+        />
+      ) : null}
       <AgentRoleEditorDialog
         editor={agentRoleEditor}
         accessibleRoles={workspaceAgentRoles}

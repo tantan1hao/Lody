@@ -6,9 +6,8 @@ import { cn } from '@/lib/utils';
 import type { UpdateBannerState } from '@/lib/electron-update-banner';
 
 /**
- * Floating sidebar notice for a desktop update that is downloading or ready to
- * install. `View changelog` opens the in-app changelog dialog; it must never
- * leave the app on its own.
+ * Floating sidebar notice for a desktop update that is available, downloading,
+ * or ready to install. `View changelog` stays inside the app.
  */
 export function SidebarUpdateBanner({
   stage,
@@ -16,16 +15,17 @@ export function SidebarUpdateBanner({
   percent,
   isRestarting,
   onViewChangelog,
-  onRestart,
+  onInstall,
   onLater,
 }: UpdateBannerState & {
   isRestarting: boolean;
   onViewChangelog: () => void;
-  onRestart: () => void;
+  onInstall: () => void;
   onLater: () => void;
 }) {
   const { t } = useTranslation();
   const isDownloading = stage === 'downloading';
+  const isManualDownload = stage === 'available';
 
   return (
     <div
@@ -37,7 +37,9 @@ export function SidebarUpdateBanner({
       <div className="text-sm font-semibold text-foreground">
         {isDownloading
           ? t('sidebar.updateDownloading.title', 'Downloading update')
-          : t('sidebar.updateReady.title', 'Update ready')}
+          : isManualDownload
+            ? t('sidebar.updateReady.title', 'Update available')
+            : t('sidebar.updateReady.title', 'Update ready')}
       </div>
       <div className="mt-1 text-xs leading-relaxed text-muted-foreground">
         {isDownloading
@@ -46,7 +48,11 @@ export function SidebarUpdateBanner({
               'Version {{version}} is downloading in the background.',
               { version }
             )
-          : t('sidebar.updateReady.description', 'Restart to update to {{version}}.', { version })}
+          : isManualDownload
+            ? t('settings.about.openDownloadPage', 'Download version {{version}}', { version })
+            : t('sidebar.updateReady.description', 'Restart to update to {{version}}.', {
+                version,
+              })}
       </div>
       {isDownloading && percent != null ? (
         <div className="mt-2 flex items-center gap-2">
@@ -68,9 +74,11 @@ export function SidebarUpdateBanner({
           {t('sidebar.updateReady.later', 'Later')}
         </Button>
         {isDownloading ? null : (
-          <Button type="button" size="sm" className="h-7 px-2.5" onClick={onRestart}>
+          <Button type="button" size="sm" className="h-7 px-2.5" onClick={onInstall}>
             {isRestarting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
-            {t('sidebar.updateReady.restart', 'Update & Restart')}
+            {isManualDownload
+              ? t('settings.about.openDownloadPage', 'Download update')
+              : t('sidebar.updateReady.restart', 'Update & Restart')}
           </Button>
         )}
       </div>

@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, shell } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import type {
   CheckForElectronUpdateResult,
@@ -9,6 +9,8 @@ import { IPC_PUSH_CHANNELS } from '@lody/shared/electron-ipc'
 import { formatUnknownError } from '../utils'
 import { setAppQuitting } from '../window-state'
 import { readUpdaterReleaseMetadata } from './app-updater-metadata'
+import { readMacReleaseManifest } from './app-updater-manifest'
+import { isSelfHostedPlatform } from '../platform'
 
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000
 const LODY_UPDATER_STATE_EVENT = IPC_PUSH_CHANNELS.updaterState
@@ -70,6 +72,14 @@ export class AppUpdaterService {
       return
     }
 
+    if (this.usesManualMacUpdate()) {
+      void this.checkForUpdates()
+      this.intervalRef = setInterval(() => {
+        void this.checkForUpdates()
+      }, UPDATE_CHECK_INTERVAL_MS)
+      return
+    }
+
     autoUpdater.autoDownload = true
     autoUpdater.autoInstallOnAppQuit = false
 
@@ -124,7 +134,11 @@ export class AppUpdaterService {
     })
 
     try {
-      await autoUpdater.checkForUpdates()
+      if (this.usesManualMacUpdate()) {
+        await this.checkManualMacUpdate()
+      } else {
+        await autoUpdater.checkForUpdates()
+      }
       return { started: true }
     } catch (error) {
       const message = formatUnknownError(error)
@@ -142,7 +156,18 @@ export class AppUpdaterService {
     }
   }
 
-  quitAndInstall(): QuitAndInstallElectronUpdateResult {
+  async quitAndInstall(): Promise<QuitAndInstallElectronUpdateResult> {
+    if (this.state.phase === 'available' && this.state.manualDownloadUrl) {
+      try {
+        await shell.openExternal(this.state.manualDownloadUrl)
+        return { ok: true }
+      } catch (error) {
+        const message = formatUnknownError(error)
+        this.setState({ phase: 'error', error: message })
+        return { ok: false, error: message }
+      }
+    }
+
     if (this.state.phase !== 'downloaded') {
       return {
         ok: false,
@@ -173,6 +198,43 @@ export class AppUpdaterService {
     if (this.options.enabled === false) return false
     if (app.isPackaged) return true
     return process.env.LODY_ELECTRON_ENABLE_DEV_UPDATER === '1'
+  }
+
+  private usesManualMacUpdate(): boolean {
+    return process.platform === 'darwin' && isSelfHostedPlatform()
+  }
+
+  private async checkManualMacUpdate(): Promise<void> {
+    const manifestUrl = readNonEmptyString(import.meta.env.VITE_LODY_OSS_RELEASE_MANIFEST_URL)
+    if (!manifestUrl) throw new Error('Self-hosted release manifest URL is not configured')
+    const release = await readMacReleaseManifest({
+      manifestUrl,
+      currentVersion: app.getVersion()
+    })
+    if (!release.available) {
+      this.setState({
+        phase: 'up_to_date',
+        availableVersion: undefined,
+        downloadedVersion: undefined,
+        manualDownloadUrl: undefined,
+        releaseDate: release.publishedAt,
+        checkedAtMs: Date.now(),
+        error: undefined
+      })
+      return
+    }
+    this.setState({
+      phase: 'available',
+      availableVersion: release.version,
+      downloadedVersion: undefined,
+      manualDownloadUrl: release.downloadUrl,
+      releaseName: `Lody OSS ${release.version}`,
+      releaseDate: release.publishedAt,
+      releaseNotes: release.notes?.en ?? release.notes?.zh_CN,
+      releaseNotesByLocale: release.notes,
+      checkedAtMs: Date.now(),
+      error: undefined
+    })
   }
 
   private resolveUpdateChannel(): string {

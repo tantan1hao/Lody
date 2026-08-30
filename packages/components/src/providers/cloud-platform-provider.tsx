@@ -146,6 +146,7 @@ export function CloudPlatformProvider({ children }: { children: ReactNode }) {
       sync: {
         mode: localAgentSyncMode,
       },
+      selfHosted: null,
     }),
     [
       createOrganization,

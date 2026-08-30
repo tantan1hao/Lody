@@ -1,4 +1,11 @@
 import {
+  createSelfHostedStreamsTokenPort,
+  SELF_HOSTED_STREAMS_TOKEN,
+  type CloudBillingPort,
+  type CloudStreamsTokenPort,
+  type SelfHostedConfig,
+} from '@lody/platform';
+import {
   createServerTimeFetcher,
   getSessionIdFromRoomId,
   isLoroRepoDocDeleted,
@@ -33,6 +40,10 @@ import { formatErrorMessage } from '@/utils/format-error';
 import { findWorkspacesBySelector, formatWorkspaceCandidate } from '@/lib/workspace-selector';
 import { listAliveRoomIds } from '@/lib/loro/repo-existence';
 import { createCloudBillingPort, createCloudStreamsTokenPort } from '@/lib/cloud-cli-port';
+import { getCliPlatformKind } from '@/lib/cli-platform';
+import { loadCliSelfHostedConfig } from '@/lib/self-hosted-config';
+import { getOrCreateStableMachineIdAsync } from '@/utils/const';
+import { hostname } from 'node:os';
 
 export { listAliveRoomIds } from '@/lib/loro/repo-existence';
 
@@ -142,6 +153,14 @@ export type AuthContext = {
   userEmail: string;
   machineId: MachineId;
   machineName: string;
+  selfHostedControlOrigin?: string;
+  selfHostedWorkspaceId?: string;
+};
+
+export type SelfHostedCommandContext = {
+  auth: AuthContext;
+  workspace: WorkspaceSummary;
+  config: SelfHostedConfig;
 };
 
 export function printJson(value: unknown): void {
@@ -207,6 +226,36 @@ export function getAuthContextOrThrow(loggerName: string): AuthContext {
   };
 }
 
+export async function getSelfHostedCommandContext(
+  loggerName: string
+): Promise<SelfHostedCommandContext> {
+  if (getCliPlatformKind() !== 'self-hosted') {
+    throw new Error('Self-hosted command context requires LODY_PLATFORM=self-hosted.');
+  }
+  const logger = getLogger(loggerName);
+  const config = await loadCliSelfHostedConfig(logger);
+  const machineId = await getOrCreateStableMachineIdAsync();
+  return {
+    auth: {
+      token: SELF_HOSTED_STREAMS_TOKEN,
+      userId: config.user.id,
+      userName: config.user.name,
+      userEmail: 'local@lody.local',
+      machineId,
+      machineName: hostname(),
+      selfHostedControlOrigin: config.controlOrigin,
+      selfHostedWorkspaceId: config.workspace.id,
+    },
+    workspace: {
+      id: config.workspace.id,
+      name: config.workspace.name,
+      slug: config.workspace.slug,
+      role: 'owner',
+    },
+    config,
+  };
+}
+
 export async function resolveWorkspaceOrThrow(
   auth: AuthContext,
   selector?: string
@@ -224,25 +273,44 @@ export async function withWorkspaceManager<T>(
   fn: (manager: LoroDocumentManager) => Promise<T>
 ): Promise<T> {
   // One-shot commands write directly into the workspace repo and rely on
-  // Loro Streams to reach the cloud (and the daemon); without the remote
-  // transport the write would silently strand in the local SQLite store.
-  if (!LODY_AUTH_URL) {
-    throw new Error('Cloud workspace commands require LODY_AUTH_URL');
-  }
+  // Loro Streams to reach the other clients; without the remote transport the
+  // write would silently strand in the local SQLite store.
   const logger = getLogger(loggerName);
+  const platformKind = getCliPlatformKind();
+  let streamsTokens: CloudStreamsTokenPort;
+  let cloudBilling: CloudBillingPort | null = null;
+  if (platformKind === 'self-hosted') {
+    if (
+      !auth.selfHostedControlOrigin ||
+      !auth.selfHostedWorkspaceId ||
+      workspace.id !== auth.selfHostedWorkspaceId
+    ) {
+      throw new Error('Self-hosted command workspace does not match control config.');
+    }
+    streamsTokens = createSelfHostedStreamsTokenPort(auth.selfHostedControlOrigin);
+  } else {
+    if (platformKind === 'local') {
+      throw new Error('Workspace synchronization is unavailable in offline local mode.');
+    }
+    if (!LODY_AUTH_URL) {
+      throw new Error('Cloud workspace commands require LODY_AUTH_URL');
+    }
+    streamsTokens = createCloudStreamsTokenPort({
+      token: auth.token,
+      authBaseUrl: LODY_AUTH_URL,
+      authSiteUrl: LODY_AUTH_SITE_URL,
+      logger,
+    });
+    cloudBilling = createCloudBillingPort({ token: auth.token });
+  }
   const manager = await LoroDocumentManager.create(
     workspace.id as WorkspaceId,
     auth.userId,
     logger,
     {
       attachRemoteOnCreate: true,
-      streamsTokens: createCloudStreamsTokenPort({
-        token: auth.token,
-        authBaseUrl: LODY_AUTH_URL,
-        authSiteUrl: LODY_AUTH_SITE_URL,
-        logger,
-      }),
-      cloudBilling: createCloudBillingPort({ token: auth.token }),
+      streamsTokens,
+      cloudBilling,
     }
   );
 

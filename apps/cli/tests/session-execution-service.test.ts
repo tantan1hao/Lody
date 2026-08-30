@@ -140,6 +140,7 @@ const createBaseDeps = (
       detectAndAssociatePR: vi.fn(async () => null),
       autoCommitAndPushForPR: vi.fn(async () => {}),
       notifySessionCompleted: vi.fn(async () => {}),
+      notifySessionFailed: vi.fn(async () => {}),
     },
     recordChatFailure: vi.fn(async () => {}),
     maybeGenerateAndStoreSessionTitle: vi.fn(async () => {}),
@@ -1201,6 +1202,10 @@ describe('SessionExecutionService', () => {
     expect(getHistory()[0]?.status).toBe('failed');
     // Claiming the session finished would contradict the failure shown in chat.
     expect(notifySessionCompleted).not.toHaveBeenCalled();
+    expect(deps.turnFinalization.notifySessionFailed).toHaveBeenCalledWith(
+      'session-silent-turn',
+      'turn-1'
+    );
     // The pointer still advances: the prompt was delivered, so re-dispatching it
     // would repeat the same silent failure forever.
     expect(upsertDocMeta).toHaveBeenCalledWith(

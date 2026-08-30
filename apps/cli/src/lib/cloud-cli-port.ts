@@ -156,6 +156,9 @@ export function createCloudCliPort(options: CloudCliPortOptions): CloudPort {
         await notificationService.notifySessionCompleted(
           input as Parameters<NotificationService['notifySessionCompleted']>[0]
         ),
+      // The official notification backend has no failure endpoint yet. The
+      // shared turn hook exists for the self-hosted ntfy adapter.
+      notifySessionFailed: () => Promise.resolve(),
       notifyPermissionRequested: async (input) =>
         await notificationService.notifyPermissionRequested(
           input as Parameters<NotificationService['notifyPermissionRequested']>[0]

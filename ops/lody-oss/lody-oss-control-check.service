@@ -1,0 +1,14 @@
+[Unit]
+Description=Check the off-machine Lody OSS Restic repository
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/lody-oss-control-backup check
+Nice=10
+IOSchedulingClass=idle
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict

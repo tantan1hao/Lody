@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { PostHog } from 'posthog-node'
-import { isLocalPlatform } from './platform'
+import { isCloudPlatform } from './platform'
 
 const DEFAULT_FLUSH_TIMEOUT_MS = 2000
 const INSTALL_ID_FILE_NAME = 'posthog-main-install-id'
@@ -84,7 +84,7 @@ function resolveDistinctId(): string {
 
 function getClient(): PostHog | null {
   if (client) return client
-  if (isLocalPlatform()) return null
+  if (!isCloudPlatform()) return null
 
   const apiKey = resolveApiKey()
   const host = resolveHost()

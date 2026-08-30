@@ -2,6 +2,7 @@ import type { PlatformCapabilities } from './capabilities';
 import type { CloudApi } from './cloud-api';
 import type { ReadonlyStore } from './store';
 import type { PlatformKind } from '@lody/shared/platform-kind';
+import type { SelfHostedConfigState, SelfHostedStreamsConfig } from './self-hosted';
 
 export {
   PLATFORM_ENV_VAR,
@@ -81,6 +82,8 @@ export type PlatformSyncMode = 'local' | 'cloud' | 'dual';
 
 export interface PlatformSync {
   mode: PlatformSyncMode;
+  /** Static ACL-protected Streams access used only by the self-hosted adapter. */
+  selfHostedStreams?: SelfHostedStreamsConfig;
 }
 
 /**
@@ -101,4 +104,6 @@ export interface PlatformProvider {
    */
   cloudApi: CloudApi | null;
   sync: PlatformSync;
+  /** Runtime operator config; null for local and official cloud assemblies. */
+  selfHosted: { config: ReadonlyStore<SelfHostedConfigState> } | null;
 }

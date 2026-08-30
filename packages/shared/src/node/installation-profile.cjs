@@ -21,17 +21,23 @@ const LOCAL_PROFILE = Object.freeze({
   localCliHostPort: 17789,
 });
 
+const SELF_HOSTED_PROFILE = Object.freeze({
+  ...LOCAL_PROFILE,
+  platform: 'self-hosted',
+});
+
 function resolvePlatformKind(raw) {
   const value = raw?.trim();
   if (!value) return 'local';
-  if (value === 'local' || value === 'cloud') return value;
+  if (value === 'local' || value === 'self-hosted' || value === 'cloud') return value;
   throw new Error(
-    `Unrecognized LODY_PLATFORM value: ${JSON.stringify(raw)} (expected "local" or "cloud")`
+    `Unrecognized LODY_PLATFORM value: ${JSON.stringify(raw)} (expected "local", "self-hosted", or "cloud")`
   );
 }
 
 function getInstallationProfile(platform = resolvePlatformKind(process.env.LODY_PLATFORM)) {
-  return platform === 'local' ? LOCAL_PROFILE : CLOUD_PROFILE;
+  if (platform === 'cloud') return CLOUD_PROFILE;
+  return platform === 'self-hosted' ? SELF_HOSTED_PROFILE : LOCAL_PROFILE;
 }
 
 function getLodyDataDir(platform, homeDir = os.homedir()) {

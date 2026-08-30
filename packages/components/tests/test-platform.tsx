@@ -31,6 +31,7 @@ export const TEST_CLOUD_PLATFORM: PlatformProvider = {
   capabilities: CLOUD_PLATFORM_CAPABILITIES,
   cloudApi: cloudPlatformApi,
   sync: { mode: 'cloud' },
+  selfHosted: null,
 };
 
 export function TestCloudPlatformProvider({ children }: { children: ReactNode }) {

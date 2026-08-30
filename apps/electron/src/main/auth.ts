@@ -6,7 +6,7 @@ import { convexClient, crossDomainClient } from '@convex-dev/better-auth/client/
 import { app, safeStorage } from 'electron'
 import { Buffer } from 'node:buffer'
 import { resolve } from 'node:path'
-import { isLocalPlatform } from './platform'
+import { desktopInstallationProfile, isAccountlessPlatform } from './platform'
 
 const DEV_PLAINTEXT_AUTH_STORAGE_ENV = 'LODY_ELECTRON_PLAINTEXT_AUTH_STORAGE'
 const DEV_USER_DATA_DIR_ENV = 'LODY_ELECTRON_USER_DATA_DIR'
@@ -97,12 +97,12 @@ function normalizeConvexSiteUrl(url: string): string {
 
 const rawAuthBaseURL =
   import.meta.env.VITE_CONVEX_SITE_URL || import.meta.env.VITE_CONVEX_DEPLOY_URL
-// Local platform builds ship without cloud env and the renderer never
+// Accountless platform builds ship without cloud env and the renderer never
 // authenticates: keep the auth client constructible against an inert loopback
 // base URL so the main process can boot. Cloud builds still require the env.
 export const authBaseURL = rawAuthBaseURL
   ? normalizeConvexSiteUrl(rawAuthBaseURL)
-  : isLocalPlatform()
+  : isAccountlessPlatform()
     ? 'http://127.0.0.1:0'
     : ''
 if (!authBaseURL) {
@@ -130,9 +130,9 @@ export const authClient = createAuthClient({
       storage: authStorage
     }),
     electronClient({
-      signInURL: `${import.meta.env.VITE_SITE_URL || 'https://lody.ai'}/login`,
+      signInURL: `${import.meta.env.VITE_SITE_URL || authBaseURL}/login`,
       protocol: {
-        scheme: 'lody'
+        scheme: desktopInstallationProfile.desktopProtocol
       },
       storage: authStorage
     })

@@ -1,0 +1,21 @@
+[Unit]
+Description=Lody OSS Loro Streams
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=lodyoss
+Group=lodyoss
+ExecStart=/usr/bin/loro dev --db-path /srv/lody-oss/control/streams.sqlite --host 127.0.0.1 --port 8787 --protocol http1
+ExecStartPost=/usr/bin/curl --silent --show-error --retry 10 --retry-connrefused --retry-delay 1 --request PUT http://127.0.0.1:8787/ds/lody
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/srv/lody-oss/control
+
+[Install]
+WantedBy=multi-user.target

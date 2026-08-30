@@ -23,9 +23,8 @@ import { useAuthClient } from '../providers/convex-provider';
 import { resolveWorkspaceRemovalTransition } from '@/lib/workspace-removal-transition';
 import type { LodyAuthClient } from '@/lib/auth';
 import type { PlatformUser, WorkspaceSummary } from '@lody/platform';
-import { usePlatformSession } from '@lody/platform/react';
-import { isLocalAppPlatform } from '@/lib/app-platform';
-import { useImplicitLocalWorkspace } from '../providers/local-platform-provider';
+import { usePlatformSession, usePlatformWorkspaces } from '@lody/platform/react';
+import { isAccountlessAppPlatform } from '@/lib/app-platform';
 
 type UseOrganizationOptions = {
   targetSlug?: string;
@@ -121,7 +120,7 @@ export function useOrganization(options?: UseOrganizationOptions) {
   // exactly one branch exists for the whole app lifetime and hook order is
   // stable. The local branch must never touch Better Auth: it would issue
   // cloud HTTP from a build that promised zero cloud I/O.
-  if (isLocalAppPlatform()) {
+  if (isAccountlessAppPlatform()) {
     // oxlint-disable-next-line rules-of-hooks
     return useLocalOrganizationState();
   }
@@ -171,7 +170,8 @@ const rejectLocalWorkspaceMutation = () =>
   Promise.reject(new Error('Workspace management is not available on the local platform'));
 
 function useLocalOrganizationState(): UseOrganizationResult {
-  const workspace = useImplicitLocalWorkspace();
+  const workspaces = usePlatformWorkspaces();
+  const workspace = workspaces.status === 'ready' ? (workspaces.workspaces[0] ?? null) : null;
   const session = usePlatformSession();
   return useMemo(() => {
     const user = session.status === 'authenticated' ? session.user : null;

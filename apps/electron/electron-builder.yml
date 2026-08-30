@@ -60,6 +60,11 @@ electronLanguages:
 win:
   executableName: lody-oss
   icon: build/icon.ico
+  verifyUpdateCodeSignature: false
+  target:
+    - target: nsis
+      arch:
+        - x64
 nsis:
   # GitHub Releases rewrites spaces in uploaded asset names to periods, which would
   # desynchronize the file names electron-builder records in latest*.yml from the
@@ -71,7 +76,8 @@ nsis:
   createDesktopShortcut: always
 mac:
   icon: build/icon.icns
-  hardenedRuntime: true
+  identity: null
+  hardenedRuntime: false
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
@@ -79,13 +85,13 @@ mac:
     NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
     NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
     NSUserNotificationAlertStyle: banner
-  # Squirrel.Mac refuses to install an update whose code signature it cannot
-  # validate against the running app, so signed + notarized is what makes macOS
-  # auto-update work at all. Local builds without Apple credentials are still
-  # fine: electron-builder skips signing (and therefore notarization) with a
-  # warning rather than failing.
-  notarize: true
-  # Covers the zip target that Squirrel.Mac downloads for auto-update.
+  # v0.89.0 is private unsigned distribution: Finder installs the DMG, while
+  # release.json only prompts the user to download a newer DMG.
+  notarize: false
+  target:
+    - target: dmg
+      arch:
+        - arm64
   artifactName: LodyOSS-${version}-${arch}.${ext}
 dmg:
   artifactName: LodyOSS-${version}-${arch}.${ext}
@@ -107,12 +113,5 @@ deb:
   artifactName: LodyOSS-${version}-${arch}.${ext}
 includePdb: false
 npmRebuild: false
-# The public build has no VITE_ELECTRON_UPDATE_URL to inject: electron.vite.config.ts
-# deliberately strips every VITE_* value so public builds stay deterministic. This
-# provider is baked into the packaged app-update.yml instead, which is exactly the
-# fallback AppUpdaterService takes when no feed URL is defined. Generating latest*.yml
-# during packaging also depends on this block being present.
-publish:
-  provider: github
-  owner: LodyAI
-  repo: Lody
+# package-electron.mjs injects the generic provider only for Windows NSIS.
+# Unsigned macOS builds intentionally have no Squirrel feed or latest-mac.yml.

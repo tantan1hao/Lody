@@ -60,8 +60,9 @@ import { useConvexErrorMessage } from '@/hooks/use-convex-error-message';
 import { AuthenticatedConvexProvider } from '../providers/authenticated-convex-provider';
 import { InterfaceFontController } from '@/components/interface-font-controller';
 import { PlatformContext } from '@lody/platform/react';
-import { isLocalAppPlatform, useAppCapability } from '@/lib/app-platform';
+import { isAccountlessAppPlatform, isLocalAppPlatform, useAppCapability } from '@/lib/app-platform';
 import { getLocalPlatformProvider } from '../providers/local-platform-provider';
+import { getSelfHostedPlatformProvider } from '../providers/self-hosted-platform-provider';
 import { LocalPlatformAuthProvider } from '../providers/local-platform-auth-provider';
 import { CloudPlatformProvider } from '../providers/cloud-platform-provider';
 
@@ -92,9 +93,12 @@ function RootComponent() {
   // layers are replaced by static no-op contexts and the platform contract is
   // provided instead. Cloud builds render unchanged (their PlatformProvider
   // implementation lands later); the branch is build-time constant.
-  if (isLocalAppPlatform()) {
+  if (isAccountlessAppPlatform()) {
+    const platform = isLocalAppPlatform()
+      ? getLocalPlatformProvider()
+      : getSelfHostedPlatformProvider();
     return (
-      <PlatformContext.Provider value={getLocalPlatformProvider()}>
+      <PlatformContext.Provider value={platform}>
         <LocalPlatformAuthProvider authClient={authClient}>
           <RootApp />
         </LocalPlatformAuthProvider>
@@ -422,6 +426,7 @@ function DesktopDeepLinkRouter() {
   const { isAuthenticated: isConvexAuthenticated, isLoading: isConvexAuthLoading } =
     useAuthenticatedConvex();
   const getConvexErrorMessage = useConvexErrorMessage();
+  const managedMachineEnrollment = useAppCapability('managedMachineEnrollment');
   const claimMachinePairing = useCloudMutation(cloudOperations.machinePairing.claimFromDesktop);
   const [pendingMachinePairingRequestId, setPendingMachinePairingRequestId] = useState<
     string | null
@@ -432,6 +437,7 @@ function DesktopDeepLinkRouter() {
 
   useEffect(() => {
     if (
+      !managedMachineEnrollment ||
       !pendingMachinePairingRequestId ||
       !localMachineId ||
       !currentUser ||
@@ -476,6 +482,7 @@ function DesktopDeepLinkRouter() {
     isConvexAuthenticated,
     isConvexAuthLoading,
     localMachineId,
+    managedMachineEnrollment,
     pendingMachinePairingRequestId,
   ]);
 
@@ -507,7 +514,7 @@ function DesktopDeepLinkRouter() {
         auth_payload_chars: authCallbackToken?.length ?? 0,
       });
 
-      if (machinePairingRequestId) {
+      if (machinePairingRequestId && managedMachineEnrollment) {
         window.sessionStorage.setItem(PENDING_MACHINE_PAIRING_KEY, machinePairingRequestId);
         setPendingMachinePairingRequestId(machinePairingRequestId);
         return;
@@ -600,7 +607,14 @@ function DesktopDeepLinkRouter() {
 
       navigateToResolvedPath(navigate, targetPath);
     });
-  }, [desktopAuth, location.pathname, navigate, postHog, setElectronSignInInProgress]);
+  }, [
+    desktopAuth,
+    location.pathname,
+    managedMachineEnrollment,
+    navigate,
+    postHog,
+    setElectronSignInInProgress,
+  ]);
 
   return null;
 }

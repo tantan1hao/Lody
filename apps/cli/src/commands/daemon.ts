@@ -199,8 +199,8 @@ export const daemonCommand = new Command('daemon')
         const passthroughArgs = buildDaemonStartPassthroughArgs(options, cmd.args);
         const platformKind = getCliPlatformKind();
 
-        if (platformKind === 'local' && options.auth) {
-          console.error('--auth is not available on the local platform.');
+        if (platformKind !== 'cloud' && options.auth) {
+          console.error('--auth is available only on the official cloud platform.');
           await exitDaemonCommand(1);
           return;
         }

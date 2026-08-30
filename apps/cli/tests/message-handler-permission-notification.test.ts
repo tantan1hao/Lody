@@ -38,6 +38,7 @@ const createNotificationPort = (
   overrides: Partial<CloudNotificationsPort> = {}
 ): CloudNotificationsPort => ({
   notifySessionCompleted: async () => {},
+  notifySessionFailed: async () => {},
   notifyPermissionRequested: async () => {},
   recordPermissionRequested: async () => {},
   resolvePermissionRequested: async () => {},

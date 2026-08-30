@@ -544,6 +544,52 @@ importers:
         specifier: ^3.5.0
         version: 3.5.0(vite@7.3.1(@types/node@24.10.12)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.23.7)(yaml@2.8.2))
 
+  apps/web-oss:
+    dependencies:
+      '@lody/components':
+        specifier: workspace:*
+        version: link:../../packages/components
+      '@tanstack/react-router':
+        specifier: 'catalog:'
+        version: 1.170.18(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
+      convex:
+        specifier: 'catalog:'
+        version: 1.33.1(react@19.2.0)
+      jotai:
+        specifier: 'catalog:'
+        version: 2.17.1(@babel/core@7.29.0)(@babel/template@7.28.6)(@types/react@19.2.17)(react@19.2.0)
+      react:
+        specifier: 'catalog:'
+        version: 19.2.0
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.0(react@19.2.0)
+    devDependencies:
+      '@tailwindcss/vite':
+        specifier: ^4.3.0
+        version: 4.3.3(vite@6.4.1(@types/node@24.10.12)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.23.7)(yaml@2.8.2))
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.10.12
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.17
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.2.3(@types/react@19.2.17)
+      '@vitejs/plugin-react':
+        specifier: 'catalog:'
+        version: 4.7.0(vite@6.4.1(@types/node@24.10.12)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.23.7)(yaml@2.8.2))
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vite:
+        specifier: 'catalog:'
+        version: 6.4.1(@types/node@24.10.12)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.23.7)(yaml@2.8.2)
+      vite-plugin-wasm:
+        specifier: 'catalog:'
+        version: 3.5.0(vite@6.4.1(@types/node@24.10.12)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.23.7)(yaml@2.8.2))
+
   packages/acp-extension-claude:
     dependencies:
       '@agentclientprotocol/sdk':
@@ -1347,6 +1393,9 @@ importers:
       '@lody/shared':
         specifier: workspace:*
         version: link:../shared
+      zod:
+        specifier: 4.3.6
+        version: 4.3.6
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -16158,6 +16207,13 @@ snapshots:
       '@tailwindcss/oxide': 4.3.0
       tailwindcss: 4.3.0
       vite: 7.3.1(@types/node@24.10.12)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.23.7)(yaml@2.8.2)
+
+  '@tailwindcss/vite@4.3.3(vite@6.4.1(@types/node@24.10.12)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.23.7)(yaml@2.8.2))':
+    dependencies:
+      '@tailwindcss/node': 4.3.3
+      '@tailwindcss/oxide': 4.3.3
+      tailwindcss: 4.3.3
+      vite: 6.4.1(@types/node@24.10.12)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.23.7)(yaml@2.8.2)
 
   '@tailwindcss/vite@4.3.3(vite@8.1.5(@types/node@24.10.12)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.46.0)(tsx@4.23.7)(yaml@2.8.2))':
     dependencies:

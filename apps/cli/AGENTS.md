@@ -9,9 +9,10 @@ Root `AGENTS.md` applies; this file adds CLI context.
 runs `node --enable-source-maps dist-dev/index.js`. `pnpm dev:build` builds only;
 there is no on-demand TypeScript-loader fallback, so development startup must
 run built JavaScript.
-The public CLI defaults to local platform, does not discover deployment dotenv
-files, and must never initialize telemetry in local mode even if generic PostHog
-variables are present in the shell.
+The public CLI defaults to local platform and does not discover deployment dotenv
+files. Local and self-hosted modes must never initialize telemetry even if generic
+PostHog variables are present in the shell. Self-hosted mode obtains its single-user
+identity and Streams origin only from the validated/cached `SelfHostedConfig`.
 
 INVARIANT: the dev output layout must match production's — `index.js` plus flat sibling
 `claude-acp.js` / `codex-acp.js` / `*-worker.js`. `agent/setting.ts`, the Tinypool pools

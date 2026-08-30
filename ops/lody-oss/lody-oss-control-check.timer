@@ -1,0 +1,11 @@
+[Unit]
+Description=Weekly Lody OSS Restic repository check
+
+[Timer]
+OnCalendar=Sun *-*-* 04:00:00
+Persistent=true
+RandomizedDelaySec=30m
+Unit=lody-oss-control-check.service
+
+[Install]
+WantedBy=timers.target

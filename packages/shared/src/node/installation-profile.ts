@@ -32,21 +32,24 @@ const LOCAL_PROFILE: InstallationProfile = {
   localCliHostPort: 17_789,
 };
 
+const SELF_HOSTED_PROFILE: InstallationProfile = {
+  ...LOCAL_PROFILE,
+  platform: 'self-hosted',
+};
+
 /**
  * Returns the immutable installation profile selected at process assembly.
  * Invalid values fail before any state path or IPC endpoint is used.
  */
 export function getInstallationProfile(
-  platform: PlatformKind = resolvePlatformKind(process.env.LODY_PLATFORM),
+  platform: PlatformKind = resolvePlatformKind(process.env.LODY_PLATFORM)
 ): InstallationProfile {
-  return platform === 'local' ? LOCAL_PROFILE : CLOUD_PROFILE;
+  if (platform === 'cloud') return CLOUD_PROFILE;
+  return platform === 'self-hosted' ? SELF_HOSTED_PROFILE : LOCAL_PROFILE;
 }
 
 /** Root for process-owned durable state. Callers may inject a home in tests. */
-export function getLodyDataDir(
-  platform?: PlatformKind,
-  homeDir: string = os.homedir(),
-): string {
+export function getLodyDataDir(platform?: PlatformKind, homeDir: string = os.homedir()): string {
   const override = process.env.LODY_DATA_DIR?.trim();
   if (override) return path.resolve(override);
   return path.join(homeDir, getInstallationProfile(platform).dataDirectoryName);

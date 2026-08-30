@@ -183,10 +183,11 @@ export function MachineAgentSettings({
   const workspaceId = useAtomValue(currentWorkspaceIdAtom);
   const workspaceSlug = useAtomValue(currentWorkspaceSlugAtom);
   const getConvexErrorMessage = useConvexErrorMessage();
-  // Remote daemon restart/upgrade is brokered through the cloud control plane
-  // (lifecycle token mint); machine sharing needs workspace members. Both are
-  // cloud-only surfaces hidden on the local platform.
+  // Remote session dispatch only needs machine-flock + Streams. Managed machine
+  // enrollment also owns official lifecycle tokens, credentials, and the CLI
+  // version endpoint, so self-hosted mode must not expose those controls.
   const remoteMachinesAvailable = useAppCapability('remoteMachines');
+  const managedMachineEnrollment = useAppCapability('managedMachineEnrollment');
   const teamSharingAvailable = useAppCapability('teamSharing');
   const { data: session } = useStableSession();
   const { activeOrganization } = useOrganization();
@@ -584,7 +585,7 @@ export function MachineAgentSettings({
       ? accessByMachineId.get(resolvedSelectedMachine.id)?.ownerUserId
       : resolvedSelectedMachine?.ownerUserId;
   const selectedCanManageLifecycle =
-    remoteMachinesAvailable &&
+    managedMachineEnrollment &&
     !!resolvedSelectedMachine &&
     !!currentUserId &&
     selectedOwnerUserId === currentUserId;
@@ -670,7 +671,7 @@ export function MachineAgentSettings({
   useEffect(() => {
     // The latest-version probe only feeds the remote upgrade affordance; skip
     // the network call entirely when remote lifecycle is unavailable.
-    if (!remoteMachinesAvailable) return undefined;
+    if (!managedMachineEnrollment) return undefined;
     let cancelled = false;
     void fetchLatestCliVersion().then((result) => {
       if (cancelled) return;
@@ -679,7 +680,7 @@ export function MachineAgentSettings({
     return () => {
       cancelled = true;
     };
-  }, [remoteMachinesAvailable]);
+  }, [managedMachineEnrollment]);
 
   const refreshCapabilities = useCallback(
     async (args: {

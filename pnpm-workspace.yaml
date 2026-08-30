@@ -4,6 +4,7 @@ packages:
   - '!packages/acp-extension-kimi'
   - apps/cli
   - apps/electron
+  - apps/web-oss
   - site-docs
 
 catalog:

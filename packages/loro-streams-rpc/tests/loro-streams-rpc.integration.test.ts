@@ -90,7 +90,19 @@ const startLocalLoroDevServer = async (): Promise<LocalLoroDevServer> => {
   const dbPath = path.join(tempDir, 'dev.sqlite');
   const child = spawn(
     process.execPath,
-    [loroCliBinPath, 'dev', '--host', '127.0.0.1', '--port', '0', '--db-path', dbPath, '--json'],
+    [
+      loroCliBinPath,
+      'dev',
+      '--host',
+      '127.0.0.1',
+      '--port',
+      '0',
+      '--db-path',
+      dbPath,
+      '--protocol',
+      'http1',
+      '--json',
+    ],
     {
       cwd: packageRoot,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -177,6 +189,13 @@ const startLocalLoroDevServer = async (): Promise<LocalLoroDevServer> => {
   };
 };
 
+const ensureBucket = async (baseUrl: string, bucketId: string): Promise<void> => {
+  const response = await fetch(`${baseUrl}/ds/${encodeURIComponent(bucketId)}`, { method: 'PUT' });
+  if (response.status !== 200 && response.status !== 201 && response.status !== 409) {
+    throw new Error(`Failed to create integration bucket ${bucketId}: HTTP ${response.status}`);
+  }
+};
+
 describe.runIf(runIntegrationTests)('loro streams rpc integration', () => {
   let localServer: LocalLoroDevServer | null = null;
 
@@ -195,6 +214,7 @@ describe.runIf(runIntegrationTests)('loro streams rpc integration', () => {
 
     const bucketId = `rpc-${randomUUID()}`;
     const streamId = `workspace-${randomUUID()}:rpc:req:machine-${randomUUID()}`;
+    await ensureBucket(localServer.baseUrl, bucketId);
     const streamClient = createLoroStreamsJsonStreamClient({
       bucketId,
       baseUrl: localServer.baseUrl,
@@ -214,6 +234,7 @@ describe.runIf(runIntegrationTests)('loro streams rpc integration', () => {
     const machineId = `machine-${randomUUID()}` as MachineId;
     const bucketId = `rpc-${randomUUID()}`;
     const baseUrl = localServer.baseUrl;
+    await ensureBucket(baseUrl, bucketId);
     const createStreamClient = () =>
       createLoroStreamsJsonStreamClient({
         bucketId,
@@ -283,6 +304,7 @@ describe.runIf(runIntegrationTests)('loro streams rpc integration', () => {
     const machineId = `machine-${randomUUID()}` as MachineId;
     const bucketId = `rpc-${randomUUID()}`;
     const baseUrl = localServer.baseUrl;
+    await ensureBucket(baseUrl, bucketId);
     const createStreamClient = () =>
       createLoroStreamsJsonStreamClient({
         bucketId,

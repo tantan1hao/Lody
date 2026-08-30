@@ -25,7 +25,7 @@ const DEFAULT_HOST = 'https://us.i.posthog.com';
 const DEFAULT_FLUSH_TIMEOUT_MS = 2000;
 
 function resolveApiKey(): string | undefined {
-  if (resolvePlatformKind(process.env.LODY_PLATFORM) === 'local') return undefined;
+  if (resolvePlatformKind(process.env.LODY_PLATFORM) !== 'cloud') return undefined;
   const key =
     process.env.LODY_POSTHOG_KEY ||
     process.env.POSTHOG_API_KEY ||

@@ -2,6 +2,12 @@
 
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import {
+  createLocalPlatformProvider,
+  createStaticStore,
+  type PlatformProvider,
+} from '@lody/platform';
+import { PlatformContext } from '@lody/platform/react';
 import type { MachineId } from '@lody/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -10,6 +16,7 @@ import {
   type DesktopMachineMenuOption,
 } from '../src/components/sessions/desktop-run-config-menu';
 import { TooltipProvider } from '../src/ui/tooltip';
+import { TEST_CLOUD_PLATFORM } from './test-platform';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -36,6 +43,14 @@ const options: DesktopMachineMenuOption[] = [
   { value: localMachineId, label: 'Laptop', isPrivate: true },
   { value: remoteMachineId, label: 'Build server' },
 ];
+const localPlatform = createLocalPlatformProvider({
+  session: createStaticStore({ status: 'unauthenticated' }),
+  workspaces: createStaticStore({
+    status: 'ready',
+    workspaces: [],
+    activeWorkspaceId: null,
+  }),
+});
 
 describe('DesktopMachineMenu local machine label', () => {
   let container: HTMLDivElement;
@@ -59,20 +74,24 @@ describe('DesktopMachineMenu local machine label', () => {
   async function renderMenu({
     value = localMachineId,
     visibleLocalMachineId = localMachineId,
+    platform = TEST_CLOUD_PLATFORM,
   }: {
     value?: MachineId;
     visibleLocalMachineId?: MachineId | null;
+    platform?: PlatformProvider;
   } = {}) {
     await act(async () => {
       root.render(
-        <TooltipProvider>
-          <DesktopMachineMenu
-            value={value}
-            visibleLocalMachineId={visibleLocalMachineId}
-            options={options}
-            onChange={vi.fn()}
-          />
-        </TooltipProvider>
+        <PlatformContext.Provider value={platform}>
+          <TooltipProvider>
+            <DesktopMachineMenu
+              value={value}
+              visibleLocalMachineId={visibleLocalMachineId}
+              options={options}
+              onChange={vi.fn()}
+            />
+          </TooltipProvider>
+        </PlatformContext.Provider>
       );
     });
   }
@@ -130,5 +149,12 @@ describe('DesktopMachineMenu local machine label', () => {
     await openMenu();
     expect(getMachineItem('Laptop').textContent).not.toContain('Local');
     expect(getMachineItem('Build server').textContent).not.toContain('Local');
+  });
+
+  it('omits machine selection when remote machines are unavailable', async () => {
+    await renderMenu({ platform: localPlatform });
+
+    expect(container.querySelector('button')).toBeNull();
+    expect(container.textContent).not.toContain('Add machine');
   });
 });

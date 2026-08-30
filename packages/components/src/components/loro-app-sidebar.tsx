@@ -2531,7 +2531,7 @@ export function LoroAppSidebar({ className }: LoroAppSidebarProps) {
         percent={updateBanner.percent}
         isRestarting={isInstallingUpdate}
         onViewChangelog={() => setIsChangelogOpen(true)}
-        onRestart={() => {
+        onInstall={() => {
           void handleApplyDownloadedUpdate();
         }}
         onLater={handleDismissUpdateBanner}

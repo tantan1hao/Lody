@@ -14,10 +14,11 @@ symlink for new scoped files.
 
 ## Repository boundary
 
-This is the standalone public source tree. It includes `apps/{cli,electron}`
-and the packages they consume. It intentionally excludes hosted backend
-implementations, deployment/operator configuration, billing operations,
-private service secrets, and the Web and mobile app sources.
+This is the standalone public source tree. It includes `apps/{cli,electron,web-oss}`
+and the packages they consume. It intentionally excludes official hosted backend
+implementations, billing operations, private service secrets, and official Web/mobile
+composition roots. `apps/web-oss` and `ops/lody-oss` are the narrow single-user
+self-hosted composition and secret-free operator templates.
 
 - Never add a dependency on `@lody/convex`, a private workspace package, or a
   generated backend API declaration.
@@ -27,17 +28,21 @@ private service secrets, and the Web and mobile app sources.
   PR-driven auto-archive, and omits machine selection when `remoteMachines` is
   absent. Gate entries and their background work through capabilities rather
   than build-kind or environment checks.
-- Shared packages stay platform-neutral. The public Electron composition
-  selects `local` explicitly; private Web/mobile entries and cloud composition
-  roots may inject `cloud` without forking those shared packages.
+- Shared packages stay platform-neutral. Public Electron entries select `local` or
+  `self-hosted` explicitly; private Web/mobile entries and cloud composition roots may
+  inject `cloud` without forking those shared packages.
 - The code-review-viewer build accepts `LODY_RELEASE_VERSION` for downstream
   immutable packaging; without it, the public package version is authoritative.
-- The OSS desktop entry is local-only and must not make authenticated product-cloud requests;
-  public managed-runtime artifact downloads are the explicit exception.
-- An absent platform selector resolves to `local`; public build scripts must
-  not accept or discover staging/production deployment presets.
-- Local CLI, renderer, and Electron-main telemetry is hard-disabled even when
-  unrelated PostHog variables exist in the caller's shell.
+- OSS `local` mode is strictly offline. OSS `self-hosted` mode may connect only to the
+  explicit HTTPS control/update origins supplied by its composition root; neither mode
+  may make authenticated product-cloud requests. Public managed-runtime artifact
+  downloads remain the explicit local exception.
+- An absent runtime platform selector resolves to `local`; public build scripts must not
+  accept or discover official staging/production deployment presets. Electron `oss` mode
+  is self-hosted and requires explicit `LODY_OSS_CONTROL_URL` and
+  `LODY_OSS_UPDATE_URL`; `local` remains a separate build mode.
+- Local and self-hosted CLI, renderer, Web, and Electron-main telemetry is hard-disabled
+  even when unrelated PostHog variables exist in the caller's shell.
 - Client workflows that require daemon support negotiate integer protocol versions through
   `MachineMeta.protocolCapabilities`; never infer support from the CLI release version. Missing
   capabilities mean legacy/unsupported. Advertised set and version checks share one binding in
@@ -92,6 +97,8 @@ after changing package scope or cloud/local composition.
 
 - `apps/cli`: agent execution, local persistence, Machine RPC, Code Collab
 - `apps/electron`: desktop shell and bundled CLI lifecycle
+- `apps/web-oss`: single-user self-hosted Web composition over the shared router/runtime
+- `ops/lody-oss`: secret-free nginx, systemd, ntfy, release, and backup templates
 - `packages/components`: shared React product/workspace UI
 - `packages/platform`: provider and capability contracts plus local defaults
 - `packages/cloud-api`: public optional-cloud client contract
@@ -110,9 +117,9 @@ Use Node.js 22+ and the pnpm version pinned in `package.json`.
   dependency installation. The public preinstall guard rejects a second nested
   install because it would mix virtual-store identities. Use a separate clone
   for standalone public development.
-- The canonical desktop command is `pnpm start:local`; it rebuilds both the
-  bundled CLI and local OSS renderer before launch. Root `pnpm build` builds
-  the same local desktop composition.
+- The canonical offline desktop command is `pnpm start:local`; it rebuilds both the
+  bundled CLI and local OSS renderer before launch. A self-hosted Electron build uses
+  the default `oss` mode and requires the two explicit self-hosted HTTPS origins.
 - Before committing, normally run `pnpm check` and `pnpm format`.
 - If a user explicitly asks to skip tests, do not run test commands; report the
   narrower type/build/static validation that was performed.

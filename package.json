@@ -17,6 +17,7 @@
     "format:check": "corepack pnpm -r --filter '!acp-extension-claude' --filter '!acp-extension-codex' run format:check",
     "typecheck": "corepack pnpm --filter lody prepare:acp-adapters && corepack pnpm -r --workspace-concurrency=1 --filter '!acp-extension-claude' --filter '!acp-extension-codex' run typecheck",
     "test": "corepack pnpm -r --workspace-concurrency=1 run test",
+    "test:release-manifest": "node --test scripts/build-lody-oss-release-manifest.test.mjs",
     "test:ci": "corepack pnpm -r --workspace-concurrency=2 --filter \"!@lody/electron\" --filter \"!acp-extension-codex\" --filter \"!acp-extension-claude\" run test --maxWorkers=2 && corepack pnpm --filter @lody/electron run test",
     "test:watch": "corepack pnpm -r run test:watch",
     "test:coverage": "corepack pnpm -r run test:coverage",
@@ -34,6 +35,7 @@
     "check": "corepack pnpm typecheck && corepack pnpm lint && corepack pnpm test:ci && corepack pnpm lint:i18n && corepack pnpm check:code-collab-imports && corepack pnpm check:platform-boundaries && corepack pnpm check:public-boundary",
     "install:all": "corepack pnpm install",
     "build:electron": "corepack pnpm --dir apps/electron build",
+    "build:web-oss": "corepack pnpm --filter @lody/web-oss build",
     "build:electron:mac": "corepack pnpm --dir apps/electron build:mac",
     "build:electron:win": "corepack pnpm --dir apps/electron build:win",
     "build:electron:linux": "corepack pnpm --dir apps/electron build:linux"

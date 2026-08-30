@@ -21,6 +21,12 @@ describe('readUpdateBannerState', () => {
     }
   );
 
+  it('reports a manual installer download as available', () => {
+    expect(readUpdateBannerState(state({ phase: 'available', availableVersion: '1.1.0' }))).toEqual(
+      { stage: 'available', version: '1.1.0', percent: null }
+    );
+  });
+
   it('reports a download in progress with rounded percent', () => {
     expect(
       readUpdateBannerState(

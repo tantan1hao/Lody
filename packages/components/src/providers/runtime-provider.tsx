@@ -63,6 +63,7 @@ const resolveRuntimeEagerSyncSurface = (): EagerSyncSurface => {
 
 export function RuntimeProvider({ children }: { children: ReactNode }) {
   const platform = usePlatform();
+  const usesManagedMachineDirectory = platform.capabilities.has('managedMachineEnrollment');
   // Use workspaceSlug for runtime initialization (available immediately from URL)
   // Use workspaceId for WebSocket connections (requires server response)
   const workspaceSlug = useAtomValue(currentWorkspaceSlugAtom);
@@ -96,7 +97,11 @@ export function RuntimeProvider({ children }: { children: ReactNode }) {
       ? null
       : {
           workspaceId,
-          machineIds: new Set(visibleMachineIndex.convexAuthorizedMachineIds),
+          machineIds: new Set(
+            usesManagedMachineDirectory
+              ? visibleMachineIndex.convexAuthorizedMachineIds
+              : visibleMachineIndex.machines.keys()
+          ),
         };
 
   // Routed to PostHog via the runtime's onAnalyticsEvent. Kept in a ref so the
@@ -104,8 +109,9 @@ export function RuntimeProvider({ children }: { children: ReactNode }) {
   const postHog = usePostHog();
   const postHogRef = useRef(postHog);
   postHogRef.current = postHog;
-  const tokenRef = useRef(token);
-  tokenRef.current = token;
+  const runtimeToken = platform.sync.selfHostedStreams?.token ?? token;
+  const tokenRef = useRef(runtimeToken);
+  tokenRef.current = runtimeToken;
 
   const prevWorkspaceSlugRef = useRef<string | null>(null);
   const prevWorkspaceIdRef = useRef<WorkspaceId | null>(null);
@@ -260,13 +266,17 @@ export function RuntimeProvider({ children }: { children: ReactNode }) {
           // Platform assembly is the only authority for room topology. Do not
           // re-probe Electron or cloud configuration inside the runtime.
           syncMode: platform.sync.mode,
+          selfHostedStreams: platform.sync.selfHostedStreams,
           getAuthorizedMachineIds: () => {
             const snapshot = authorizedMachineIdsRef.current;
             return snapshot?.workspaceId === effectiveWorkspaceId ? snapshot.machineIds : null;
           },
           ...(telemetryEnabled
             ? {
-                onAnalyticsEvent: (event: { name: string; properties?: Record<string, unknown> }) => {
+                onAnalyticsEvent: (event: {
+                  name: string;
+                  properties?: Record<string, unknown>;
+                }) => {
                   capturePostHogEvent(postHogRef.current, event.name, event.properties);
                 },
               }
@@ -357,6 +367,7 @@ export function RuntimeProvider({ children }: { children: ReactNode }) {
     clearPresenceStates,
     isLocalPlatform,
     platform.sync.mode,
+    platform.sync.selfHostedStreams,
     setControlConnectionState,
     setRuntimeInitializing,
     setRuntime,
@@ -373,17 +384,17 @@ export function RuntimeProvider({ children }: { children: ReactNode }) {
       setControlConnectionState('idle');
       return;
     }
-    if (!token) {
+    if (!runtimeToken) {
       setControlConnectionState('idle');
       void runtime.setAuthToken(null).catch((error: unknown) => {
         logRuntimeOperationError('clear auth token', error);
       });
       return;
     }
-    void runtime.setAuthToken(token).catch((error: unknown) => {
+    void runtime.setAuthToken(runtimeToken).catch((error: unknown) => {
       logRuntimeOperationError('set auth token', error);
     });
-  }, [runtime, setControlConnectionState, token]);
+  }, [runtime, runtimeToken, setControlConnectionState]);
 
   useEffect(() => {
     if (!runtime || !localProbeAttempted) {

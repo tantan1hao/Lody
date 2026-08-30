@@ -8,12 +8,19 @@ import {
   defineCloudQuery,
   createLocalCloudPort,
   createLocalPlatformProvider,
+  createSelfHostedCloudPort,
+  createSelfHostedPlatformProvider,
+  createSelfHostedStreamsConfig,
   createStaticStore,
   createStore,
   isLocalUserId,
   isLocalWorkspaceId,
   LOCAL_PLATFORM_CAPABILITIES,
+  loadSelfHostedConfig,
   PLATFORM_CAPABILITIES,
+  SELF_HOSTED_PLATFORM_CAPABILITIES,
+  SelfHostedConfigSchema,
+  type SelfHostedConfig,
   type PlatformSessionState,
   DEFAULT_RUNTIME_ARTIFACTS_BASE_URL,
   resolveRuntimeArtifactsBaseUrl,
@@ -30,6 +37,7 @@ describe('resolvePlatformKind', () => {
 
   it('parses explicit kinds and trims whitespace', () => {
     expect(resolvePlatformKind('local')).toBe('local');
+    expect(resolvePlatformKind(' self-hosted ')).toBe('self-hosted');
     expect(resolvePlatformKind(' cloud ')).toBe('cloud');
   });
 
@@ -45,6 +53,11 @@ describe('capabilities', () => {
       expect(LOCAL_PLATFORM_CAPABILITIES.has(capability)).toBe(false);
       expect(CLOUD_PLATFORM_CAPABILITIES.has(capability)).toBe(true);
     }
+  });
+
+  it('self-hosted exposes remote dispatch without official enrollment', () => {
+    expect(SELF_HOSTED_PLATFORM_CAPABILITIES.list()).toEqual(['remoteMachines']);
+    expect(SELF_HOSTED_PLATFORM_CAPABILITIES.has('managedMachineEnrollment')).toBe(false);
   });
 
   it('createCapabilitySet deduplicates and answers membership', () => {
@@ -201,6 +214,143 @@ describe('runtime artifact channel assembly', () => {
   it('rejects an invalid operator mirror at process assembly', () => {
     expect(() => resolveRuntimeArtifactsBaseUrl('not a URL')).toThrow(
       /Invalid runtime artifacts base URL/
+    );
+  });
+});
+
+const selfHostedConfig: SelfHostedConfig = {
+  version: 1,
+  controlOrigin: 'https://tan.example.test',
+  workspace: { id: 'lw_shared', slug: 'local', name: 'Lody' },
+  user: { id: 'local:shared', name: 'Owner' },
+  ntfy: { baseUrl: 'https://tan.example.test:8093/', topic: 'lody-oss' },
+  downloads: {
+    pageUrl: 'https://updates.example.test/lody-oss/',
+    macArm64Url: 'https://updates.example.test/lody-oss/LodyOSS.dmg',
+    windowsX64Url: 'https://updates.example.test/lody-oss/LodyOSS.exe',
+  },
+  releaseManifestUrl: 'https://updates.example.test/lody-oss/release.json',
+};
+
+describe('self-hosted config', () => {
+  it('validates the version and every network trust-boundary URL', () => {
+    expect(SelfHostedConfigSchema.parse(selfHostedConfig)).toEqual(selfHostedConfig);
+    expect(() => SelfHostedConfigSchema.parse({ ...selfHostedConfig, version: 2 })).toThrow();
+    expect(() =>
+      SelfHostedConfigSchema.parse({
+        ...selfHostedConfig,
+        releaseManifestUrl: 'http://updates.example.test/release.json',
+      })
+    ).toThrow(/HTTPS/);
+    expect(() =>
+      SelfHostedConfigSchema.parse({
+        ...selfHostedConfig,
+        controlOrigin: 'https://tan.example.test/control',
+      })
+    ).toThrow(/origin/);
+  });
+
+  it('uses a validated cache only after the control request fails', async () => {
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+    };
+    const first = await loadSelfHostedConfig({
+      controlOrigin: selfHostedConfig.controlOrigin,
+      storage,
+      fetchImpl: async () => new Response(JSON.stringify(selfHostedConfig), { status: 200 }),
+    });
+    expect(first.source).toBe('network');
+
+    const cached = await loadSelfHostedConfig({
+      controlOrigin: selfHostedConfig.controlOrigin,
+      storage,
+      fetchImpl: async () => {
+        throw new Error('offline');
+      },
+    });
+    expect(cached).toEqual({ config: selfHostedConfig, source: 'cache' });
+  });
+});
+
+describe('self-hosted adapters', () => {
+  it('reuses the fixed workspace and static Streams endpoint in web mode', () => {
+    const configStore = createStaticStore({
+      status: 'ready',
+      config: selfHostedConfig,
+      source: 'network',
+    } as const);
+    const provider = createSelfHostedPlatformProvider({
+      session: createStaticStore({
+        status: 'authenticated',
+        user: { id: selfHostedConfig.user.id, name: selfHostedConfig.user.name },
+      } as const),
+      workspaces: createStaticStore({
+        status: 'ready',
+        workspaces: [
+          {
+            id: selfHostedConfig.workspace.id,
+            name: selfHostedConfig.workspace.name,
+            slug: selfHostedConfig.workspace.slug,
+            role: 'owner',
+          },
+        ],
+        activeWorkspaceId: selfHostedConfig.workspace.id,
+      } as const),
+      config: configStore,
+      controlOrigin: selfHostedConfig.controlOrigin,
+      syncMode: 'cloud',
+    });
+    expect(provider.kind).toBe('self-hosted');
+    expect(provider.sync.mode).toBe('cloud');
+    expect(provider.sync.selfHostedStreams).toEqual(
+      createSelfHostedStreamsConfig(selfHostedConfig.controlOrigin)
+    );
+    expect(provider.sync.selfHostedStreams?.baseUrl).toBe(selfHostedConfig.controlOrigin);
+    expect(provider.capabilities.list()).toEqual(['remoteMachines']);
+    expect(provider.cloudApi).toBeNull();
+  });
+
+  it('allows only the configured single user/workspace and sends concise ntfy messages', async () => {
+    const requests: Array<{ url: string; init?: RequestInit }> = [];
+    const port = createSelfHostedCloudPort({
+      config: selfHostedConfig,
+      machineName: 'Mac mini',
+      fetchImpl: async (input, init) => {
+        requests.push({ url: String(input), init });
+        return new Response('', { status: 200 });
+      },
+    });
+    expect(port.kind).toBe('self-hosted');
+    expect(port.streamsTokens).not.toBeNull();
+    expect(port.billing).toBeNull();
+    await expect(
+      port.access.verifyMachineAccess({
+        workspaceId: selfHostedConfig.workspace.id as WorkspaceId,
+        requesterUserId: selfHostedConfig.user.id,
+      })
+    ).resolves.toEqual({ allowed: true });
+    await expect(
+      port.access.verifyMachineAccess({
+        workspaceId: selfHostedConfig.workspace.id as WorkspaceId,
+        requesterUserId: 'someone-else',
+      })
+    ).resolves.toEqual({ allowed: false, reason: 'requester_not_member' });
+
+    await port.notifications?.notifySessionFailed({
+      sessionId: 'session-1' as never,
+      occurrenceId: 'turn-1',
+      sessionTitle: 'Build release',
+      workspaceId: selfHostedConfig.workspace.id as WorkspaceId,
+      workspaceSlug: selfHostedConfig.workspace.slug,
+      userId: selfHostedConfig.user.id,
+    });
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.url).toBe('https://tan.example.test:8093/lody-oss');
+    expect(requests[0]?.init?.body).toBe('Mac mini · Build release · failed');
+    expect(new Headers(requests[0]?.init?.headers).get('Click')).toBe(
+      'https://tan.example.test/local/sessions/session-1'
     );
   });
 });

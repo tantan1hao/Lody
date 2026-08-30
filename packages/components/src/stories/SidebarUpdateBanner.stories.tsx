@@ -9,7 +9,7 @@ const meta: Meta<typeof SidebarUpdateBanner> = {
     version: '1.4.2',
     isRestarting: false,
     onViewChangelog: fn(),
-    onRestart: fn(),
+    onInstall: fn(),
     onLater: fn(),
   },
   render: (args) => (
@@ -24,6 +24,10 @@ type Story = StoryObj<typeof SidebarUpdateBanner>;
 
 export const Downloading: Story = {
   args: { stage: 'downloading', percent: 38 },
+};
+
+export const ManualDownload: Story = {
+  args: { stage: 'available', percent: null },
 };
 
 // Some feeds report no percent at all; the banner then drops the progress row

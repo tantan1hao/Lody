@@ -95,6 +95,34 @@ function assertPublishPolicyIsExplicit(electronBuilderArguments) {
   }
 }
 
+export function resolveUpdatePublish(rawUpdateUrl) {
+  const candidate = rawUpdateUrl.trim()
+  if (!candidate) return undefined
+
+  let updateUrl
+  try {
+    updateUrl = new URL(candidate)
+  } catch {
+    throw new Error(`LODY_OSS_UPDATE_URL is not a valid URL: ${JSON.stringify(candidate)}`)
+  }
+  if (updateUrl.protocol !== 'https:') {
+    throw new Error('LODY_OSS_UPDATE_URL must use HTTPS')
+  }
+  if (updateUrl.username || updateUrl.password || updateUrl.search || updateUrl.hash) {
+    throw new Error('LODY_OSS_UPDATE_URL must not contain credentials, a query, or a fragment')
+  }
+
+  return [{ provider: 'generic', url: updateUrl.href }]
+}
+
+export function shouldEmbedWindowsUpdateFeed(forwardedArguments, platform = process.platform) {
+  if (forwardedArguments.includes('--win') || forwardedArguments.includes('--windows')) return true
+  const hasExplicitPlatform = forwardedArguments.some((argument) =>
+    ['--mac', '--macos', '--linux', '--win', '--windows', '-m', '-l', '-w'].includes(argument)
+  )
+  return !hasExplicitPlatform && platform === 'win32'
+}
+
 function resolveRunner() {
   const npmExecPath = process.env.npm_execpath
   if (!npmExecPath || !/\.(?:cjs|mjs|js)$/iu.test(npmExecPath)) {
@@ -105,53 +133,75 @@ function resolveRunner() {
   return { command: process.execPath, args: [npmExecPath] }
 }
 
-const forwardedArguments = stripArgumentSeparators(process.argv.slice(2))
-const version = resolveVersion(forwardedArguments)
-const electronBuilderArguments = withExplicitPublishPolicy(forwardedArguments)
-assertPublishPolicyIsExplicit(electronBuilderArguments)
+function main() {
+  const forwardedArguments = stripArgumentSeparators(process.argv.slice(2))
+  const version = resolveVersion(forwardedArguments)
+  const electronBuilderArguments = withExplicitPublishPolicy(forwardedArguments)
+  assertPublishPolicyIsExplicit(electronBuilderArguments)
+  const publish = shouldEmbedWindowsUpdateFeed(forwardedArguments)
+    ? resolveUpdatePublish(process.env.LODY_OSS_UPDATE_URL ?? '')
+    : undefined
 
-const generatedConfigDirectory = mkdtempSync(path.join(tmpdir(), 'lody-oss-electron-builder-'))
-const generatedConfigPath = path.join(generatedConfigDirectory, 'electron-builder.json')
-writeFileSync(
-  generatedConfigPath,
-  `${JSON.stringify({ extends: baseConfigPath, extraMetadata: { version } }, null, 2)}\n`,
-  'utf8'
-)
+  const generatedConfigDirectory = mkdtempSync(path.join(tmpdir(), 'lody-oss-electron-builder-'))
+  const generatedConfigPath = path.join(generatedConfigDirectory, 'electron-builder.json')
+  writeFileSync(
+    generatedConfigPath,
+    `${JSON.stringify(
+      {
+        extends: baseConfigPath,
+        extraMetadata: { version },
+        ...(publish ? { publish } : {})
+      },
+      null,
+      2
+    )}\n`,
+    'utf8'
+  )
 
-let cleanedUp = false
-function cleanupGeneratedConfig() {
-  if (cleanedUp) return
-  cleanedUp = true
-  rmSync(generatedConfigDirectory, { recursive: true, force: true })
+  let cleanedUp = false
+  function cleanupGeneratedConfig() {
+    if (cleanedUp) return
+    cleanedUp = true
+    rmSync(generatedConfigDirectory, { recursive: true, force: true })
+  }
+
+  console.log(`[package-electron] packaging Lody OSS ${version}`)
+  console.log(
+    publish
+      ? `[package-electron] generic update feed: ${publish[0].url}`
+      : '[package-electron] no electron-updater feed for this target'
+  )
+
+  const runner = resolveRunner()
+  const child = spawn(
+    runner.command,
+    [
+      ...runner.args,
+      'exec',
+      'electron-builder',
+      '--config',
+      generatedConfigPath,
+      ...electronBuilderArguments
+    ],
+    {
+      cwd: electronDir,
+      env: process.env,
+      stdio: 'inherit'
+    }
+  )
+
+  child.on('close', (code) => {
+    cleanupGeneratedConfig()
+    process.exit(code ?? 1)
+  })
+
+  child.on('error', (error) => {
+    cleanupGeneratedConfig()
+    console.error(error)
+    process.exit(1)
+  })
 }
 
-console.log(`[package-electron] packaging Lody OSS ${version}`)
-
-const runner = resolveRunner()
-const child = spawn(
-  runner.command,
-  [
-    ...runner.args,
-    'exec',
-    'electron-builder',
-    '--config',
-    generatedConfigPath,
-    ...electronBuilderArguments
-  ],
-  {
-    cwd: electronDir,
-    env: process.env,
-    stdio: 'inherit'
-  }
-)
-
-child.on('close', (code) => {
-  cleanupGeneratedConfig()
-  process.exit(code ?? 1)
-})
-
-child.on('error', (error) => {
-  cleanupGeneratedConfig()
-  console.error(error)
-  process.exit(1)
-})
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main()
+}

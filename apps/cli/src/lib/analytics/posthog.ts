@@ -51,7 +51,7 @@ interface CliAnalyticsState {
 let state: CliAnalyticsState | null = null;
 
 function resolveApiKey(): string | undefined {
-  if (resolvePlatformKind(process.env.LODY_PLATFORM) === 'local') return undefined;
+  if (resolvePlatformKind(process.env.LODY_PLATFORM) !== 'cloud') return undefined;
   const key =
     process.env.LODY_POSTHOG_KEY ||
     process.env.POSTHOG_API_KEY ||

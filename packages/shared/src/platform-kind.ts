@@ -1,7 +1,7 @@
 /** Build/launch-time product assembly. Kept below @lody/platform so Node-only
  * state and IPC helpers can select an installation namespace without creating
  * a dependency cycle. */
-export type PlatformKind = 'local' | 'cloud';
+export type PlatformKind = 'local' | 'self-hosted' | 'cloud';
 
 export const PLATFORM_ENV_VAR = 'LODY_PLATFORM';
 export const PLATFORM_VITE_ENV_VAR = 'VITE_LODY_PLATFORM';
@@ -20,8 +20,8 @@ export function isLocalUserId(id: string): boolean {
 export function resolvePlatformKind(raw: string | undefined | null): PlatformKind {
   const value = raw?.trim();
   if (!value) return 'local';
-  if (value === 'local' || value === 'cloud') return value;
+  if (value === 'local' || value === 'self-hosted' || value === 'cloud') return value;
   throw new Error(
-    `Unrecognized ${PLATFORM_ENV_VAR} value: ${JSON.stringify(raw)} (expected "local" or "cloud")`
+    `Unrecognized ${PLATFORM_ENV_VAR} value: ${JSON.stringify(raw)} (expected "local", "self-hosted", or "cloud")`
   );
 }

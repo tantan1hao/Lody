@@ -30,16 +30,18 @@ Root `AGENTS.md` also applies.
 - Preload runs under the renderer CSP. Zod schemas used there must pass
   `{ jitless: true }`; do not add `unsafe-eval` to accommodate Zod's JIT path.
 
-## Local OSS composition
+## OSS composition
 
-- The public desktop composition is local-only. It must not discover deployment env
-  files, initialize authenticated product-cloud behavior, or enable telemetry.
+- `local` is strictly offline. `self-hosted` may connect only to the explicitly embedded
+  control/update HTTPS origins and still must not initialize authenticated product-cloud
+  behavior or telemetry.
 - The build-time `mainPlatformKind` is the source of truth for data directories,
   sockets, run/lock files, host leases, and workspace catalogs. Pass it explicitly;
   never infer it from an inherited `LODY_PLATFORM` value.
-- The Vite toolchain mode is named `oss`, while the injected product platform remains
-  `VITE_LODY_PLATFORM=local`. `electron.vite.config.ts` owns this mapping and must
-  clear caller-provided `VITE_*` values before injecting audited local constants.
+- Vite mode `local` injects `VITE_LODY_PLATFORM=local`; mode `oss` injects
+  `VITE_LODY_PLATFORM=self-hosted` and requires `LODY_OSS_CONTROL_URL` plus
+  `LODY_OSS_UPDATE_URL`. `electron.vite.config.ts` owns both mappings and must clear
+  inherited `VITE_*` values before injecting audited constants.
 - Run desktop development from the repository root with `pnpm start:local`. It must
   rebuild the embedded CLI and local renderer before launching the bundled CLI; do
   not reuse production/cloud artifacts.
@@ -53,8 +55,9 @@ Root `AGENTS.md` also applies.
   the single `lw_*` workspace from the CLI catalog. Do not split this into independent
   fallbacks. A missing catalog means provisioning; malformed identities or multiple
   active workspaces are errors.
-- OSS local mode must not create a PostHog client, write an analytics install id, or
-  upload source maps, even when unrelated analytics variables exist in the shell.
+- OSS local and self-hosted modes must not create a PostHog client, write an analytics
+  install id, or upload source maps, even when unrelated analytics variables exist in
+  the shell.
 
 ## Renderer and window integration
 
@@ -130,19 +133,19 @@ Root `AGENTS.md` also applies.
   never `electron-builder` directly. It injects the released version via
   `extraMetadata` so `package.json` is a fallback rather than the release source of
   truth, and it forces `--publish never` unless a caller opts in.
-- The `publish` block in `electron-builder.yml` is what gives the public build an
-  update feed: `electron.vite.config.ts` strips every `VITE_*` value, so
-  `AppUpdaterService` finds no `VITE_ELECTRON_UPDATE_URL` and falls back to the
-  packaged `app-update.yml`. That block is also what makes electron-builder emit
-  `latest*.yml` at all. Its tag contract is `v${version}`.
+- `package-electron.mjs` injects the generic provider only for Windows targets and only
+  from HTTPS `LODY_OSS_UPDATE_URL`; this emits NSIS `latest.yml`/blockmap metadata.
+  Unsigned macOS self-hosting is DMG-only and reads the bounded `release.json` manifest
+  for a manual-download banner. It must not emit ZIP or `latest-mac.yml` until Developer
+  ID signing/notarization is deliberately enabled.
 - Artifact names must stay space-free. GitHub Releases rewrites spaces in uploaded
   asset names to periods, which would desynchronize them from the names recorded in
   `latest*.yml`. Do not reintroduce `${productName}` into an `artifactName`.
-- macOS releases must be signed and notarized. Squirrel.Mac will not install an update
-  it cannot validate against the running app's signature, so an unsigned macOS build
-  silently has no working auto-update. Windows and Linux do not have this constraint.
-- CI packages Linux as `AppImage deb` only; `snap` stays in the target list for local
-  builds because it needs snapcraft on the machine.
+- An unsigned macOS release is manual-install only; never present it as working
+  Squirrel.Mac auto-update. Windows self-hosted NSIS may explicitly disable update code
+  signature verification while retaining HTTPS and metadata SHA-512 checks.
+- The self-hosted release workflow builds only macOS arm64 DMG, Windows x64 NSIS, and
+  the Web OSS bundle.
 
 ## Verification
 

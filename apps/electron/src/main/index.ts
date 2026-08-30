@@ -1,6 +1,8 @@
 import { app, BrowserWindow, safeStorage } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import dns from 'node:dns'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import icon from '../../resources/icon.png?asset'
 import { acquireSingleInstanceLock, registerOpenUrlHandler } from './deep-link'
 import { registerLodyProtocolClient } from './protocol-client'
@@ -14,6 +16,7 @@ import { NotificationService } from './services/notification-service'
 import { AuthService } from './services/auth-service'
 import { authClient } from './auth'
 import { AppUpdaterService } from './services/app-updater-service'
+import { DeviceBackupService } from './services/device-backup-service'
 import { GlobalShortcutsService } from './services/global-shortcuts-service'
 import { WindowsTrayService } from './services/windows-tray-service'
 import {
@@ -28,7 +31,12 @@ import {
 } from './posthog-error-reporting'
 import { IPC_PUSH_CHANNELS } from '@lody/shared/electron-ipc'
 import { PublicBrowserService } from './services/public-browser-service'
-import { desktopInstallationProfile, isLocalPlatform } from './platform'
+import {
+  desktopInstallationProfile,
+  isCloudPlatform,
+  isLocalPlatform,
+  isSelfHostedPlatform
+} from './platform'
 import { mainPlatformKind } from './platform'
 import { getLocalLoroDataPlaneSocketPath } from '@lody/shared/node/local-ipc'
 import { getLocalTerminalSocketPath } from '@lody/shared/node/local-terminal'
@@ -85,7 +93,7 @@ if (process.platform === 'linux') {
   const linuxApp = app as typeof app & { setDesktopName(name: string): void }
   linuxApp.setDesktopName(DESKTOP_FILE_NAME)
 }
-if (!isLocalPlatform()) {
+if (isCloudPlatform()) {
   installElectronMainErrorReporting()
 }
 
@@ -95,7 +103,7 @@ try {
   console.warn('[Auth] Failed to set DNS result order to ipv4first', error)
 }
 
-if (!isLocalPlatform()) {
+if (isCloudPlatform()) {
   authClient.setupMain({
     csp: false,
     bridges: true,
@@ -163,7 +171,10 @@ if (hasSingleInstanceLock) {
     )
     loroDataPlaneRelay.setEnabled(cliService.getCliAutoStartEnabled())
 
-    const appUpdaterService = new AppUpdaterService({ enabled: !isLocalPlatform() })
+    const appUpdaterService = new AppUpdaterService({
+      enabled: !isLocalPlatform() || existsSync(join(process.resourcesPath, 'app-update.yml'))
+    })
+    const deviceBackupService = new DeviceBackupService({ enabled: isSelfHostedPlatform() })
     const notificationService = new NotificationService(() => getMainWindow())
     const windowsTrayService = new WindowsTrayService({
       iconPath: icon,
@@ -174,7 +185,7 @@ if (hasSingleInstanceLock) {
     const publicBrowserService = new PublicBrowserService(() => getMainWindow())
     bindWindowBadgeToBrowserWindows(windowBadgeService)
 
-    if (!isLocalPlatform() && !safeStorage.isEncryptionAvailable()) {
+    if (isCloudPlatform() && !safeStorage.isEncryptionAvailable()) {
       const isLinux = process.platform === 'linux'
       const hint = isLinux
         ? 'gnome-libsecret was already configured automatically. ' +
@@ -266,13 +277,15 @@ if (hasSingleInstanceLock) {
       // down, orphaning it holding the local ports + terminal socket and breaking
       // the next launch. shutdownForQuit() SIGTERMs, waits briefly, then SIGKILLs.
       event.preventDefault()
-      void Promise.allSettled([
-        cliService.shutdownForQuit(),
-        flushElectronMainErrorReporting()
-      ]).finally(() => {
-        cliShutdownComplete = true
-        app.quit()
-      })
+      const shutdownAndBackup = cliService
+        .shutdownForQuit()
+        .then(async () => await deviceBackupService.backupAfterCliShutdown())
+      void Promise.allSettled([shutdownAndBackup, flushElectronMainErrorReporting()]).finally(
+        () => {
+          cliShutdownComplete = true
+          app.quit()
+        }
+      )
     })
 
     process.on('exit', () => {

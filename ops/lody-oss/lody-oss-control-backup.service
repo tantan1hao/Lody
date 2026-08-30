@@ -1,0 +1,15 @@
+[Unit]
+Description=Back up Lody OSS Streams to the off-machine Restic repository
+After=network-online.target lody-oss-streams.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/lody-oss-control-backup backup
+Nice=10
+IOSchedulingClass=idle
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/srv/lody-oss/control

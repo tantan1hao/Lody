@@ -1,10 +1,7 @@
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { describe, expect, it } from 'vitest';
-import {
-  getInstallationProfile,
-  getLodyDataDir,
-} from '../src/node/installation-profile';
+import { getInstallationProfile, getLodyDataDir } from '../src/node/installation-profile';
 import { getLocalCliHostEndpoint } from '../src/node/local-cli-host-lease';
 import {
   getLocalControlSocketPath,
@@ -17,7 +14,7 @@ import { getLocalWorkspaceCatalogPath } from '../src/node/local-workspace-catalo
 const require = createRequire(import.meta.url);
 
 describe('installation profile', () => {
-  it('keeps cloud defaults backward compatible and gives local a disjoint namespace', () => {
+  it('keeps cloud isolated while local and self-hosted share the OSS namespace', () => {
     expect(getInstallationProfile('cloud')).toMatchObject({
       namespace: 'lody',
       dataDirectoryName: '.lody',
@@ -30,8 +27,18 @@ describe('installation profile', () => {
       desktopProtocol: 'lody-oss',
       localCliHostPort: 17_789,
     });
+    expect(getInstallationProfile('self-hosted')).toMatchObject({
+      platform: 'self-hosted',
+      namespace: 'lody-oss',
+      dataDirectoryName: '.lody-oss',
+      desktopProtocol: 'lody-oss',
+      localCliHostPort: 17_789,
+    });
     expect(getLodyDataDir('cloud', '/home/alice')).toBe(path.join('/home/alice', '.lody'));
     expect(getLodyDataDir('local', '/home/alice')).toBe(path.join('/home/alice', '.lody-oss'));
+    expect(getLodyDataDir('self-hosted', '/home/alice')).toBe(
+      path.join('/home/alice', '.lody-oss')
+    );
   });
 
   it('uses disjoint local host lease endpoints', () => {
@@ -70,10 +77,14 @@ describe('installation profile', () => {
   });
 
   it('keeps the CommonJS installation profile in parity', () => {
-    const commonJs = require('../src/node/installation-profile.cjs') as typeof import('../src/node/installation-profile');
+    const commonJs =
+      require('../src/node/installation-profile.cjs') as typeof import('../src/node/installation-profile');
     expect(commonJs.getInstallationProfile('local')).toEqual(getInstallationProfile('local'));
+    expect(commonJs.getInstallationProfile('self-hosted')).toEqual(
+      getInstallationProfile('self-hosted')
+    );
     expect(commonJs.getLodyDataDir('local', '/home/alice')).toBe(
-      getLodyDataDir('local', '/home/alice'),
+      getLodyDataDir('local', '/home/alice')
     );
   });
 
@@ -81,8 +92,6 @@ describe('installation profile', () => {
     const commonJs = require('../src/node/local-terminal.cjs') as {
       getLocalTerminalSocketPath(platform?: 'local' | 'cloud'): string;
     };
-    expect(commonJs.getLocalTerminalSocketPath('local')).toBe(
-      getLocalTerminalSocketPath('local'),
-    );
+    expect(commonJs.getLocalTerminalSocketPath('local')).toBe(getLocalTerminalSocketPath('local'));
   });
 });

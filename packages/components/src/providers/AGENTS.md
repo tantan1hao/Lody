@@ -21,6 +21,14 @@ again. Contract test: `packages/shared/tests/session-doc-forward-compat.test.ts`
 - Release any one-shot document handle or subscription that is not already owned by the
   workspace runtime.
 
+## Self-hosted composition
+
+- `SelfHostedPlatformProvider` supplies one static user/workspace from validated config;
+  it does not emulate official login, invitations, account mutation, pairing, or Convex.
+- Self-hosted Electron uses dual sync so its own machine remains on the local data plane;
+  Web OSS uses Streams-only sync. Machine visibility comes from the existing Machine Flock
+  owner fallback, and official machine enrollment stays gated separately.
+
 ## Workspace switching
 
 - The `$workspaceName` route owns the render-time target slug. Workspace-scoped UI must

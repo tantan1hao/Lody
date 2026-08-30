@@ -21,7 +21,10 @@ control-plane path is DEPRECATED; do not add functionality to it.
   through Fleet → Lody → MachineRuntime → MessageHandler/Loro/session services.
   Daemon runtime modules must not construct cloud SDK clients or read
   `LODY_AUTH_URL` / `LODY_AUTH_SITE_URL` / `LODY_SERVER_URL`. The local port has
-  null optional capabilities and performs no cloud I/O; explicit unavailable
+  null optional capabilities and performs no cloud I/O. The self-hosted port is
+  assembled from validated `LODY_OSS_CONTROL_URL` configuration and may provide only
+  Streams, single-user access, ntfy, and configured download URLs; it must not grow
+  official auth, pairing, Convex, or telemetry adapters. Explicit unavailable
   operations fail at their public boundary, while only contractually
   best-effort background effects may skip. `scripts/check-platform-boundaries.mjs`
   and `tests/local-platform-zero-cloud.test.ts` enforce both halves.

@@ -192,6 +192,7 @@ type TurnFinalizationEffects = {
     userId: string,
     occurrenceId: string
   ) => Promise<void>;
+  notifySessionFailed: (sessionId: SessionId, occurrenceId: string) => Promise<void>;
 };
 
 type ApplyModeAndModelConfig = SessionTurnInputConfig & {
@@ -1905,6 +1906,20 @@ export class SessionExecutionService {
     }
     await options.sessionDoc.setStatus(SessionStatusFactory.idle());
     this.captureStatusChanged(options.sessionId, 'idle', undefined, 'turn_failed');
+    await this.notifySessionFailed(
+      options.sessionId,
+      this.currentTurnBySession.get(options.sessionId) ?? options.userTurnId ?? 'turn-failed'
+    );
+  }
+
+  private async notifySessionFailed(sessionId: SessionId, occurrenceId: string): Promise<void> {
+    try {
+      await this.deps.turnFinalization.notifySessionFailed(sessionId, occurrenceId);
+    } catch (error) {
+      this.deps.logger.debug(
+        `[${sessionId}] Failed to send session failure notification: ${formatErrorMessage(error)}`
+      );
+    }
   }
 
   private formatMemoryPressureFailureMessage(result: MemoryPressureEvictionResult): string {
@@ -2025,6 +2040,7 @@ export class SessionExecutionService {
       await this.markTurnFailed(options.sessionId, options.sessionDoc, options.userTurnId);
     }
     await this.handleTurnError(options.sessionId, options.sessionDoc, options.error);
+    await this.notifySessionFailed(options.sessionId, options.runtime.turnId);
     await options.onUnhandledError?.(options.error);
   }
 
@@ -3140,6 +3156,7 @@ export class SessionExecutionService {
       'agent_no_output',
       SILENT_TURN_FAILURE_MESSAGE
     );
+    await this.notifySessionFailed(options.sessionId, options.turnId);
     if (options.userTurnId) {
       await this.markTurnFailed(options.sessionId, options.sessionDoc, options.userTurnId);
     }

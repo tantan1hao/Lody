@@ -1,8 +1,8 @@
 # Repository scripts
 
-Scripts in this directory must work in the standalone public workspace. Do not
-add hosted-service deployment, billing/operator, credential, or private backend
-maintenance commands here.
+Scripts in this directory must work in the standalone public workspace. Secret-free
+single-user `ops/lody-oss` build/release/backup helpers are allowed; do not add official
+hosted-service deployment, billing, credentials, or private backend maintenance commands.
 
 ## Boundary checks
 

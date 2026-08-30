@@ -1,0 +1,7 @@
+{
+  "service": "lody-oss",
+  "version": "0.89.0",
+  "publicScope": "downloads-and-update-metadata-only",
+  "controlPlane": "tailnet-only",
+  "agentExecution": false
+}

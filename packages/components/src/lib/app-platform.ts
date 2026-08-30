@@ -23,6 +23,14 @@ export function isLocalAppPlatform(): boolean {
   return getAppPlatformKind() === 'local';
 }
 
+export function isSelfHostedAppPlatform(): boolean {
+  return getAppPlatformKind() === 'self-hosted';
+}
+
+export function isAccountlessAppPlatform(): boolean {
+  return getAppPlatformKind() !== 'cloud';
+}
+
 /**
  * Capability check for feature UI. Every app assembly must mount a complete
  * PlatformProvider; a missing provider is a programming error rather than an

@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "controlOrigin": "__CONTROL_ORIGIN__",
+  "workspace": {
+    "id": "__WORKSPACE_ID__",
+    "slug": "local",
+    "name": "Lody"
+  },
+  "user": {
+    "id": "__USER_ID__",
+    "name": "Lody OSS"
+  },
+  "ntfy": {
+    "baseUrl": "__NTFY_ORIGIN__",
+    "topic": "__NTFY_TOPIC__"
+  },
+  "downloads": {
+    "pageUrl": "https://47.90.224.36:8443/lody-oss/",
+    "macArm64Url": "https://47.90.224.36:8443/lody-oss/LodyOSS-0.89.0-arm64.dmg",
+    "windowsX64Url": "https://47.90.224.36:8443/lody-oss/LodyOSS-0.89.0-x64-setup.exe"
+  },
+  "releaseManifestUrl": "https://47.90.224.36:8443/lody-oss/release.json"
+}

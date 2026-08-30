@@ -19,6 +19,18 @@ export function isLocalPlatform(): boolean {
   return mainPlatformKind === 'local'
 }
 
+export function isSelfHostedPlatform(): boolean {
+  return mainPlatformKind === 'self-hosted'
+}
+
+export function isCloudPlatform(): boolean {
+  return mainPlatformKind === 'cloud'
+}
+
+export function isAccountlessPlatform(): boolean {
+  return !isCloudPlatform()
+}
+
 /**
  * Parses the one atomic local identity/workspace snapshot. A present malformed
  * catalog is a broken installation invariant and must fail; only a missing

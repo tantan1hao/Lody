@@ -1,0 +1,12 @@
+{
+  "extends": "../../packages/configs/tsconfig.extend.json",
+  "compilerOptions": {
+    "experimentalDecorators": true,
+    "jsx": "react-jsx",
+    "types": ["vite/client", "node"],
+    "paths": {
+      "@/*": ["../../packages/components/src/*"]
+    }
+  },
+  "include": ["src/**/*", "vite.config.ts"]
+}

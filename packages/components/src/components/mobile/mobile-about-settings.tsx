@@ -84,6 +84,15 @@ function UpdateStatusText({
     );
   }
 
+  if (phase === 'available') {
+    return (
+      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+        <Download className="h-3.5 w-3.5" />
+        {t('sidebar.updateReady.title')}
+      </span>
+    );
+  }
+
   if (phase === 'disabled') {
     return (
       <span className="text-xs text-muted-foreground">{t('settings.about.updaterDisabled')}</span>
@@ -158,8 +167,14 @@ export function MobileAboutSettings() {
   const phase = updaterState?.phase;
   const isChecking = phase === 'checking';
   const isDownloaded = phase === 'downloaded';
+  const isManualDownload = phase === 'available';
+  const isUpdateActionable = isDownloaded || isManualDownload;
   const showStatus =
-    phase === 'up_to_date' || phase === 'error' || phase === 'downloading' || phase === 'disabled';
+    phase === 'up_to_date' ||
+    phase === 'available' ||
+    phase === 'error' ||
+    phase === 'downloading' ||
+    phase === 'disabled';
   const aboutVersion = nativeAppVersion ?? updaterState?.currentVersion ?? APP_VERSION;
   const showDeveloperModeSwitch = developerModeEnabled || revealTaps >= DEVELOPER_MODE_REVEAL_TAPS;
 
@@ -228,7 +243,7 @@ export function MobileAboutSettings() {
               ) : undefined
             }
           >
-            {isDownloaded ? (
+            {isUpdateActionable ? (
               <Button
                 size="sm"
                 className="h-8 px-3"
@@ -242,7 +257,9 @@ export function MobileAboutSettings() {
                 ) : (
                   <Download className="mr-1 h-3.5 w-3.5" />
                 )}
-                {t('settings.about.updateAndRestart')}
+                {isManualDownload
+                  ? t('settings.about.openDownloadPage', 'Download update')
+                  : t('settings.about.updateAndRestart')}
               </Button>
             ) : (
               <Button

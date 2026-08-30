@@ -97,10 +97,10 @@ function capabilityForOperation(name: string): PlatformCapability {
   if (name.startsWith('deviceAuth:') || name === 'auth:getUserById') return 'cloudAccount';
   if (name.startsWith('auth:')) return 'multiWorkspace';
   if (name.startsWith('machineCredentials:') || name.startsWith('machinePairing:')) {
-    return 'remoteMachines';
+    return 'managedMachineEnrollment';
   }
   if (name === 'machines:setMachineSharedWithTeam') return 'teamSharing';
-  if (name.startsWith('machines:')) return 'remoteMachines';
+  if (name.startsWith('machines:')) return 'managedMachineEnrollment';
   if (name.startsWith('localProjects:')) return 'teamSharing';
   throw new Error(`Cloud operation ${JSON.stringify(name)} has no capability assignment`);
 }
@@ -287,14 +287,14 @@ export const cloudOperations = {
   },
   machinePairing: {
     cancelRequest: defineCloudMutation<{ requestId: string }, { success: true }>(
-      'remoteMachines',
+      'managedMachineEnrollment',
       'machinePairing:cancelRequest'
     ),
     claimFromDesktop: mutation<ConvexApi['machinePairing']['claimFromDesktop']>(
       'machinePairing:claimFromDesktop'
     ),
     getRequest: defineCloudQuery<{ requestId: string }, MachinePairingView | null>(
-      'remoteMachines',
+      'managedMachineEnrollment',
       'machinePairing:getRequest'
     ),
   },

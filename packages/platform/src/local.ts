@@ -74,6 +74,7 @@ export function createLocalPlatformProvider(
     capabilities: LOCAL_PLATFORM_CAPABILITIES,
     cloudApi: null,
     sync: { mode: 'local' },
+    selfHosted: null,
   };
 }
 

@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily Lody OSS Streams backup
+
+[Timer]
+OnCalendar=*-*-* 03:15:00
+Persistent=true
+RandomizedDelaySec=15m
+Unit=lody-oss-control-backup.service
+
+[Install]
+WantedBy=timers.target

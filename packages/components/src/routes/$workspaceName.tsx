@@ -23,12 +23,10 @@ import {
   WORKSPACE_SLUG_RESERVED_LANDING_EXACT_PATHS,
   WORKSPACE_SLUG_RESERVED_LANDING_PREFIXES,
 } from '@lody/shared';
-import { isLocalAppPlatform } from '@/lib/app-platform';
+import { isAccountlessAppPlatform } from '@/lib/app-platform';
+import { usePlatformWorkspaces } from '@lody/platform/react';
 import { WorkspaceRouteTargetProvider } from '../providers/workspace-route-target';
-import {
-  getLocalWorkspaceSlug,
-  useLocalPlatformWorkspacesState,
-} from '../providers/local-platform-provider';
+import { getLocalWorkspaceSlug } from '../providers/local-platform-provider';
 
 // Paths that are served by the CF Pages middleware as landing pages.
 // If a client-side navigation targets one of these, we must do a full page
@@ -96,7 +94,7 @@ function WorkspaceGuardRoute() {
   // runtime effects converge. Descendants use it to reject previous-scope data.
   return (
     <WorkspaceRouteTargetProvider slug={workspaceName}>
-      {isLocalAppPlatform() ? <LocalWorkspaceGuardRoute /> : <CloudWorkspaceGuardRoute />}
+      {isAccountlessAppPlatform() ? <LocalWorkspaceGuardRoute /> : <CloudWorkspaceGuardRoute />}
     </WorkspaceRouteTargetProvider>
   );
 }
@@ -104,7 +102,7 @@ function WorkspaceGuardRoute() {
 function LocalWorkspaceGuardRoute() {
   const { t } = useTranslation();
   const { workspaceName } = Route.useParams();
-  const workspacesState = useLocalPlatformWorkspacesState();
+  const workspacesState = usePlatformWorkspaces();
   const workspace =
     workspacesState.status === 'ready' ? (workspacesState.workspaces[0] ?? null) : null;
 

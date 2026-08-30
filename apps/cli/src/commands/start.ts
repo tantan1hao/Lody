@@ -65,8 +65,15 @@ import {
   type RejectedCredentialRecovery,
 } from './start-auth-recovery';
 import { consumeElectronBootstrapCredentials } from '../electron-bootstrap-env';
-import { createLocalCloudPort, type CloudPort, type PlatformKind } from '@lody/platform';
+import {
+  createLocalCloudPort,
+  createSelfHostedCloudPort,
+  type CloudPort,
+  type PlatformKind,
+  type SelfHostedConfig,
+} from '@lody/platform';
 import { createCloudCliPort } from '@/lib/cloud-cli-port';
+import { loadCliSelfHostedConfig } from '@/lib/self-hosted-config';
 import { configureManagedAgentRuntimeManager } from '@/agent/managed-agent-runtime';
 import { configureManagedRuntimeUpdateCoordinator } from '@/agent/managed-runtime-update-coordinator';
 
@@ -76,7 +83,8 @@ type StartAuthMethod =
   | 'device_auth'
   | 'electron_session'
   | 'existing_credentials'
-  | 'local_platform';
+  | 'local_platform'
+  | 'self_hosted';
 
 interface StartOptions {
   cliTypes: CliType[];
@@ -187,15 +195,20 @@ export const startCommand = new Command('start')
       logger.error(formatErrorMessage(error));
       process.exit(1);
     }
-    if (platformKind === 'local') {
+    if (platformKind === 'local' || platformKind === 'self-hosted') {
       // Zero-cloud-I/O invariant (specs/platform-providers.md): blank the
-      // cloud endpoints before anything reads them.
+      // official cloud endpoints before anything reads them. Self-hosted mode
+      // reconnects only through its explicit control origin below.
       applyLocalPlatformEnv();
-      logger.info('Starting in local platform mode (no account, no cloud services).');
+      logger.info(
+        platformKind === 'local'
+          ? 'Starting in local platform mode (no account, no network services).'
+          : 'Starting in self-hosted platform mode (single user, operator Streams).'
+      );
     }
 
     const startupTimeSync =
-      platformKind !== 'local' && LODY_SERVER_URL
+      platformKind === 'cloud' && LODY_SERVER_URL
         ? syncCliServerTime(logger, LODY_SERVER_URL)
         : undefined;
 
@@ -217,6 +230,8 @@ export const startCommand = new Command('start')
     const { sessionToken: electronSessionToken, sessionUserId: electronSessionUserId } =
       consumeElectronBootstrapCredentials(process.env);
     const providedAuth = options.auth?.trim();
+    const selfHostedConfig =
+      platformKind === 'self-hosted' ? await loadCliSelfHostedConfig(logger) : null;
 
     const cliDetectionStartedAt = Date.now();
     const cliAvailability = {
@@ -240,7 +255,7 @@ export const startCommand = new Command('start')
     // user id is hydrated. Resolve the user from Better Auth directly so we
     // still detect stale CLI credentials during first-login bootstrap.
     const electronSessionUser =
-      platformKind !== 'local' && electronSessionToken && !electronSessionUserId
+      platformKind === 'cloud' && electronSessionToken && !electronSessionUserId
         ? await traceAsync(
             logger,
             'startup.electron_session_user',
@@ -328,8 +343,8 @@ export const startCommand = new Command('start')
       logger.error('Missing credential for --auth.');
       process.exit(1);
     }
-    if (platformKind === 'local' && options.auth !== undefined) {
-      logger.error('--auth is not available on the local platform.');
+    if (platformKind !== 'cloud' && options.auth !== undefined) {
+      logger.error('--auth is available only on the official cloud platform.');
       process.exit(1);
     }
 
@@ -343,6 +358,13 @@ export const startCommand = new Command('start')
       machineId = await getOrCreateStableMachineIdAsync();
       machineName = defaultMachineName;
       authMethod = 'local_platform';
+    } else if (platformKind === 'self-hosted') {
+      if (!selfHostedConfig) throw new Error('Self-hosted config was not loaded');
+      token = '';
+      userId = selfHostedConfig.user.id;
+      machineId = await getOrCreateStableMachineIdAsync();
+      machineName = defaultMachineName;
+      authMethod = 'self_hosted';
     } else if (providedAuth) {
       const loginResult = await performLoginWithAuthCredential(requireCloudAuthClient(), logger, {
         credential: providedAuth,
@@ -468,7 +490,8 @@ export const startCommand = new Command('start')
         supervisorIdentity,
         machineLifecycleCapability,
         unregisterStartupSupervisorControl,
-        platformKind
+        platformKind,
+        selfHostedConfig
       );
     } catch (error) {
       captureAgentServiceEvent('agent_service_startup_failed', {
@@ -508,7 +531,8 @@ async function startAgentService(
   supervisorIdentity: LocalSupervisorIdentity | null,
   machineLifecycleCapability: ReturnType<typeof resolveMachineLifecycleCapability>,
   unregisterStartupSupervisorControl: () => void,
-  platformKind: PlatformKind
+  platformKind: PlatformKind,
+  selfHostedConfig: SelfHostedConfig | null
 ): Promise<void> {
   // The startup listener protects authentication/bootstrap. From this point to
   // the graceful controller registration below there is no async yield.
@@ -544,6 +568,13 @@ async function startAgentService(
     cloudPort = createLocalCloudPort({
       identity: { userId },
       workspaces: [],
+      runtimeArtifactsBaseUrl: process.env.LODY_RUNTIME_BASE_URL,
+    });
+  } else if (platformKind === 'self-hosted') {
+    if (!selfHostedConfig) throw new Error('Self-hosted config was not loaded');
+    cloudPort = createSelfHostedCloudPort({
+      config: selfHostedConfig,
+      machineName,
       runtimeArtifactsBaseUrl: process.env.LODY_RUNTIME_BASE_URL,
     });
   } else {
@@ -716,6 +747,10 @@ async function startAgentService(
 
     if (platformKind === 'local') {
       logger.success('✨ Local agent service is ready. Open the Lody OSS app to chat.');
+    } else if (platformKind === 'self-hosted') {
+      logger.success(
+        `✨ Self-hosted agent service is ready at ${selfHostedConfig?.controlOrigin}.`
+      );
     } else {
       const chatUrl = SITE_URL.replace(/\/+$/, '');
       logger.success(`✨ Happy coding! You can now chat with your agents at ${chatUrl}`);
