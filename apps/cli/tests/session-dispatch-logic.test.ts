@@ -139,6 +139,18 @@ describe('resolveSessionDispatchAction', () => {
     expect(action).toEqual({ type: 'dispatch', mode: 'continue', turn });
   });
 
+  it('returns dispatch/continue after switch-agent clears the old ACP session id', () => {
+    const turn = pendingTurn('t-2');
+    const action = resolveSessionDispatchAction(
+      snap({
+        meta: { ...baseMeta, acpSessionId: '' } as SessionMeta,
+        history: [handledTurn('t-1'), turn],
+      }),
+      MACHINE
+    );
+    expect(action).toEqual({ type: 'dispatch', mode: 'continue', turn });
+  });
+
   it('returns dispatch/continue for pending turn with reusable in-memory session', () => {
     const turn = pendingTurn('t-1');
     const action = resolveSessionDispatchAction(

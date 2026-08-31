@@ -234,7 +234,13 @@ export function resolveSessionDispatchAction(
   }
 
   // ── Step 4: Decide create vs continue ──
-  const mode = hasReusableSession || resolveDispatchAcpSessionId(meta) ? 'continue' : 'create';
+  // The switch-agent service clears the old provider id with an empty-string
+  // tombstone. That still represents an existing conversation, so route it
+  // through restore/history replay instead of treating the next turn as new.
+  const mode =
+    hasReusableSession || meta.acpSessionId === '' || resolveDispatchAcpSessionId(meta)
+      ? 'continue'
+      : 'create';
   return { type: 'dispatch', mode, turn };
 }
 
