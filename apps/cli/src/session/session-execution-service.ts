@@ -3393,12 +3393,25 @@ export class SessionExecutionService {
 
         const requestedResumeSessionId = acpSessionConfig.resume;
         const storedResumeSessionId = resolveResumableAcpSessionId(meta);
-        const resumeSessionId = requestedResumeSessionId ?? storedResumeSessionId;
-        const resumeSource = requestedResumeSessionId
-          ? 'request'
-          : storedResumeSessionId
-            ? 'meta'
-            : 'none';
+        // A queued/Web turn can retain the ACP id from before an agent switch.
+        // An empty durable id is the switch-agent tombstone; never resurrect
+        // the stale provider session carried by that turn. Legacy callers may
+        // still supply a resume id when durable meta has no field at all.
+        const resumeSessionId =
+          storedResumeSessionId ??
+          (meta?.acpSessionId === '' ? undefined : requestedResumeSessionId);
+        const resumeSource =
+          resumeSessionId === requestedResumeSessionId && requestedResumeSessionId
+            ? 'request'
+            : resumeSessionId
+              ? 'meta'
+              : 'none';
+
+        if (requestedResumeSessionId && requestedResumeSessionId !== resumeSessionId) {
+          self.deps.logger.debug(
+            `[${sessionId}] Ignoring stale requested ACP session id; durable session meta no longer owns it`
+          );
+        }
 
         self.deps.logger.debug(
           `[${sessionId}] Session not found in memory; restoring (project=${

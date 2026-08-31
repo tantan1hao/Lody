@@ -2467,13 +2467,14 @@ describe('SessionExecutionService', () => {
       requestedResumeSessionId: undefined,
     },
     {
-      name: 'replays durable history when the target agent returns a different ACP session id',
+      name: 'ignores a stale client ACP id after agent switch and replays durable history',
       requestedResumeSessionId: 'acp-from-previous-agent' as ACPSessionId,
     },
   ])('$name', async ({ requestedResumeSessionId }) => {
     const meta = {
       repoFullName: 'owner/repo',
       isArchived: false,
+      acpSessionId: requestedResumeSessionId ? ('' as ACPSessionId) : undefined,
     };
     const syncedHistory: SessionHistoryInput[] = [
       {
@@ -2534,7 +2535,13 @@ describe('SessionExecutionService', () => {
       sessionManager: {
         getSession: vi.fn(() => null),
         getPendingSession: vi.fn(() => null),
-        createSession: vi.fn(async () => restoredSession as unknown),
+        createSession: vi.fn(
+          async (_config, agentStart) =>
+            ({
+              ...restoredSession,
+              acpSessionId: agentStart?.resumeSessionId ?? ('acp-fresh-restore' as ACPSessionId),
+            }) as unknown
+        ),
         setSessionError: vi.fn(),
         terminateSession: vi.fn(),
         refreshGhTokenForSession: vi.fn(async () => {}),
