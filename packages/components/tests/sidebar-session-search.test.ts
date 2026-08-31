@@ -12,6 +12,7 @@ const items = [
     title: 'Fix preheat timeout',
     subtitle: 'market-bot',
     sectionLabel: 'Local Projects · market-bot',
+    machineName: 'MacBook Pro',
     kind: 'local',
     externalHistoryProvider: { cliType: 'builtin', agentType: 'codex' },
   },
@@ -20,6 +21,7 @@ const items = [
     title: 'Wire Antigravity ACP',
     subtitle: 'market-bot',
     branchName: 'feat/anti',
+    machineName: 'Mac mini',
     kind: 'local',
     externalHistoryProvider: { cliType: 'registry', agentType: 'antigravity-acp' },
   },
@@ -56,9 +58,15 @@ describe('sidebar session search', () => {
     expect(filterSidebarSearchableItems(items, 'anti').map((item) => item.id)).toEqual(['2']);
   });
 
+  it('finds sessions by machine name', () => {
+    expect(filterSidebarSearchableItems(items, 'mini').map((item) => item.id)).toEqual(['2']);
+  });
+
   it('requires every term to match', () => {
     expect(filterSidebarSearchableItems(items, 'market notify').map((item) => item.id)).toEqual([]);
-    expect(filterSidebarSearchableItems(items, 'lody notify').map((item) => item.id)).toEqual(['3']);
+    expect(filterSidebarSearchableItems(items, 'lody notify').map((item) => item.id)).toEqual([
+      '3',
+    ]);
   });
 
   it('matches a project name with no sessions', () => {
