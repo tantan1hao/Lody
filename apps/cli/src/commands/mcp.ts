@@ -13,7 +13,7 @@ import {
   type WorkspaceMcpServerMeta,
 } from '@lody/shared';
 import {
-  getAuthContextOrThrow,
+  getCommandIdentityOrThrow,
   normalizeCliValue,
   printJson,
   resolveWorkspaceOrThrow,
@@ -201,7 +201,7 @@ async function withMcpCatalog(
   run: (context: McpCatalogContext) => Promise<void>
 ): Promise<void> {
   await runOneShotCommand('mcp', options, async () => {
-    const auth = getAuthContextOrThrow('mcp');
+    const auth = await getCommandIdentityOrThrow('mcp');
     const workspace = await resolveWorkspaceOrThrow(auth, options.workspace);
     await withWorkspaceManager(auth, workspace, 'mcp', async (manager) => {
       const workspaceId = workspace.id as WorkspaceId;
