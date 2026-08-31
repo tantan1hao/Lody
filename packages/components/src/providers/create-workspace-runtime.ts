@@ -125,6 +125,7 @@ import { createWorkspaceMachineRpcFacade } from './workspace-machine-rpc-facade'
 import { resyncMachineFlockRows } from '@/hooks/use-machine-flock-rows';
 import { createCodeCollabFileIndexCache } from '@/lib/code-collab-file-index-cache';
 import { getIpcServices, onIpcEvent, sendLocalSessionControl } from '@/lib/electron-ipc-client';
+import { isSelfHostedAppPlatform } from '@/lib/app-platform';
 
 declare global {
   interface Window {
@@ -214,6 +215,13 @@ const DOC_STREAM_CREATE_TIMEOUT_MS = 10_000;
 const MACHINE_RPC_TRANSPORT_READY_TIMEOUT_MS = 30_000;
 const LOCAL_MACHINE_ID_READY_TIMEOUT_MS = 2_000;
 const MACHINE_RESTART_RPC_TIMEOUT_MS = 30_000;
+/**
+ * Self-hosted control planes are frequently reached over a private overlay
+ * network (Tailscale/WireGuard) that may fall back to a distant relay, so the
+ * 10s Streams default rejects a link that is merely slow. Mirrors the CLI
+ * transport's LODY_LORO_STREAMS_CONNECT_TIMEOUT_MS default.
+ */
+const SELF_HOSTED_STREAMS_CONNECT_TIMEOUT_MS = 120_000;
 const MACHINE_UPGRADE_RPC_TIMEOUT_MS = 120_000;
 const ACP_CAPABILITIES_STARTUP_MACHINE_CONCURRENCY = 2;
 const ACP_CAPABILITIES_STARTUP_NAVIGATION_COOLDOWN_MS = 30_000;
@@ -2756,6 +2764,9 @@ export async function createWorkspaceRuntime(deps: RuntimeDeps): Promise<Workspa
         streamsBaseUrl,
         getStreamsShardHostSuffixForProvider(activeStreamsTokenProvider)
       ),
+      reconnectConfig: isSelfHostedAppPlatform()
+        ? { connectTimeoutMs: SELF_HOSTED_STREAMS_CONNECT_TIMEOUT_MS }
+        : undefined,
       snapshotUpload: {
         canUpload: async () => true,
       },
