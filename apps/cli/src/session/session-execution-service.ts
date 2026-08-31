@@ -415,6 +415,7 @@ export type SessionExecutionServiceDeps = {
       deferACPUpdateTarget?: boolean;
     }
   ) => string;
+  awaitTurnHistoryGate: (sessionId: SessionId) => Promise<void>;
   activateConversationTurnForACPUpdates: (sessionId: SessionId, turnId: string) => void;
   clearConversationTurn: (sessionId: SessionId, turnId: string) => void;
   getActiveTurnId: (sessionId: SessionId) => string | undefined;
@@ -3504,6 +3505,11 @@ export class SessionExecutionService {
                 reason: 'fresh-acp-history-replay',
               })
             );
+            // A one-shot sync can finish before the Web client's current turn
+            // reaches Streams. For RPC turns, wait for that causally-later
+            // history entry; once it is local, the preceding conversation is
+            // local too. Non-RPC turns have an already-open gate.
+            yield* self.tryPromise(() => self.deps.awaitTurnHistoryGate(sessionId));
             // An earlier turn can fail before ACP owns its prompt (for example
             // while its process is starting), or a newly selected provider can
             // ignore the previous provider's ACP session id. This freshly

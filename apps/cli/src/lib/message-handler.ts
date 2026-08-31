@@ -3073,6 +3073,7 @@ export class MessageHandler {
       endACPReplaySuppression: (sessionId) => this.endACPReplaySuppression(sessionId),
       beginConversationTurn: (sessionId, userTurnId, gateContext) =>
         this.beginConversationTurn(sessionId, userTurnId, gateContext),
+      awaitTurnHistoryGate: async (sessionId) => await this.awaitTurnHistoryGate(sessionId),
       activateConversationTurnForACPUpdates: (sessionId, turnId) =>
         this.activateConversationTurnForACPUpdates(sessionId, turnId),
       clearConversationTurn: (sessionId, turnId) =>

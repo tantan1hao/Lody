@@ -126,6 +126,7 @@ const createBaseDeps = (
     beginACPReplaySuppression: vi.fn(),
     endACPReplaySuppression: vi.fn(),
     beginConversationTurn: vi.fn(() => 'turn-1'),
+    awaitTurnHistoryGate: vi.fn(async () => {}),
     activateConversationTurnForACPUpdates: vi.fn(),
     clearConversationTurn: vi.fn(),
     getActiveTurnId: vi.fn(() => undefined),
@@ -2494,9 +2495,11 @@ describe('SessionExecutionService', () => {
         items: [{ type: 'text', text: '?' }],
       },
     ];
-    let history: SessionHistoryInput[] = [syncedHistory[1]!];
+    let history: SessionHistoryInput[] = [];
     const syncDocOrThrow = vi.fn(async (docId: string) => {
       expect(docId).toBe(getSessionRoomId('session-fresh-restore'));
+    });
+    const awaitTurnHistoryGate = vi.fn(async () => {
       history = syncedHistory;
     });
     const sessionDoc = {
@@ -2555,27 +2558,31 @@ describe('SessionExecutionService', () => {
         syncDocOrThrow,
         updateAcpCapabilities: vi.fn(async () => {}),
       } as unknown as LoroDocumentManager,
+      awaitTurnHistoryGate,
       buildAcpPromptBlocks,
     });
 
     const service = new SessionExecutionService(deps);
-    await service.continueSession({
-      type: 'session/chat',
-      sessionId: 'session-fresh-restore' as SessionId,
-      machineId: 'machine-1',
-      workspaceId: 'workspace-1' as WorkspaceId,
-      project: { kind: 'github', repoFullName: 'owner/repo', branch: 'main' },
-      acpSessionConfig: {
-        prompt: '?',
-        cliType: 'builtin',
-        agentType: 'codex',
-        ...(requestedResumeSessionId ? { resume: requestedResumeSessionId } : {}),
+    await service.continueSession(
+      {
+        type: 'session/chat',
+        sessionId: 'session-fresh-restore' as SessionId,
+        machineId: 'machine-1',
+        workspaceId: 'workspace-1' as WorkspaceId,
+        project: { kind: 'github', repoFullName: 'owner/repo', branch: 'main' },
+        acpSessionConfig: {
+          prompt: '?',
+          cliType: 'builtin',
+          agentType: 'codex',
+          ...(requestedResumeSessionId ? { resume: requestedResumeSessionId } : {}),
+        },
+        userTurnId: 'turn-current',
+        userId: 'user-1',
+        userName: 'User',
+        userEmail: 'user@example.com',
       },
-      userTurnId: 'turn-current',
-      userId: 'user-1',
-      userName: 'User',
-      userEmail: 'user@example.com',
-    });
+      { dispatchSource: 'rpc' }
+    );
 
     expect(buildAcpPromptBlocks).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -2583,6 +2590,7 @@ describe('SessionExecutionService', () => {
       })
     );
     expect(syncDocOrThrow).toHaveBeenCalledTimes(1);
+    expect(awaitTurnHistoryGate).toHaveBeenCalledWith('session-fresh-restore');
     expect(buildAcpPromptBlocks).toHaveBeenCalledWith(
       expect.objectContaining({
         replayPromptText: expect.not.stringContaining('[User]\n?'),
