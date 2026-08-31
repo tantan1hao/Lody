@@ -11,6 +11,7 @@ import {
 } from '../src/session/session-execution-service';
 import {
   getMachineRoomId,
+  getSessionRoomId,
   SessionStatusFactory,
   type ACPSessionId,
   type AgentConfigId,
@@ -125,6 +126,7 @@ const createBaseDeps = (
     beginACPReplaySuppression: vi.fn(),
     endACPReplaySuppression: vi.fn(),
     beginConversationTurn: vi.fn(() => 'turn-1'),
+    awaitTurnHistoryGate: vi.fn(async () => {}),
     activateConversationTurnForACPUpdates: vi.fn(),
     clearConversationTurn: vi.fn(),
     getActiveTurnId: vi.fn(() => undefined),
@@ -174,6 +176,11 @@ const createBaseDeps = (
       flock: { scan: () => [] },
     }));
   }
+
+  const workspaceWithSync = deps.workspaceDocument as unknown as {
+    syncDocOrThrow?: (docId: string, options?: { reason?: string }) => Promise<void>;
+  };
+  workspaceWithSync.syncDocOrThrow ??= vi.fn(async () => {});
 
   const workspaceWithDocFactory = deps.workspaceDocument as unknown as {
     getOrCreateSessionDoc: (...args: unknown[]) => Promise<unknown>;
@@ -2455,12 +2462,22 @@ describe('SessionExecutionService', () => {
     expect(deps.clearSessionActivePresence).toHaveBeenCalledTimes(1);
   });
 
-  it('replays durable history when a fresh ACP restore has no resumable session id', async () => {
+  it.each([
+    {
+      name: 'replays durable history when a fresh ACP restore has no resumable session id',
+      requestedResumeSessionId: undefined,
+    },
+    {
+      name: 'ignores a stale client ACP id after agent switch and replays durable history',
+      requestedResumeSessionId: 'acp-from-previous-agent' as ACPSessionId,
+    },
+  ])('$name', async ({ requestedResumeSessionId }) => {
     const meta = {
       repoFullName: 'owner/repo',
       isArchived: false,
+      acpSessionId: requestedResumeSessionId ? ('' as ACPSessionId) : undefined,
     };
-    let history: SessionHistoryInput[] = [
+    const syncedHistory: SessionHistoryInput[] = [
       {
         id: 'turn-startup-failed',
         role: 'user',
@@ -2478,6 +2495,13 @@ describe('SessionExecutionService', () => {
         items: [{ type: 'text', text: '?' }],
       },
     ];
+    let history: SessionHistoryInput[] = [];
+    const syncDocOrThrow = vi.fn(async (docId: string) => {
+      expect(docId).toBe(getSessionRoomId('session-fresh-restore'));
+    });
+    const awaitTurnHistoryGate = vi.fn(async () => {
+      history = syncedHistory;
+    });
     const sessionDoc = {
       getMetaState: vi.fn(async () => meta),
       setStatus: vi.fn(async () => {}),
@@ -2514,7 +2538,13 @@ describe('SessionExecutionService', () => {
       sessionManager: {
         getSession: vi.fn(() => null),
         getPendingSession: vi.fn(() => null),
-        createSession: vi.fn(async () => restoredSession as unknown),
+        createSession: vi.fn(
+          async (_config, agentStart) =>
+            ({
+              ...restoredSession,
+              acpSessionId: agentStart?.resumeSessionId ?? ('acp-fresh-restore' as ACPSessionId),
+            }) as unknown
+        ),
         setSessionError: vi.fn(),
         terminateSession: vi.fn(),
         refreshGhTokenForSession: vi.fn(async () => {}),
@@ -2525,30 +2555,42 @@ describe('SessionExecutionService', () => {
           getDocMeta: vi.fn(async () => undefined),
         },
         getOrCreateSessionDoc: vi.fn(async () => sessionDoc),
+        syncDocOrThrow,
         updateAcpCapabilities: vi.fn(async () => {}),
       } as unknown as LoroDocumentManager,
+      awaitTurnHistoryGate,
       buildAcpPromptBlocks,
     });
 
     const service = new SessionExecutionService(deps);
-    await service.continueSession({
-      type: 'session/chat',
-      sessionId: 'session-fresh-restore' as SessionId,
-      machineId: 'machine-1',
-      workspaceId: 'workspace-1' as WorkspaceId,
-      project: { kind: 'github', repoFullName: 'owner/repo', branch: 'main' },
-      acpSessionConfig: { prompt: '?', cliType: 'builtin', agentType: 'codex' },
-      userTurnId: 'turn-current',
-      userId: 'user-1',
-      userName: 'User',
-      userEmail: 'user@example.com',
-    });
+    await service.continueSession(
+      {
+        type: 'session/chat',
+        sessionId: 'session-fresh-restore' as SessionId,
+        machineId: 'machine-1',
+        workspaceId: 'workspace-1' as WorkspaceId,
+        project: { kind: 'github', repoFullName: 'owner/repo', branch: 'main' },
+        acpSessionConfig: {
+          prompt: '?',
+          cliType: 'builtin',
+          agentType: 'codex',
+          ...(requestedResumeSessionId ? { resume: requestedResumeSessionId } : {}),
+        },
+        userTurnId: 'turn-current',
+        userId: 'user-1',
+        userName: 'User',
+        userEmail: 'user@example.com',
+      },
+      { dispatchSource: 'rpc' }
+    );
 
     expect(buildAcpPromptBlocks).toHaveBeenCalledWith(
       expect.objectContaining({
         replayPromptText: expect.stringContaining('Build this on the two MIT packages.'),
       })
     );
+    expect(syncDocOrThrow).toHaveBeenCalledTimes(1);
+    expect(awaitTurnHistoryGate).toHaveBeenCalledWith('session-fresh-restore');
     expect(buildAcpPromptBlocks).toHaveBeenCalledWith(
       expect.objectContaining({
         replayPromptText: expect.not.stringContaining('[User]\n?'),

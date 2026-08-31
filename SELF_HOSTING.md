@@ -86,6 +86,13 @@ loro dev \
   --protocol http1
 ```
 
+`@loro-dev/loro-cli` 0.6.0 的 dev server 在客户端中断已开始的响应时会再次写响应头，
+造成 `ERR_HTTP_HEADERS_SENT` 和 systemd 重启循环。安装全局 CLI 后先应用仓库内的幂等补丁：
+
+```bash
+sudo node ops/lody-oss/patch-loro-cli-0.6.0.mjs
+```
+
 服务启动后还要确保固定的 `lody` bucket 存在；随仓库提供的 systemd unit 会用
 `ExecStartPost` 幂等创建它。
 

@@ -415,6 +415,7 @@ export type SessionExecutionServiceDeps = {
       deferACPUpdateTarget?: boolean;
     }
   ) => string;
+  awaitTurnHistoryGate: (sessionId: SessionId) => Promise<void>;
   activateConversationTurnForACPUpdates: (sessionId: SessionId, turnId: string) => void;
   clearConversationTurn: (sessionId: SessionId, turnId: string) => void;
   getActiveTurnId: (sessionId: SessionId) => string | undefined;
@@ -3393,12 +3394,25 @@ export class SessionExecutionService {
 
         const requestedResumeSessionId = acpSessionConfig.resume;
         const storedResumeSessionId = resolveResumableAcpSessionId(meta);
-        const resumeSessionId = requestedResumeSessionId ?? storedResumeSessionId;
-        const resumeSource = requestedResumeSessionId
-          ? 'request'
-          : storedResumeSessionId
-            ? 'meta'
-            : 'none';
+        // A queued/Web turn can retain the ACP id from before an agent switch.
+        // An empty durable id is the switch-agent tombstone; never resurrect
+        // the stale provider session carried by that turn. Legacy callers may
+        // still supply a resume id when durable meta has no field at all.
+        const resumeSessionId =
+          storedResumeSessionId ??
+          (meta?.acpSessionId === '' ? undefined : requestedResumeSessionId);
+        const resumeSource =
+          resumeSessionId === requestedResumeSessionId && requestedResumeSessionId
+            ? 'request'
+            : resumeSessionId
+              ? 'meta'
+              : 'none';
+
+        if (requestedResumeSessionId && requestedResumeSessionId !== resumeSessionId) {
+          self.deps.logger.debug(
+            `[${sessionId}] Ignoring stale requested ACP session id; durable session meta no longer owns it`
+          );
+        }
 
         self.deps.logger.debug(
           `[${sessionId}] Session not found in memory; restoring (project=${
@@ -3479,12 +3493,28 @@ export class SessionExecutionService {
             self.deps.logger.debug(
               `[${sessionId}] Session restore result (requestedAcpSessionId=none actualAcpSessionId=${actual ?? 'null'})`
             );
+          }
 
+          if (!requested || actual !== requested) {
+            // The Web RPC fast path can deliver the current turn before the
+            // owning machine has caught up the SessionDoc history. Pull the
+            // durable room first so a fresh provider never starts from the
+            // RPC-only turn stash and silently loses the prior conversation.
+            yield* self.tryPromise(() =>
+              self.deps.workspaceDocument.syncDocOrThrow(getSessionRoomId(sessionId), {
+                reason: 'fresh-acp-history-replay',
+              })
+            );
+            // A one-shot sync can finish before the Web client's current turn
+            // reaches Streams. For RPC turns, wait for that causally-later
+            // history entry; once it is local, the preceding conversation is
+            // local too. Non-RPC turns have an already-open gate.
+            yield* self.tryPromise(() => self.deps.awaitTurnHistoryGate(sessionId));
             // An earlier turn can fail before ACP owns its prompt (for example
-            // while its process is starting). There is then no ACP session id
-            // to resume, even though the user turn is durable in Loro history.
-            // This freshly created ACP session has no knowledge of that turn,
-            // so reconstruct its context before sending the current request.
+            // while its process is starting), or a newly selected provider can
+            // ignore the previous provider's ACP session id. This freshly
+            // created ACP session has no knowledge of those turns, so
+            // reconstruct its context before sending the current request.
             const history = yield* self.tryPromise(() => sessionDoc.getHistory());
             if (history.length > 0) {
               replayPromptResult = buildReplayPromptFromHistory({
