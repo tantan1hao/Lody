@@ -41,7 +41,10 @@ control-plane path is DEPRECATED; do not add functionality to it.
   through `session/image-send` (or a cloud-less `uploadSessionImageFile`).
   `fetchSessionImageForPrompt` reads this store first so ACP vision works
   without official `/session-images` hosting. Transcript display reads the
-  same store through `session/image-get`.
+  same store through `session/image-get`. A landing draft may call
+  `session/image-send` before the session document exists; store against that
+  id and do not require Code Collab owner resolution when the envelope names
+  the same draft.
 - `machine-runtime.ts` — machine runtime bootstrap; still hosts the DEPRECATED
   hosted WS control-plane listener. Remote bridge
   attach/detach/revoke are serialized through `runBridgeTransition` (per-runtime

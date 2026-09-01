@@ -44,6 +44,11 @@ type TestHarness = {
   handler: MessageHandler;
   host: Record<string, (...args: unknown[]) => unknown>;
   history: Array<Record<string, unknown>>;
+  workspaceDocument: {
+    repo: {
+      getDocMeta: ReturnType<typeof vi.fn>;
+    };
+  };
   sessionDoc: {
     getMetaState: ReturnType<typeof vi.fn>;
     updateHistory: ReturnType<typeof vi.fn>;
@@ -118,6 +123,7 @@ const createHarness = (): TestHarness => {
 
   return {
     handler,
+    workspaceDocument,
     host: handler as unknown as Record<string, (...args: unknown[]) => unknown>,
     get history() {
       return state.history;
@@ -599,6 +605,51 @@ describe('MessageHandler image upload flow', () => {
     } finally {
       await fs.rm(tempDir, { recursive: true, force: true });
     }
+  });
+
+  it('stores a landing draft image before the session document exists', async () => {
+    const harness = createHarness();
+    handlers.push(harness.handler);
+    harness.workspaceDocument.repo.getDocMeta.mockResolvedValue(undefined);
+    const write = vi.spyOn(sessionImageBlobStore, 'writeSessionImageBlob').mockResolvedValue();
+
+    const result = await harness.handler.handleSessionImageSend({
+      sessionId: 'draft-session-1' as SessionId,
+      fileName: 'shot.png',
+      mimeType: 'image/png',
+      data: Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString('base64'),
+    });
+
+    expect(result.status).toBe('ok');
+    expect(write).toHaveBeenCalled();
+    write.mockRestore();
+  });
+
+  it('accepts a local image-send for a draft session that owns itself', async () => {
+    const harness = createHarness();
+    handlers.push(harness.handler);
+    harness.workspaceDocument.repo.getDocMeta.mockResolvedValue(undefined);
+    const write = vi.spyOn(sessionImageBlobStore, 'writeSessionImageBlob').mockResolvedValue();
+
+    const result = await harness.handler.handleLocalMachineRpc({
+      machineId: 'machine-1',
+      workspaceId: 'ws-1',
+      method: 'session/image-send',
+      ownerSessionId: 'draft-session-1',
+      params: {
+        sessionId: 'draft-session-1' as SessionId,
+        fileName: 'shot.png',
+        mimeType: 'image/png',
+        data: Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString('base64'),
+      },
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      result: { status: 'ok' },
+    });
+    expect(write).toHaveBeenCalled();
+    write.mockRestore();
   });
 
   it('stores a composer album image on the execution machine', async () => {

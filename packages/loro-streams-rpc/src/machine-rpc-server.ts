@@ -1521,9 +1521,24 @@ export class LoroStreamsMachineRpcServer {
     if (!resolveOwnerSessionId) {
       return;
     }
-    const expectedOwnerSessionId = await resolveOwnerSessionId(businessSessionId as SessionId);
-    if (expectedOwnerSessionId !== envelopeOwnerSessionId) {
-      throw codeCollabOwnerMismatchError();
+    try {
+      const expectedOwnerSessionId = await resolveOwnerSessionId(businessSessionId as SessionId);
+      if (expectedOwnerSessionId !== envelopeOwnerSessionId) {
+        throw codeCollabOwnerMismatchError();
+      }
+    } catch (error) {
+      // New-chat drafts send the image before the session document exists.
+      // The envelope still has to name that same draft id.
+      if (
+        envelopeOwnerSessionId === businessSessionId &&
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        error.code === 'session_not_found'
+      ) {
+        return;
+      }
+      throw error;
     }
   }
 

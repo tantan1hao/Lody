@@ -9,6 +9,8 @@ import { SessionIdSchema, SessionImagePayloadSchema } from './message-schemas';
  * Local and self-hosted have no such service; the web album path therefore
  * sends the bytes to the session's machine over Machine RPC. The daemon stores
  * them in the local image blob store and returns a normal `SessionImagePayload`.
+ * New-chat drafts may send before the session document exists; the bytes are
+ * keyed by that draft id so later create/prepare can see them.
  */
 export const SESSION_IMAGE_SEND_METHOD = 'session/image-send' as const;
 

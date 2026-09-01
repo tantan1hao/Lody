@@ -1839,28 +1839,32 @@ export class MessageHandler {
     };
   }
 
-  async handleSessionImageSend(request: SessionImageSendRequest): Promise<SessionImageSendResponse> {
+  async handleSessionImageSend(
+    request: SessionImageSendRequest
+  ): Promise<SessionImageSendResponse> {
     const sessionMetaRecord = await this.workspaceDocument.repo.getDocMeta(
       getSessionRoomId(request.sessionId)
     );
-    if (!sessionMetaRecord?.meta || isLoroRepoDocDeleted(sessionMetaRecord)) {
+    if (sessionMetaRecord && isLoroRepoDocDeleted(sessionMetaRecord)) {
       return sessionImageSendError('session_not_found', {
         message: `Session not found: ${request.sessionId}`,
       });
     }
 
-    const sessionDoc = await this.workspaceDocument.getOrCreateSessionDoc(request.sessionId);
-    const meta = await sessionDoc.getMetaState();
-    if (meta?.isArchived) {
-      return sessionImageSendError('session_archived', {
-        message: 'Session is archived',
-      });
+    // New-chat drafts allocate a session id before the document exists. Store
+    // the bytes against that id so the later create/prepare can see them.
+    if (sessionMetaRecord?.meta) {
+      const sessionDoc = await this.workspaceDocument.getOrCreateSessionDoc(request.sessionId);
+      const meta = await sessionDoc.getMetaState();
+      if (meta?.isArchived) {
+        return sessionImageSendError('session_archived', {
+          message: 'Session is archived',
+        });
+      }
     }
 
     const mimeType = request.mimeType;
-    if (
-      !(SESSION_IMAGE_ALLOWED_MIME_TYPES as readonly string[]).includes(mimeType)
-    ) {
+    if (!(SESSION_IMAGE_ALLOWED_MIME_TYPES as readonly string[]).includes(mimeType)) {
       return sessionImageSendError('unsupported_type', {
         message: `Unsupported image type: ${mimeType}`,
       });
@@ -1897,7 +1901,7 @@ export class MessageHandler {
         status: 'ok',
         image: {
           imageId: stored.imageId,
-          mimeType: stored.mimeType,
+          mimeType,
           fileName: stored.fileName,
           sizeBytes: stored.sizeBytes,
           width: stored.width,
@@ -6717,7 +6721,9 @@ export class MessageHandler {
           allowArbitraryPaths: true,
         });
       case 'session/image-send':
-        await assertOwner(request.params.sessionId as SessionId);
+        if (request.ownerSessionId && request.ownerSessionId !== request.params.sessionId) {
+          await assertOwner(request.params.sessionId as SessionId);
+        }
         return await this.handleSessionImageSend(request.params);
       case 'session/image-get':
         await assertOwner(request.params.sessionId as SessionId);

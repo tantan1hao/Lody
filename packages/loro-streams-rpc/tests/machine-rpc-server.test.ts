@@ -1253,6 +1253,71 @@ describe('LoroStreamsMachineRpcServer', () => {
     server.stop();
   });
 
+  it('accepts session/image-send for a draft session that does not exist yet', async () => {
+    const workspaceId = 'workspace-1' as WorkspaceId;
+    const machineId = 'machine-1' as MachineId;
+    const fake = createFakeStreamClient();
+    const sendSessionImage = vi.fn(async () => ({
+      status: 'ok' as const,
+      image: {
+        imageId: 'img-1',
+        fileName: 'shot.png',
+        mimeType: 'image/png' as const,
+        sizeBytes: 4,
+      },
+    }));
+    const resolveCodeCollabOwnerSessionId = vi.fn(async (): Promise<SessionId> => {
+      const error = new Error('Session not found: session-draft') as Error & { code: string };
+      error.code = 'session_not_found';
+      throw error;
+    });
+
+    const server = new LoroStreamsMachineRpcServer({
+      logger: createSilentLogger(),
+      workspaceId,
+      machineId,
+      streamClient: fake.streamClient,
+      getMachineStatus: vi.fn(),
+      refreshMachineAcpCapabilities: vi.fn(),
+      resolveCodeCollabOwnerSessionId,
+      sendSessionImage,
+    });
+
+    fake.pushBatch({
+      messages: [
+        {
+          jsonrpc: '2.0',
+          id: 'req-1',
+          method: 'session/image-send',
+          rpcVersion: '1',
+          machineId: 'machine-1',
+          workspaceId: 'workspace-1',
+          replyTo: 'workspace-1:rpc:res:machine-1',
+          sentAt: Date.now(),
+          expiresAt: Date.now() + 5000,
+          params: await encryptCodeCollabV2RpcPayload('session-draft', {
+            sessionId: 'session-draft',
+            fileName: 'shot.png',
+            mimeType: 'image/png',
+            data: 'iVBO',
+          }),
+        },
+      ],
+      nextOffset: '1',
+      cursor: 'cursor-1',
+      upToDate: true,
+    });
+
+    await server.start();
+
+    await vi.waitFor(() => {
+      expect(fake.appended).toHaveLength(1);
+    });
+
+    expect(sendSessionImage).toHaveBeenCalled();
+    server.stop();
+  });
+
   it('serves session/image-get through the owner-scoped encrypted envelope', async () => {
     const workspaceId = 'workspace-1' as WorkspaceId;
     const machineId = 'machine-1' as MachineId;

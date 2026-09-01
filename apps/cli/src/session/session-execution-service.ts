@@ -54,6 +54,7 @@ import {
   hasBuiltinRuntimeOverrideValues,
   getManagedBuiltinRuntimeByAgentType,
   getManagedBuiltinRuntimeByRuntimeName,
+  isManagedBuiltinAgentType,
   serializeCustomAcpLaunchSpec,
 } from '@lody/shared';
 import type { ContentBlock } from '@agentclientprotocol/sdk';
@@ -85,10 +86,7 @@ import {
   type ManagedRuntimeProgressEvent,
   type ManagedRuntimeName,
 } from '@/agent/managed-agent-runtime';
-import type {
-  FetchAcpCapabilitiesOptions,
-  FetchedAcpCapabilities,
-} from '@/agent/acp-capabilities';
+import type { FetchAcpCapabilitiesOptions, FetchedAcpCapabilities } from '@/agent/acp-capabilities';
 import { AcpAuthenticationRequiredError, AgentSteerNotDeliveredError } from '@/agent/agent-client';
 import {
   AcpAuthenticationManager,
@@ -5128,6 +5126,9 @@ export class SessionExecutionService {
 
       for (const limits of rateLimits ?? []) {
         options.signal?.throwIfAborted();
+        if (!isManagedBuiltinAgentType(message.agentType)) {
+          continue;
+        }
         await this.deps.workspaceDocument.updateRateLimits(
           this.deps.machineId,
           message.agentType,
