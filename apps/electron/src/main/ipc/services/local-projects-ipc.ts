@@ -67,6 +67,23 @@ function parseSendSessionFileLocalInput(payload: unknown): SendSessionFileLocalI
  * spec is resolved daemon-side (`MessageHandler.resolveHistoryProvider`), so
  * there is nothing here that a custom provider cannot satisfy.
  */
+/**
+ * 只把线上 schema 认的那两个字段发出去。
+ *
+ * `customAcp` 里是可执行文件路径和参数，`LocalProjectHistoryProviderSchema`
+ * 是 `.strict()` 且不含它——设计上它就该留在进程内，由目标机器自己从本地
+ * agent 配置解析（见 `project.ts` 上那段注释）。带着它发出去有两个后果：
+ * 请求被 schema 判为 `unrecognized_keys` 整个丢掉（日志里刷
+ * `ignored invalid RPC request`），以及把一条可执行命令送上了线。
+ *
+ * 在边界上重建对象而不是原样透传，这样上游无论从哪儿捡到多余字段都不会漏出去。
+ */
+function toWireHistoryProvider(
+  provider: LocalProjectHistoryProvider
+): LocalProjectHistoryProvider {
+  return { cliType: provider.cliType, agentType: provider.agentType }
+}
+
 function isLocalProjectHistoryProvider(value: unknown): value is LocalProjectHistoryProvider {
   const cliType = (value as { cliType?: unknown } | null)?.cliType
   return (
@@ -301,7 +318,7 @@ export class LocalProjectsIpc extends IpcService {
     }
     const response = await sendLocalProjectControl({
       type: 'local-project/sync-history',
-      provider,
+      provider: toWireHistoryProvider(provider),
       workspaceId: workspaceId as WorkspaceId,
       localProjectId: localProjectId as LocalProjectId
     })
@@ -324,7 +341,7 @@ export class LocalProjectsIpc extends IpcService {
     }
     const response = await sendLocalProjectControl({
       type: 'local-project/import-history',
-      provider,
+      provider: toWireHistoryProvider(provider),
       workspaceId: workspaceId as WorkspaceId,
       localProjectId: localProjectId as LocalProjectId,
       acpSessionIds
@@ -349,7 +366,7 @@ export class LocalProjectsIpc extends IpcService {
     }
     const response = await sendLocalProjectControl({
       type: 'local-project/resolve-history-conflict',
-      provider,
+      provider: toWireHistoryProvider(provider),
       workspaceId: workspaceId as WorkspaceId,
       localProjectId: localProjectId as LocalProjectId,
       sessionId,

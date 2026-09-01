@@ -9440,7 +9440,11 @@ export class MessageHandler {
           machineId: this.machineId,
           userId: this.userId,
         },
-        request.provider
+        // 自定义 provider 的启动命令不在线上，得在这里按 cliType:agentType
+        // 去本机配置里查。原来直接用 request.provider，而这个类的
+        // resolveHistoryProvider 从定义出来就没被调用过——自定义 agent 走到
+        // 这条路就必然「no launch command configured」。
+        await this.resolveHistoryProvider(request.provider)
       );
 
       if (request.type === 'local-project/sync-history') {

@@ -365,6 +365,38 @@ describe('message-schemas local project control', () => {
     expect(result.success).toBe(true);
   });
 
+  it('accepts a custom history provider but keeps its launch spec off the wire', () => {
+    const base = {
+      type: 'local-project/sync-history' as const,
+      machineId: 'machine-1',
+      workspaceId: 'workspace-1',
+      localProjectId: 'project-1',
+    };
+
+    // 自定义 agent 是合法的历史 provider —— provider 列表由机器上每份 agent
+    // 配置生成，没有白名单。
+    expect(
+      LocalProjectControlRequestSchema.safeParse({
+        ...base,
+        provider: { cliType: 'custom', agentType: 'xsess' },
+      }).success
+    ).toBe(true);
+
+    // 但启动命令绝不上线：它是可执行文件路径 + 参数，由目标机器自己从本地
+    // agent 配置解析。带着它发出去，请求会被整条丢掉（日志里刷
+    // `ignored invalid RPC request: unrecognized_keys`），而且等于把一条可执行
+    // 命令送上了线。要修「自定义 provider 用不了」，改发送方，别放宽这里。
+    const withLaunchSpec = LocalProjectControlRequestSchema.safeParse({
+      ...base,
+      provider: {
+        cliType: 'custom',
+        agentType: 'xsess',
+        customAcp: { command: '/usr/bin/node', args: ['/tmp/evil.js'] },
+      },
+    });
+    expect(withLaunchSpec.success).toBe(false);
+  });
+
   it('accepts list-skills requests and responses', () => {
     expect(
       LocalProjectControlRequestSchema.safeParse({
