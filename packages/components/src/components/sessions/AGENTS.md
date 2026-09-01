@@ -481,6 +481,9 @@ Session conversation page chain:
   routes each selection by MIME into the image or file state machine.
 - `floating-permission-request.tsx`: floating permissions + ask-user-question;
   hidden-composer mobile keyboard lift/scroll lives there.
+  Unmodified Enter confirms the primary allow option of the top pending
+  tool-permission card (not ask-user-question, not while focus is in an
+  input/button). The composer hides, but the usage ring stays on that surface.
   `notification-permission-prompt.tsx` and the inner content of `session-pin.tsx`
   use the same `ConversationColumn` as the stream and composer; keep full-bleed
   bands outside that column, but never let their interactive content span the pane.

@@ -5,6 +5,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/ui/card'
 import { ScrollArea } from '@/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { ConversationColumn } from '@/components/shared/conversation-column';
+import { isImeComposingNativeKeyboardEvent } from '@/lib/ime';
 import { observeResizeOnAnimationFrame } from '@/lib/resize-observer';
 import { usePermissionResponse } from '@/hooks/use-permission-response';
 import { usePlanModeExitApprovalNotifier } from '@/hooks/use-plan-mode-exit-approval';
@@ -95,6 +96,8 @@ export interface PermissionRequestCardProps {
   pendingOptionId?: string | null;
   selectedOptionId?: string | null;
   onSelect: (optionId: string) => void;
+  /** Window Enter confirms the primary allow option while this card owns the prompt. */
+  confirmOnEnter?: boolean;
   className?: string;
 }
 
@@ -171,6 +174,22 @@ const getAskQuestionCancelOptionId = (
   options.find((option) => option.optionId !== answerOptionId)?.optionId ??
   null;
 
+/** First allow-kind option, else the first published option. Enter confirms this one. */
+export function getPrimaryPermissionOptionId(options: PermissionOption[]): string | null {
+  return (
+    getPermissionOptionIdByKind(options, (option) => option.kind?.startsWith('allow') === true) ??
+    options[0]?.optionId ??
+    null
+  );
+}
+
+function isPermissionShortcutTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return Boolean(
+    target.closest('button, [role="button"], a, textarea, input, select, [contenteditable="true"]')
+  );
+}
+
 export function PermissionRequestCard({
   title,
   options,
@@ -180,6 +199,7 @@ export function PermissionRequestCard({
   pendingOptionId = null,
   selectedOptionId = null,
   onSelect,
+  confirmOnEnter = false,
   className,
 }: PermissionRequestCardProps) {
   const { t } = useTranslation();
@@ -199,7 +219,21 @@ export function PermissionRequestCard({
         : t('sessions.permissionDenied', 'Permission Denied')
       : t('sessions.permissionRequired', 'Permission Required');
   const showFooter = !isReady;
-  const primaryOptionId = options[0]?.optionId ?? null;
+  const primaryOptionId = getPrimaryPermissionOptionId(options);
+
+  useEffect(() => {
+    if (!confirmOnEnter || disabled || !primaryOptionId) return undefined;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Enter' || event.repeat || event.defaultPrevented) return;
+      if (event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) return;
+      if (isImeComposingNativeKeyboardEvent(event)) return;
+      if (isPermissionShortcutTarget(event.target)) return;
+      event.preventDefault();
+      onSelect(primaryOptionId);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [confirmOnEnter, disabled, onSelect, primaryOptionId]);
 
   return (
     <Card
@@ -253,6 +287,11 @@ export function PermissionRequestCard({
                   )}
                 />
                 <span className="min-w-0 flex-1 whitespace-normal break-words">{option.name}</span>
+                {emphasize && confirmOnEnter && !disabled ? (
+                  <kbd className="mt-0.5 shrink-0 rounded-sm border border-border/70 bg-muted px-1 font-mono text-[10px] leading-none text-muted-foreground">
+                    {t('sessions.permissionConfirmEnter', 'Enter')}
+                  </kbd>
+                ) : null}
                 {isPending && (
                   <Loader2 className="mt-0.5 ml-auto h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
                 )}
@@ -279,10 +318,12 @@ function PermissionCard({
   sessionId,
   pending,
   isReady,
+  confirmOnEnter,
 }: {
   sessionId: SessionId;
   pending: PendingPermission;
   isReady: boolean;
+  confirmOnEnter: boolean;
 }) {
   const { respondToPermission } = usePermissionResponse();
   const [pendingOptionId, setPendingOptionId] = useState<string | null>(null);
@@ -418,6 +459,7 @@ function PermissionCard({
       selectedOptionId={
         permission.outcome?.outcome === 'selected' ? permission.outcome.optionId : null
       }
+      confirmOnEnter={confirmOnEnter}
       onSelect={(optionId) => {
         void handleSelect(optionId);
       }}
@@ -447,6 +489,9 @@ export function FloatingPermissionRequest({
   // replace the composer keyboard behavior: lift on iOS, resize naturally on
   // Android, and keep focused custom-answer fields visible inside the cap.
   const hasAskUserQuestion = pendingList.some((entry) => entry.isAskUserQuestion);
+  const enterConfirmRequestId = pendingList.find(
+    (entry) => !entry.isAskUserQuestion
+  )?.permission.requestId;
 
   const items = (
     <ConversationColumn className="flex flex-col gap-3">
@@ -456,6 +501,7 @@ export function FloatingPermissionRequest({
           sessionId={sessionId}
           pending={pending}
           isReady={isReady}
+          confirmOnEnter={pending.permission.requestId === enterConfirmRequestId}
         />
       ))}
     </ConversationColumn>

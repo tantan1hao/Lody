@@ -1738,6 +1738,7 @@
   "sessions.permissionActionsDisabled": "此环境中权限操作不可用。",
   "sessions.permissionApproved": "权限已通过",
   "sessions.permissionCancelled": "权限已取消",
+  "sessions.permissionConfirmEnter": "Enter",
   "sessions.permissionDenied": "权限已拒绝",
   "sessions.permissionRequired": "需要权限",
   "sessions.permissionSelectedOption": "已选择：{{option}}",

@@ -1738,6 +1738,7 @@
   "sessions.permissionActionsDisabled": "Permission actions are disabled in this environment.",
   "sessions.permissionApproved": "Permission Approved",
   "sessions.permissionCancelled": "Permission Cancelled",
+  "sessions.permissionConfirmEnter": "Enter",
   "sessions.permissionDenied": "Permission Denied",
   "sessions.permissionRequired": "Permission Required",
   "sessions.permissionSelectedOption": "Selected: {{option}}",
