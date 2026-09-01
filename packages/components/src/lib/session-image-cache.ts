@@ -250,6 +250,22 @@ const getSessionImageCacheEntry = async (
   }
 };
 
+/**
+ * Remember bytes that already live on this client (composer album / paste)
+ * so the transcript can render them without the official download API.
+ */
+export const rememberSessionImageBlob = (args: {
+  workspaceId: WorkspaceId;
+  sessionId: SessionId;
+  imageId: string;
+  blob: Blob;
+}): void => {
+  const originalUrl = buildSessionImageDownloadUrl(args.workspaceId, args.sessionId, args.imageId);
+  const key = getCacheKey(args.workspaceId, args.sessionId, args.imageId, 'original', originalUrl);
+  writeBlobToMemoryCache(key, args.blob);
+  void writeBlobToPersistentCache(originalUrl, args.blob);
+};
+
 export const getSessionImageBlobUrl = async (
   args: GetSessionImageCacheEntryArgs
 ): Promise<string> => {

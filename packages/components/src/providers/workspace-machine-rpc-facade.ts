@@ -26,6 +26,9 @@ import {
   type FilePreviewV3Response,
   FILE_PREVIEW_PROTOCOL_VERSION,
   filePreviewV3Error,
+  sessionImageSendError,
+  type SessionImageSendRequest,
+  type SessionImageSendResponse,
   type LocalMachineRpcRequest,
   type LocalMachineRpcResult,
   type LocalProjectControlRequest,
@@ -236,6 +239,51 @@ export function createWorkspaceMachineRpcFacade(deps: WorkspaceMachineRpcFacadeD
       return filePreviewV3Error('transient_io', {
         message: error instanceof Error ? error.message : String(error),
         path: request.path,
+        retryable: true,
+      });
+    }
+  };
+
+  const requestSessionImageSend = async (
+    machineId: MachineId,
+    request: SessionImageSendRequest,
+    options?: CodeCollabRequestOptions
+  ): Promise<SessionImageSendResponse> => {
+    try {
+      const result = await (async () => {
+        if (await canUseLocalMachineRpc(machineId)) {
+          const sender = getLocalMachineRpcSender();
+          if (!sender) {
+            throw new Error('Local Machine RPC is not available.');
+          }
+          const response = await sender({
+            machineId,
+            workspaceId,
+            method: 'session/image-send',
+            params: request,
+            ...ownerSessionFields(options),
+            timeoutMs: options?.timeoutMs ?? 60_000,
+          });
+          if (!response.ok) throw new Error(response.error);
+          return response.result as SessionImageSendResponse | null;
+        }
+        const client = await getMachineRpcClient(machineId);
+        return await client.requestSessionImageSend({
+          ...request,
+          ownerSessionId: options?.ownerSessionId,
+          timeoutMs: options?.timeoutMs ?? 60_000,
+        });
+      })();
+      if (result === null) {
+        return sessionImageSendError('transient_io', {
+          message: 'Session image send timed out.',
+          retryable: true,
+        });
+      }
+      return result;
+    } catch (error) {
+      return sessionImageSendError('transient_io', {
+        message: error instanceof Error ? error.message : String(error),
         retryable: true,
       });
     }
@@ -1149,6 +1197,7 @@ export function createWorkspaceMachineRpcFacade(deps: WorkspaceMachineRpcFacadeD
     requestSessionPrepare,
     requestSessionPrepareCancel,
     requestFilePreview,
+    requestSessionImageSend,
     requestLocalCodeCollabFileIndex,
     requestCodeCollabOpenText,
     requestCodeCollabRefreshText,

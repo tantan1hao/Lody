@@ -93,6 +93,15 @@ describe('local Machine RPC', () => {
       method: 'file/preview-local',
       params: { v: 3, sessionId: 'session-1', path: '/Users/me/Documents/notes.md' },
     },
+    {
+      method: 'session/image-send',
+      params: {
+        sessionId: 'session-1',
+        fileName: 'shot.png',
+        mimeType: 'image/png',
+        data: 'iVBORw0KGgo=',
+      },
+    },
   ])('accepts $method requests', ({ method, params }) => {
     const result = safeParseLocalMachineRpcRequest(
       JSON.stringify({

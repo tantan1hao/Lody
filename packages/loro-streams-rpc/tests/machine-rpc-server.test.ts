@@ -1173,6 +1173,86 @@ describe('LoroStreamsMachineRpcServer', () => {
     server.stop();
   });
 
+  it('serves session/image-send through the owner-scoped encrypted envelope', async () => {
+    const workspaceId = 'workspace-1' as WorkspaceId;
+    const machineId = 'machine-1' as MachineId;
+    const fake = createFakeStreamClient();
+    const sendSessionImage = vi.fn(async () => ({
+      status: 'ok' as const,
+      image: {
+        imageId: 'img-1',
+        fileName: 'shot.png',
+        mimeType: 'image/png',
+        sizeBytes: 4,
+        downloadUrl: 'https://lody.local/session-images/img-1',
+      },
+    }));
+    const resolveCodeCollabOwnerSessionId = vi.fn(
+      async (): Promise<SessionId> => 'session-parent' as SessionId
+    );
+
+    const server = new LoroStreamsMachineRpcServer({
+      logger: createSilentLogger(),
+      workspaceId,
+      machineId,
+      streamClient: fake.streamClient,
+      getMachineStatus: vi.fn(),
+      refreshMachineAcpCapabilities: vi.fn(),
+      resolveCodeCollabOwnerSessionId,
+      sendSessionImage,
+    });
+
+    fake.pushBatch({
+      messages: [
+        {
+          jsonrpc: '2.0',
+          id: 'req-1',
+          method: 'session/image-send',
+          rpcVersion: '1',
+          machineId: 'machine-1',
+          workspaceId: 'workspace-1',
+          replyTo: 'workspace-1:rpc:res:machine-1',
+          sentAt: Date.now(),
+          expiresAt: Date.now() + 5000,
+          params: await encryptCodeCollabV2RpcPayload('session-parent', {
+            sessionId: 'session-child',
+            fileName: 'shot.png',
+            mimeType: 'image/png',
+            data: 'iVBO',
+          }),
+        },
+      ],
+      nextOffset: '1',
+      cursor: 'cursor-1',
+      upToDate: true,
+    });
+
+    await server.start();
+
+    await vi.waitFor(() => {
+      expect(fake.appended).toHaveLength(1);
+    });
+
+    expect(sendSessionImage).toHaveBeenCalledWith({
+      sessionId: 'session-child',
+      fileName: 'shot.png',
+      mimeType: 'image/png',
+      data: 'iVBO',
+    });
+    const response = fake.appended[0]?.value as { result: unknown };
+    await expect(
+      decryptCodeCollabV2RpcPayload(
+        response.result as CodeCollabV2RpcContentEnvelope,
+        'session-parent'
+      )
+    ).resolves.toMatchObject({
+      status: 'ok',
+      image: { imageId: 'img-1', mimeType: 'image/png' },
+    });
+
+    server.stop();
+  });
+
   it('rejects a file/preview request whose envelope owner is not the session owner', async () => {
     const workspaceId = 'workspace-1' as WorkspaceId;
     const machineId = 'machine-1' as MachineId;

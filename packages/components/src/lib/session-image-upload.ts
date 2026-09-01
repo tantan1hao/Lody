@@ -7,9 +7,11 @@ import {
   SESSION_IMAGE_ALLOWED_MIME_TYPES,
   SESSION_IMAGE_MAX_SIZE_BYTES,
   SessionInputBlockSchema,
+  type MachineId,
   type SessionImageThumbnailOptions,
   type SessionId,
   type SessionImagePayload,
+  type SessionImageSendResponse,
   type WorkspaceId,
 } from '@lody/shared';
 import { API_BASE_URL } from '@/lib';
@@ -131,4 +133,55 @@ export const uploadSessionImage = async ({
     width: parsed.data.width,
     height: parsed.data.height,
   };
+};
+
+const fileToBase64 = async (file: File): Promise<string> => {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const chunkSize = 0x8000;
+  let binary = '';
+  for (let offset = 0; offset < bytes.byteLength; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return btoa(binary);
+};
+
+type SessionImageMachineSender = {
+  requestSessionImageSend: (
+    machineId: MachineId,
+    request: {
+      sessionId: SessionId;
+      fileName: string;
+      mimeType: SessionImagePayload['mimeType'];
+      data: string;
+    },
+    options?: { ownerSessionId?: SessionId | string }
+  ) => Promise<SessionImageSendResponse>;
+};
+
+export const sendSessionImageToMachine = async (args: {
+  runtime: SessionImageMachineSender;
+  machineId: MachineId;
+  sessionId: SessionId;
+  file: File;
+}): Promise<SessionImagePayload> => {
+  const validationError = validateSessionImageFile(args.file);
+  if (validationError) {
+    throw new Error(validationError);
+  }
+  const mimeType = args.file.type.trim().toLowerCase() as SessionImagePayload['mimeType'];
+  const data = await fileToBase64(args.file);
+  const response = await args.runtime.requestSessionImageSend(
+    args.machineId,
+    {
+      sessionId: args.sessionId,
+      fileName: args.file.name.trim() || 'image',
+      mimeType,
+      data,
+    },
+    { ownerSessionId: args.sessionId }
+  );
+  if (response.status !== 'ok') {
+    throw new Error(response.message);
+  }
+  return response.image;
 };

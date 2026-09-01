@@ -1296,6 +1296,8 @@ function WorkspaceChatLanding({
   } = useChatLandingImageDraft({
     workspaceId: (workspaceId as WorkspaceId | null) ?? null,
     authToken,
+    machineId: selectedMachineId,
+    runtime: runtime ?? null,
     isMobile,
     projectKind: contextType === 'chat' ? null : contextType,
     sessionId: draftSessionId,

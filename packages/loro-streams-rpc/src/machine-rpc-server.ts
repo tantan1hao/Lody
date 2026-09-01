@@ -73,6 +73,10 @@ import {
   filePreviewV3Error,
   type FilePreviewV3Request,
   type FilePreviewV3Response,
+  SessionImageSendRequestSchema,
+  sessionImageSendError,
+  type SessionImageSendRequest,
+  type SessionImageSendResponse,
 } from '@lody/shared';
 import {
   CodeCollabV2LspRpcParamsSchema,
@@ -370,6 +374,8 @@ type RpcServerDeps = {
   resolveCodeCollabOwnerSessionId?: (sessionId: SessionId) => Promise<SessionId>;
   /** File Preview v3 — a plain read; must not activate Code Collab. */
   previewFile?: (args: FilePreviewV3Request) => Promise<FilePreviewV3Response>;
+  /** Store a composer image on this machine for ACP vision. */
+  sendSessionImage?: (args: SessionImageSendRequest) => Promise<SessionImageSendResponse>;
   refreshCodeCollabText?: (
     args: CodeCollabV2RefreshTextRequest
   ) => Promise<CodeCollabV2RefreshTextResponse>;
@@ -1360,6 +1366,22 @@ export class LoroStreamsMachineRpcServer {
           });
           return;
         }
+        case 'session/image-send': {
+          const decoded = await this.decryptCodeCollabV2RequestParams(request.params);
+          codeCollabOwnerSessionId = decoded.ownerSessionId;
+          const params = SessionImageSendRequestSchema.parse(decoded.payload);
+          await this.verifyCodeCollabV2OwnerSession(decoded.ownerSessionId, params.sessionId);
+          const response: SessionImageSendResponse = this.deps.sendSessionImage
+            ? await this.deps.sendSessionImage(params)
+            : sessionImageSendError('transient_io', {
+                message: 'Session image send is not available on this machine.',
+                retryable: true,
+              });
+          await this.appendResultResponse(request.replyTo, request.id, request.method, response, {
+            codeCollabOwnerSessionId: decoded.ownerSessionId,
+          });
+          return;
+        }
         case 'session/preview-create': {
           if (!this.deps.createSessionPreview) {
             await this.appendErrorResponse(request.replyTo, request.id, request.method, {
@@ -1430,7 +1452,13 @@ export class LoroStreamsMachineRpcServer {
         ? toCodeCollabRpcError(error)
         : request.method === 'file/preview'
           ? toFilePreviewRpcError(error, message)
-          : null;
+          : request.method === 'session/image-send'
+            ? {
+                code: 'transient_io',
+                message,
+                data: sessionImageSendError('transient_io', { message, retryable: true }),
+              }
+            : null;
       await this.appendErrorResponse(
         request.replyTo,
         request.id,

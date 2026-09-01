@@ -467,10 +467,15 @@ Session conversation page chain:
   Pending-attachment state machines: `pendingImages` (images) **and** `pendingFiles`
   (files; cloud upload via `@/lib/session-file-upload.ts` with sha256/textPreview,
   abort + part retry). Oversize images (>5 MiB) auto-degrade to files. Send blocks
-  while either is uploading. Desktop same-machine uploads use
+  while either is uploading. Vision images first try official
+  `/session-images/upload`; when that service is absent (public self-hosted /
+  web remote) the composer falls back to `runtime.requestSessionImageSend`,
+  which puts the bytes on the session's execution machine. Desktop same-machine
+  file uploads use
   `@/lib/electron-session-file-sender.ts` / `localProjects.sendSessionFileLocal`, return
   a `transport:'local'` block into the same `pendingFiles[].uploaded` slot, and fall
-  back to cloud on handoff failure. The composer exposes one unfiltered hidden
+  back to cloud on handoff failure. An image that cannot become vision may still
+  degrade to that file attachment path. The composer exposes one unfiltered hidden
   `<input type="file">` on every platform (Windows included — the renderer no
   longer crashes once locale `.pak`s ship; see `apps/electron/AGENTS.md`) and
   routes each selection by MIME into the image or file state machine.

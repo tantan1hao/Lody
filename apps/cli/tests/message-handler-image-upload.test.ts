@@ -11,6 +11,7 @@ import type {
 } from '@lody/shared';
 
 import { MessageHandler } from '../src/lib/message-handler';
+import * as sessionImageBlobStore from '../src/lib/session-image-blob-store';
 import type { LoroDocumentManager } from '../src/lib/loro/doc';
 import type { SessionManager } from '../src/session/session-manager';
 import type { Logger } from '../src/utils/logger';
@@ -598,5 +599,40 @@ describe('MessageHandler image upload flow', () => {
     } finally {
       await fs.rm(tempDir, { recursive: true, force: true });
     }
+  });
+
+  it('stores a composer album image on the execution machine', async () => {
+    const harness = createHarness();
+    handlers.push(harness.handler);
+    const write = vi.spyOn(sessionImageBlobStore, 'writeSessionImageBlob').mockResolvedValue();
+
+    const result = await harness.handler.handleSessionImageSend({
+      sessionId: 'session-1' as SessionId,
+      fileName: 'shot.png',
+      mimeType: 'image/png',
+      data: Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString('base64'),
+    });
+
+    expect(result.status).toBe('ok');
+    if (result.status === 'ok') {
+      expect(result.image.mimeType).toBe('image/png');
+      expect(result.image.fileName).toBe('shot.png');
+      expect(result.image.sizeBytes).toBe(4);
+    }
+    expect(write).toHaveBeenCalled();
+    write.mockRestore();
+  });
+
+  it('rejects an empty album image before storing it', async () => {
+    const harness = createHarness();
+    handlers.push(harness.handler);
+    await expect(
+      harness.handler.handleSessionImageSend({
+        sessionId: 'session-1' as SessionId,
+        fileName: 'empty.png',
+        mimeType: 'image/png',
+        data: '',
+      })
+    ).resolves.toMatchObject({ status: 'error', code: 'invalid_file' });
   });
 });

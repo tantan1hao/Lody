@@ -37,6 +37,10 @@ control-plane path is DEPRECATED; do not add functionality to it.
 - `session-image-download.ts` — CLI-side prompt image download through the
   injected attachment capability, including short retries before converting
   bytes to ACP image blocks.
+- `session-image-blob-store.ts` — local store for composer images that arrived
+  through `session/image-send` (or a cloud-less `uploadSessionImageFile`).
+  `fetchSessionImageForPrompt` reads this store first so ACP vision works
+  without official `/session-images` hosting.
 - `machine-runtime.ts` — machine runtime bootstrap; still hosts the DEPRECATED
   hosted WS control-plane listener. Remote bridge
   attach/detach/revoke are serialized through `runBridgeTransition` (per-runtime

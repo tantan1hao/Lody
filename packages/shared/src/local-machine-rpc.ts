@@ -20,6 +20,7 @@ import {
   CodeCollabV2SaveTextResponseSchema,
 } from './code-collab';
 import { FilePreviewV3RequestSchema, FilePreviewV3ResponseSchema } from './file-preview';
+import { SessionImageSendRequestSchema, SessionImageSendResponseSchema } from './session-image-send';
 import {
   SessionCancelResponseSchema,
   SessionDispatchTurnResponseSchema,
@@ -123,6 +124,10 @@ export const LocalMachineRpcRequestSchema = z.discriminatedUnion('method', [
     params: FilePreviewV3RequestSchema,
   }).strict(),
   BaseLocalMachineRpcRequestSchema.extend({
+    method: z.literal('session/image-send'),
+    params: SessionImageSendRequestSchema,
+  }).strict(),
+  BaseLocalMachineRpcRequestSchema.extend({
     method: z.literal('session/cancel'),
     params: z
       .object({
@@ -223,6 +228,7 @@ export const LocalMachineRpcResultSchema = z.union([
   CodeCollabV2LspUnsupportedSchema,
   CodeCollabV2ErrorSchema,
   FilePreviewV3ResponseSchema,
+  SessionImageSendResponseSchema,
   SessionCancelResponseSchema,
   SessionDispatchTurnResponseSchema,
   SessionEditAndResendResponseSchema,

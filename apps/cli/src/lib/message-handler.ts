@@ -174,6 +174,11 @@ import {
   type LodyOperationItemResult,
   type StoredLodyOperation,
   CURRENT_MACHINE_PROTOCOL_CAPABILITIES,
+  SESSION_IMAGE_ALLOWED_MIME_TYPES,
+  SESSION_IMAGE_MAX_SIZE_BYTES,
+  type SessionImageSendRequest,
+  type SessionImageSendResponse,
+  sessionImageSendError,
 } from '@lody/shared';
 import { ISession, SessionManager } from '../session/session-manager';
 import { captureCli } from '@/lib/analytics/posthog';
@@ -222,6 +227,7 @@ import {
   sessionFileBlobExists,
   writeSessionFileBlobBackfillMarker,
 } from '@/lib/session-file-blob-store';
+import { readSessionImageBlob, writeSessionImageBlob } from '@/lib/session-image-blob-store';
 import {
   SESSION_FILE_BACKFILL_MAX_ATTEMPTS,
   flipFileTransportToR2,
@@ -1809,11 +1815,110 @@ export class MessageHandler {
     }
   }
 
+  private async storeLocalSessionImage(args: {
+    workspaceId: WorkspaceId;
+    sessionId: SessionId;
+    file: UploadableImageFile;
+  }): Promise<UploadedSessionImage> {
+    const imageId = uuidV4();
+    await writeSessionImageBlob({
+      workspaceId: args.workspaceId,
+      sessionId: args.sessionId,
+      imageId,
+      bytes: args.file.bytes,
+      mimeType: args.file.mimeType,
+      fileName: args.file.fileName,
+    });
+    return {
+      imageId,
+      mimeType: args.file.mimeType,
+      fileName: args.file.fileName,
+      sizeBytes: args.file.sizeBytes,
+      downloadUrl: `https://lody.local/session-images/${encodeURIComponent(imageId)}`,
+    };
+  }
+
+  async handleSessionImageSend(request: SessionImageSendRequest): Promise<SessionImageSendResponse> {
+    const sessionMetaRecord = await this.workspaceDocument.repo.getDocMeta(
+      getSessionRoomId(request.sessionId)
+    );
+    if (!sessionMetaRecord?.meta || isLoroRepoDocDeleted(sessionMetaRecord)) {
+      return sessionImageSendError('session_not_found', {
+        message: `Session not found: ${request.sessionId}`,
+      });
+    }
+
+    const sessionDoc = await this.workspaceDocument.getOrCreateSessionDoc(request.sessionId);
+    const meta = await sessionDoc.getMetaState();
+    if (meta?.isArchived) {
+      return sessionImageSendError('session_archived', {
+        message: 'Session is archived',
+      });
+    }
+
+    const mimeType = request.mimeType;
+    if (
+      !(SESSION_IMAGE_ALLOWED_MIME_TYPES as readonly string[]).includes(mimeType)
+    ) {
+      return sessionImageSendError('unsupported_type', {
+        message: `Unsupported image type: ${mimeType}`,
+      });
+    }
+
+    let bytes: Buffer;
+    try {
+      bytes = Buffer.from(request.data.replace(/\s/g, ''), 'base64');
+    } catch {
+      return sessionImageSendError('invalid_file', { message: 'Image data is not valid base64' });
+    }
+    if (bytes.byteLength <= 0) {
+      return sessionImageSendError('invalid_file', { message: 'Image is empty' });
+    }
+    if (bytes.byteLength > SESSION_IMAGE_MAX_SIZE_BYTES) {
+      return sessionImageSendError('too_large', {
+        message: `Image must be <= ${Math.floor(SESSION_IMAGE_MAX_SIZE_BYTES / (1024 * 1024))}MB`,
+      });
+    }
+
+    try {
+      const stored = await this.storeLocalSessionImage({
+        workspaceId: this.workspaceId,
+        sessionId: request.sessionId,
+        file: {
+          absolutePath: '',
+          fileName: request.fileName,
+          mimeType,
+          sizeBytes: bytes.byteLength,
+          bytes,
+        },
+      });
+      return {
+        status: 'ok',
+        image: {
+          imageId: stored.imageId,
+          mimeType: stored.mimeType,
+          fileName: stored.fileName,
+          sizeBytes: stored.sizeBytes,
+          width: stored.width,
+          height: stored.height,
+        },
+      };
+    } catch (error) {
+      return sessionImageSendError('transient_io', {
+        message: formatErrorMessage(error),
+        retryable: true,
+      });
+    }
+  }
+
   private async uploadSessionImageFile(args: {
     workspaceId: WorkspaceId;
     sessionId: SessionId;
     file: UploadableImageFile;
   }): Promise<UploadedSessionImage> {
+    if (!this.cloudPort.attachmentUpload?.serverBaseUrl.trim()) {
+      return await this.storeLocalSessionImage(args);
+    }
     const serverBaseUrl = this.resolveServerBaseUrl();
     const uploadUrl = buildSessionImageApiUrl(
       serverBaseUrl,
@@ -1982,6 +2087,24 @@ export class MessageHandler {
     imageId: string;
     expectedMimeType: string;
   }): Promise<DownloadedSessionImagePromptBlock> {
+    const local = await readSessionImageBlob({
+      workspaceId: args.workspaceId,
+      sessionId: args.sessionId,
+      imageId: args.imageId,
+    });
+    if (local) {
+      const mimeType = local.mimeType || args.expectedMimeType;
+      return {
+        block: {
+          type: 'image',
+          mimeType,
+          data: local.bytes.toString('base64'),
+        },
+        bytes: local.bytes,
+        mimeType,
+        sizeBytes: local.sizeBytes,
+      };
+    }
     return await downloadSessionImageForPrompt({
       ...args,
       serverBaseUrl: this.resolveServerBaseUrl(),
@@ -3412,6 +3535,7 @@ export class MessageHandler {
           await this.cancelSessionPreparationWithAccessCheck(args),
         resolveCodeCollabOwnerSessionId: this.resolveCodeCollabV2OwnerSessionId,
         previewFile: async (request) => await this.filePreviewService.previewFile(request),
+        sendSessionImage: async (request) => await this.handleSessionImageSend(request),
         openCodeCollabText: async (request) => await this.codeCollabV2Service.openText(request),
         refreshCodeCollabText: async (request) =>
           await this.codeCollabV2Service.refreshText(request),
@@ -6543,6 +6667,9 @@ export class MessageHandler {
         return await this.filePreviewService.previewFile(request.params, {
           allowArbitraryPaths: true,
         });
+      case 'session/image-send':
+        await assertOwner(request.params.sessionId as SessionId);
+        return await this.handleSessionImageSend(request.params);
       case 'session/cancel': {
         const result = await this.executionService.cancelSession({
           type: 'session/cancel',

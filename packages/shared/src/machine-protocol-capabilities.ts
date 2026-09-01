@@ -11,11 +11,13 @@ export const MACHINE_PROTOCOL_CAPABILITIES = {
   localProjectRemoval: 'localProjectRemoval',
   providerSetup: 'providerSetup',
   sessionAgentSwitch: 'sessionAgentSwitch',
+  sessionImageSend: 'sessionImageSend',
 } as const;
 
 export const LOCAL_PROJECT_REMOVAL_PROTOCOL_VERSION = 1;
 export const PROVIDER_SETUP_PROTOCOL_VERSION = 1;
 export const SESSION_AGENT_SWITCH_PROTOCOL_VERSION = 1;
+export const SESSION_IMAGE_SEND_PROTOCOL_VERSION = 1;
 
 type MachineProtocolCapabilityCarrier = {
   protocolCapabilities?: MachineProtocolCapabilities;
@@ -48,6 +50,7 @@ export const CURRENT_MACHINE_PROTOCOL_CAPABILITIES: MachineProtocolCapabilities 
   [MACHINE_PROTOCOL_CAPABILITIES.localProjectRemoval]: LOCAL_PROJECT_REMOVAL_PROTOCOL_VERSION,
   [MACHINE_PROTOCOL_CAPABILITIES.providerSetup]: PROVIDER_SETUP_PROTOCOL_VERSION,
   [MACHINE_PROTOCOL_CAPABILITIES.sessionAgentSwitch]: SESSION_AGENT_SWITCH_PROTOCOL_VERSION,
+  [MACHINE_PROTOCOL_CAPABILITIES.sessionImageSend]: SESSION_IMAGE_SEND_PROTOCOL_VERSION,
 };
 
 /** Whether the target daemon supports preflighted local-project worktree cleanup and results. */
@@ -80,5 +83,16 @@ export function machineSupportsSessionAgentSwitchProtocol(
     machine,
     MACHINE_PROTOCOL_CAPABILITIES.sessionAgentSwitch,
     SESSION_AGENT_SWITCH_PROTOCOL_VERSION
+  );
+}
+
+/** Whether the target daemon can store a composer image for ACP vision. */
+export function machineSupportsSessionImageSendProtocol(
+  machine: MachineProtocolCapabilityCarrier | null | undefined
+): boolean {
+  return machineSupportsProtocolCapability(
+    machine,
+    MACHINE_PROTOCOL_CAPABILITIES.sessionImageSend,
+    SESSION_IMAGE_SEND_PROTOCOL_VERSION
   );
 }

@@ -101,7 +101,12 @@ import {
 import { resolveEffectiveCodeCollabWorkspaceId } from '@/lib/code-collab-workspace-id';
 import { isImeComposingKeyboardEvent } from '@/lib/ime';
 import { toast } from 'sonner';
-import { uploadSessionImage, validateSessionImageFile } from '@/lib/session-image-upload';
+import {
+  sendSessionImageToMachine,
+  uploadSessionImage,
+  validateSessionImageFile,
+} from '@/lib/session-image-upload';
+import { rememberSessionImageBlob } from '@/lib/session-image-cache';
 import {
   computeSha256Hex,
   computeTextPreviewable,
@@ -997,6 +1002,45 @@ export const SessionChatInputArea = memo(
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : imageUploadFailedLabel;
           const reasonCode = toImageUploadReason(classifyImageUploadReason(error));
+          if (workspaceRuntime && session.machineId && workspaceId) {
+            try {
+              const uploaded = await sendSessionImageToMachine({
+                runtime: workspaceRuntime,
+                machineId: session.machineId,
+                sessionId: targetSessionId,
+                file,
+              });
+              rememberSessionImageBlob({
+                workspaceId,
+                sessionId: targetSessionId,
+                imageId: uploaded.imageId,
+                blob: file,
+              });
+              updatePendingImage(targetSessionId, localId, (image) => ({
+                ...image,
+                status: 'uploaded',
+                progress: 100,
+                uploaded,
+                error: undefined,
+              }));
+              capturePostHogEvent(postHog, 'session/image_upload_succeeded', {
+                channel: 'web',
+                entrypoint: 'session_chat',
+                actor: 'user',
+                workspace_id: workspaceId,
+                session_id: targetSessionId,
+                image_count: 1,
+                total_size_bytes: file.size,
+                project_kind: sessionProjectKind,
+                local_project_id: sessionLocalProjectId,
+                mime_type: uploaded.mimeType,
+                upload_duration_ms: getDurationSinceMs(uploadStartedAtMs),
+              });
+              return;
+            } catch {
+              // Keep the original upload failure; file fallback may still apply.
+            }
+          }
           if (
             canSendFileLocally &&
             session.machineId &&
@@ -1088,6 +1132,7 @@ export const SessionChatInputArea = memo(
         imageUploadMissingAuthLabel,
         postHog,
         session.machineId,
+        workspaceRuntime,
         sessionLocalProjectId,
         sessionProjectKind,
         updatePendingImage,

@@ -11,7 +11,14 @@ import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { usePostHog } from '@posthog/react';
 import { capturePostHogEvent } from '@/lib/posthog-analytics';
-import { uploadSessionImage, validateSessionImageFile } from '@/lib/session-image-upload';
+import {
+  sendSessionImageToMachine,
+  uploadSessionImage,
+  validateSessionImageFile,
+} from '@/lib/session-image-upload';
+import { rememberSessionImageBlob } from '@/lib/session-image-cache';
+import type { MachineId } from '@lody/shared';
+import type { WorkspaceRuntime } from '@/atoms/runtime';
 type PendingImage = {
   localId: string;
   previewUrl: string;
@@ -51,6 +58,8 @@ const createLocalImageId = (): string => {
 export function useChatLandingImageDraft(args: {
   workspaceId: WorkspaceId | null;
   authToken: string | null;
+  machineId: MachineId | null;
+  runtime: WorkspaceRuntime | null;
   isMobile: boolean;
   projectKind: 'github' | 'local' | null;
   sessionId: SessionId | null;
@@ -60,6 +69,8 @@ export function useChatLandingImageDraft(args: {
   const {
     workspaceId,
     authToken,
+    machineId,
+    runtime,
     isMobile,
     projectKind,
     sessionId: draftSessionId,
@@ -202,6 +213,43 @@ export function useChatLandingImageDraft(args: {
           mime_type: uploaded.mimeType,
         });
       } catch (error) {
+        if (runtime && machineId && workspaceId) {
+          try {
+            const uploaded = await sendSessionImageToMachine({
+              runtime,
+              machineId,
+              sessionId,
+              file,
+            });
+            rememberSessionImageBlob({
+              workspaceId,
+              sessionId,
+              imageId: uploaded.imageId,
+              blob: file,
+            });
+            updatePendingImage(localId, (image) => ({
+              ...image,
+              status: 'uploaded',
+              progress: 100,
+              uploaded,
+              error: undefined,
+            }));
+            capturePostHogEvent(postHog, 'session/image_upload_succeeded', {
+              channel: 'web',
+              entrypoint: 'chat_landing',
+              actor: 'user',
+              workspace_id: workspaceId,
+              session_id: sessionId,
+              image_count: 1,
+              total_size_bytes: file.size,
+              project_kind: projectKind,
+              mime_type: uploaded.mimeType,
+            });
+            return;
+          } catch {
+            // Keep the original upload failure visible.
+          }
+        }
         const errorMessage = error instanceof Error ? error.message : imageUploadFailedLabel;
         updatePendingImage(localId, (image) => ({
           ...image,
@@ -227,8 +275,10 @@ export function useChatLandingImageDraft(args: {
       authToken,
       imageUploadFailedLabel,
       imageUploadMissingAuthLabel,
+      machineId,
       postHog,
       projectKind,
+      runtime,
       updatePendingImage,
       workspaceId,
     ]

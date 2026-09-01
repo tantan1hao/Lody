@@ -16,6 +16,9 @@
   entry hides itself when the workspace catalog is empty.
 - `chat-landing.tsx` owns new-chat orchestration, selector state, mobile sheet
   wiring, submit behavior, and the nodes passed into `ChatComposer`.
+  Album images use the same cloud-then-`session/image-send` path as the
+  in-session composer so public web remote can put vision bytes on the
+  selected machine.
 - `chat-landing-selectors.tsx` and `unified-project-selector.tsx` wrap shared
   selector primitives for project/branch controls. The desktop project picker
   mixes local + GitHub projects by recent activity and exposes pinned no-project,

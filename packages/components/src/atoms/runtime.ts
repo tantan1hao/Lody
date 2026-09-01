@@ -64,6 +64,8 @@ import type {
   CodeCollabV2SaveTextResponse,
   FilePreviewV3Request,
   FilePreviewV3Response,
+  SessionImageSendRequest,
+  SessionImageSendResponse,
 } from '@lody/shared';
 import type { LocalProjectGitStateRpcResponse } from '@lody/loro-streams-rpc';
 import type { WorkspaceWriter } from '../providers/workspace-writer';
@@ -373,6 +375,16 @@ export type WorkspaceRuntime = {
     request: Omit<FilePreviewV3Request, 'v'>,
     options?: { timeoutMs?: number; ownerSessionId?: SessionId | string }
   ) => Promise<FilePreviewV3Response>;
+  /**
+   * Put a composer image onto the session's execution machine. Official cloud
+   * uploads stay on `/session-images/upload`; local/self-hosted use this path
+   * so the agent receives ACP vision bytes instead of a dead cloud URL.
+   */
+  requestSessionImageSend: (
+    machineId: MachineId,
+    request: SessionImageSendRequest,
+    options?: { timeoutMs?: number; ownerSessionId?: SessionId | string }
+  ) => Promise<SessionImageSendResponse>;
   /**
    * Electron-only initial Code Collab tree/current-All-Changes snapshot. This
    * never falls back to the cloud Machine RPC transport.
