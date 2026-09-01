@@ -26,7 +26,10 @@ import {
   type FilePreviewV3Response,
   FILE_PREVIEW_PROTOCOL_VERSION,
   filePreviewV3Error,
+  sessionImageGetError,
   sessionImageSendError,
+  type SessionImageGetRequest,
+  type SessionImageGetResponse,
   type SessionImageSendRequest,
   type SessionImageSendResponse,
   type LocalMachineRpcRequest,
@@ -283,6 +286,51 @@ export function createWorkspaceMachineRpcFacade(deps: WorkspaceMachineRpcFacadeD
       return result;
     } catch (error) {
       return sessionImageSendError('transient_io', {
+        message: error instanceof Error ? error.message : String(error),
+        retryable: true,
+      });
+    }
+  };
+
+  const requestSessionImageGet = async (
+    machineId: MachineId,
+    request: SessionImageGetRequest,
+    options?: CodeCollabRequestOptions
+  ): Promise<SessionImageGetResponse> => {
+    try {
+      const result = await (async () => {
+        if (await canUseLocalMachineRpc(machineId)) {
+          const sender = getLocalMachineRpcSender();
+          if (!sender) {
+            throw new Error('Local Machine RPC is not available.');
+          }
+          const response = await sender({
+            machineId,
+            workspaceId,
+            method: 'session/image-get',
+            params: request,
+            ...ownerSessionFields(options),
+            timeoutMs: options?.timeoutMs ?? 60_000,
+          });
+          if (!response.ok) throw new Error(response.error);
+          return response.result as SessionImageGetResponse | null;
+        }
+        const client = await getMachineRpcClient(machineId);
+        return await client.requestSessionImageGet({
+          ...request,
+          ownerSessionId: options?.ownerSessionId,
+          timeoutMs: options?.timeoutMs ?? 60_000,
+        });
+      })();
+      if (result === null) {
+        return sessionImageGetError('transient_io', {
+          message: 'Session image get timed out.',
+          retryable: true,
+        });
+      }
+      return result;
+    } catch (error) {
+      return sessionImageGetError('transient_io', {
         message: error instanceof Error ? error.message : String(error),
         retryable: true,
       });
@@ -1198,6 +1246,7 @@ export function createWorkspaceMachineRpcFacade(deps: WorkspaceMachineRpcFacadeD
     requestSessionPrepareCancel,
     requestFilePreview,
     requestSessionImageSend,
+    requestSessionImageGet,
     requestLocalCodeCollabFileIndex,
     requestCodeCollabOpenText,
     requestCodeCollabRefreshText,

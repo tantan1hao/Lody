@@ -28,6 +28,7 @@ export * from './image-file-types';
 export * from './custom-acp-command';
 export * from './session-image';
 export * from './session-image-send';
+export * from './session-image-get';
 export * from './task-image';
 export * from './avatar';
 export * from './community';

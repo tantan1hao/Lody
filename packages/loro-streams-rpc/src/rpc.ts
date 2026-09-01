@@ -67,6 +67,8 @@ import type {
   SessionTurnInputConfig,
   FilePreviewV3Request,
   FilePreviewV3Response,
+  SessionImageGetRequest,
+  SessionImageGetResponse,
   SessionImageSendRequest,
   SessionImageSendResponse,
 } from '@lody/shared';
@@ -80,6 +82,10 @@ import {
   FILE_PREVIEW_PROTOCOL_VERSION,
   FilePreviewV3ErrorCodeSchema,
   FilePreviewV3ErrorSchema,
+  SessionImageGetErrorCodeSchema,
+  SessionImageGetErrorSchema,
+  SessionImageGetResponseSchema,
+  sessionImageGetError,
   SessionImageSendErrorCodeSchema,
   SessionImageSendErrorSchema,
   SessionImageSendResponseSchema,
@@ -200,6 +206,7 @@ export const LoroStreamsRpcMethodSchema = z.enum([
   // plain read and must never activate Code Collab on the machine.
   'file/preview',
   'session/image-send',
+  'session/image-get',
   'session/cancel',
   'session/live-status',
   'session/steer',
@@ -433,6 +440,11 @@ export const LoroSessionImageSendRpcRequestSchema = BaseRpcRequestSchema.extend(
   params: CodeCollabV2RpcContentEnvelopeSchema,
 }).strict();
 
+export const LoroSessionImageGetRpcRequestSchema = BaseRpcRequestSchema.extend({
+  method: z.literal('session/image-get'),
+  params: CodeCollabV2RpcContentEnvelopeSchema,
+}).strict();
+
 /**
  * Methods whose params/results travel inside the encrypted owner-session
  * envelope. Every encrypt, decrypt, and error-decode site must consult this —
@@ -442,7 +454,8 @@ export const LoroSessionImageSendRpcRequestSchema = BaseRpcRequestSchema.extend(
 export const isOwnerScopedEncryptedRpcMethod = (method: string): boolean =>
   method.startsWith('code-collab/') ||
   method === 'file/preview' ||
-  method === 'session/image-send';
+  method === 'session/image-send' ||
+  method === 'session/image-get';
 
 export const LoroSessionCancelRpcRequestSchema = BaseRpcRequestSchema.extend({
   method: z.literal('session/cancel'),
@@ -608,6 +621,7 @@ export const LoroStreamsRpcRequestSchema = z.discriminatedUnion('method', [
   LoroCodeCollabV2LspReferencesRpcRequestSchema,
   LoroFilePreviewRpcRequestSchema,
   LoroSessionImageSendRpcRequestSchema,
+  LoroSessionImageGetRpcRequestSchema,
   LoroSessionCancelRpcRequestSchema,
   LoroSessionLiveStatusRpcRequestSchema,
   LoroSessionSteerRpcRequestSchema,
@@ -746,6 +760,7 @@ export type LoroCodeCollabV2LspReferencesRpcRequest = z.infer<
 >;
 export type LoroFilePreviewRpcRequest = z.infer<typeof LoroFilePreviewRpcRequestSchema>;
 export type LoroSessionImageSendRpcRequest = z.infer<typeof LoroSessionImageSendRpcRequestSchema>;
+export type LoroSessionImageGetRpcRequest = z.infer<typeof LoroSessionImageGetRpcRequestSchema>;
 export type LoroSessionCancelRpcRequest = z.infer<typeof LoroSessionCancelRpcRequestSchema>;
 export type LoroSessionLiveStatusRpcRequest = z.infer<typeof LoroSessionLiveStatusRpcRequestSchema>;
 export type LoroSessionTerminateRpcRequest = z.infer<typeof LoroSessionTerminateRpcRequestSchema>;
@@ -1449,6 +1464,7 @@ export type LoroMachineRpcResult =
   | CodeCollabV2Error
   | FilePreviewV3Response
   | SessionImageSendResponse
+  | SessionImageGetResponse
   | MachineAcpCapabilitiesRefreshResponse
   | MachineAcpAuthenticateResponse
   | MachineAcpAuthenticationProgressMessage
@@ -1727,6 +1743,21 @@ const toLegacyRpcErrorResponse = (
     });
   }
 
+  if (method === 'session/image-get') {
+    const parsedData = SessionImageGetErrorSchema.safeParse(error.data);
+    if (parsedData.success) {
+      return {
+        ...parsedData.data,
+        message: parsedData.data.message ?? error.message,
+      };
+    }
+    const parsedCode = SessionImageGetErrorCodeSchema.safeParse(error.code);
+    return sessionImageGetError(parsedCode.success ? parsedCode.data : 'transient_io', {
+      message: error.message,
+      retryable: error.code === 'request_failed' || error.code === 'machine_rpc_unavailable',
+    });
+  }
+
   if (method.startsWith('code-collab/')) {
     const parsedData = CodeCollabV2ErrorSchema.safeParse(error.data);
     if (parsedData.success) {
@@ -1893,6 +1924,10 @@ const parseRpcSuccessResult = async (
     }
     if (response.method === 'session/image-send') {
       const imageParsed = SessionImageSendResponseSchema.safeParse(decrypted);
+      return imageParsed.success ? imageParsed.data : null;
+    }
+    if (response.method === 'session/image-get') {
+      const imageParsed = SessionImageGetResponseSchema.safeParse(decrypted);
       return imageParsed.success ? imageParsed.data : null;
     }
     const parsed = CodeCollabV2RpcResponseSchema.safeParse(decrypted);
@@ -2793,6 +2828,20 @@ export class LoroStreamsMachineRpcClient {
     })) as SessionImageSendResponse | null;
   }
 
+  async requestSessionImageGet(
+    options: SessionImageGetRequest & { ownerSessionId?: string; timeoutMs?: number }
+  ): Promise<SessionImageGetResponse | null> {
+    return (await this.sendRequest({
+      method: 'session/image-get',
+      timeoutMs: options.timeoutMs ?? 60_000,
+      ownerSessionId: options.ownerSessionId ?? options.sessionId,
+      params: {
+        sessionId: options.sessionId,
+        imageId: options.imageId,
+      },
+    })) as SessionImageGetResponse | null;
+  }
+
   async requestCodeCollabRefreshText(
     options: CodeCollabV2RefreshTextRequest & { ownerSessionId?: string; timeoutMs?: number }
   ): Promise<CodeCollabV2RefreshTextResponse | CodeCollabV2Error | null> {
@@ -3232,6 +3281,12 @@ export class LoroStreamsMachineRpcClient {
           params: SessionImageSendRequest;
         }
       | {
+          method: 'session/image-get';
+          timeoutMs: number;
+          ownerSessionId: string;
+          params: SessionImageGetRequest;
+        }
+      | {
           method: 'session/preview-create';
           timeoutMs: number;
           params: {
@@ -3291,7 +3346,8 @@ export class LoroStreamsMachineRpcClient {
       args.method === 'code-collab/lsp-definition' ||
       args.method === 'code-collab/lsp-references' ||
       args.method === 'file/preview' ||
-      args.method === 'session/image-send'
+      args.method === 'session/image-send' ||
+      args.method === 'session/image-get'
         ? args.ownerSessionId
         : undefined;
     this.options.trace?.('machine rpc transport request start', traceContext);
@@ -3547,6 +3603,7 @@ export class LoroStreamsMachineRpcClient {
           break;
         case 'file/preview':
         case 'session/image-send':
+        case 'session/image-get':
           request = {
             ...envelope,
             method: args.method,

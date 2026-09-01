@@ -62,7 +62,11 @@ import {
   getDurationSinceMs,
   getPerformanceNowMs,
 } from '@/lib/posthog-analytics';
-import { IMAGE_UPLOAD_REASONS, type ImageUploadReason } from '@lody/shared';
+import {
+  IMAGE_UPLOAD_REASONS,
+  machineSupportsSessionImageSendProtocol,
+  type ImageUploadReason,
+} from '@lody/shared';
 import type {
   AcpCommandSummary,
   CommentReferencePayload,
@@ -101,7 +105,10 @@ import {
 import { resolveEffectiveCodeCollabWorkspaceId } from '@/lib/code-collab-workspace-id';
 import { isImeComposingKeyboardEvent } from '@/lib/ime';
 import { toast } from 'sonner';
+import { getMachineMetaByIdAtomFamily } from '@/atoms/machines';
+import { isAccountlessAppPlatform } from '@/lib/app-platform';
 import {
+  resolveSessionImagePersistPath,
   sendSessionImageToMachine,
   uploadSessionImage,
   validateSessionImageFile,
@@ -542,6 +549,9 @@ export const SessionChatInputArea = memo(
       canUseElectronLocalFileSend();
     const workspaceId = useAtomValue(currentWorkspaceIdAtom) as WorkspaceId | null;
     const workspaceRuntime = useAtomValue(runtimeAtom);
+    const sessionMachineMeta = useAtomValue(getMachineMetaByIdAtomFamily(session.machineId));
+    const useOfficialImageUpload = !isAccountlessAppPlatform();
+    const machineSupportsImageSend = machineSupportsSessionImageSendProtocol(sessionMachineMeta);
     const effectiveWorkspaceId = resolveEffectiveCodeCollabWorkspaceId({
       currentWorkspaceId: workspaceId,
       runtimeWorkspaceId: workspaceRuntime?.workspaceId,
@@ -691,6 +701,14 @@ export const SessionChatInputArea = memo(
     const imageUploadMissingAuthLabel = t(
       'sessions.imageUploadMissingAuth',
       'Missing workspace or auth token'
+    );
+    const imageUploadMissingMachineLabel = t(
+      'sessions.imageUploadMissingMachine',
+      'This conversation has no execution machine to store images.'
+    );
+    const imageUploadUnsupportedMachineLabel = t(
+      'sessions.imageUploadUnsupportedMachine',
+      'This machine cannot receive images. Update Lody on that machine.'
     );
     const fileUploadFailedLabel = t('sessions.fileUploadFailed', 'File upload failed');
     const fileUploadMissingAuthLabel = t(
@@ -924,7 +942,14 @@ export const SessionChatInputArea = memo(
 
     const startUpload = useCallback(
       async (targetSessionId: SessionId, localId: string, file: File) => {
-        if (!workspaceId || !authToken) {
+        const persistPath = resolveSessionImagePersistPath({
+          useOfficialUpload: useOfficialImageUpload,
+          hasAuthToken: Boolean(authToken),
+          hasRuntime: Boolean(workspaceRuntime),
+          hasMachineId: Boolean(session.machineId),
+          machineSupportsSend: machineSupportsImageSend,
+        });
+        if (!workspaceId || persistPath === 'missing_auth') {
           capturePostHogEvent(postHog, 'session/image_upload_failed', {
             channel: 'web',
             entrypoint: 'session_chat',
@@ -944,6 +969,34 @@ export const SessionChatInputArea = memo(
             status: 'failed',
             progress: 0,
             error: imageUploadMissingAuthLabel,
+          }));
+          return;
+        }
+        if (persistPath === 'missing_machine' || persistPath === 'unsupported_machine') {
+          const failureReason =
+            persistPath === 'missing_machine' ? 'missing_machine' : 'unsupported_machine';
+          capturePostHogEvent(postHog, 'session/image_upload_failed', {
+            channel: 'web',
+            entrypoint: 'session_chat',
+            actor: 'user',
+            workspace_id: workspaceId,
+            session_id: targetSessionId,
+            image_count: 1,
+            total_size_bytes: file.size,
+            project_kind: sessionProjectKind,
+            local_project_id: sessionLocalProjectId,
+            failure_reason: failureReason,
+            reason_code: toImageUploadReason('unknown'),
+            http_status: null,
+          });
+          updatePendingImage(targetSessionId, localId, (image) => ({
+            ...image,
+            status: 'failed',
+            progress: 0,
+            error:
+              persistPath === 'missing_machine'
+                ? imageUploadMissingMachineLabel
+                : imageUploadUnsupportedMachineLabel,
           }));
           return;
         }
@@ -969,11 +1022,77 @@ export const SessionChatInputArea = memo(
         // Local-only upload timing (performance.now); not compared across clients.
         const uploadStartedAtMs = getPerformanceNowMs();
 
+        const markUploaded = (uploaded: SessionImagePayload) => {
+          rememberSessionImageBlob({
+            workspaceId,
+            sessionId: targetSessionId,
+            imageId: uploaded.imageId,
+            blob: file,
+          });
+          updatePendingImage(targetSessionId, localId, (image) => ({
+            ...image,
+            status: 'uploaded',
+            progress: 100,
+            uploaded,
+            error: undefined,
+          }));
+          capturePostHogEvent(postHog, 'session/image_upload_succeeded', {
+            channel: 'web',
+            entrypoint: 'session_chat',
+            actor: 'user',
+            workspace_id: workspaceId,
+            session_id: targetSessionId,
+            image_count: 1,
+            total_size_bytes: file.size,
+            project_kind: sessionProjectKind,
+            local_project_id: sessionLocalProjectId,
+            mime_type: uploaded.mimeType,
+            upload_duration_ms: getDurationSinceMs(uploadStartedAtMs),
+          });
+        };
+
+        if (persistPath === 'machine' && workspaceRuntime && session.machineId) {
+          try {
+            const uploaded = await sendSessionImageToMachine({
+              runtime: workspaceRuntime,
+              machineId: session.machineId,
+              sessionId: targetSessionId,
+              file,
+            });
+            markUploaded(uploaded);
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : imageUploadFailedLabel;
+            updatePendingImage(targetSessionId, localId, (image) => ({
+              ...image,
+              status: 'failed',
+              progress: 0,
+              error: errorMessage,
+            }));
+            capturePostHogEvent(postHog, 'session/image_upload_failed', {
+              channel: 'web',
+              entrypoint: 'session_chat',
+              actor: 'user',
+              workspace_id: workspaceId,
+              session_id: targetSessionId,
+              image_count: 1,
+              total_size_bytes: file.size,
+              project_kind: sessionProjectKind,
+              local_project_id: sessionLocalProjectId,
+              failure_reason: toImageUploadReason(classifyImageUploadReason(error)),
+              reason_code: toImageUploadReason(classifyImageUploadReason(error)),
+              http_status: parseUploadHttpStatus(error),
+              error_name: error instanceof Error ? error.name : typeof error,
+              upload_duration_ms: getDurationSinceMs(uploadStartedAtMs),
+            });
+          }
+          return;
+        }
+
         try {
           const uploaded = await uploadSessionImage({
             workspaceId,
             sessionId: targetSessionId,
-            token: authToken,
+            token: authToken ?? '',
             file,
             onProgress: (progress) => {
               updatePendingImage(targetSessionId, localId, (image) => ({ ...image, progress }));
@@ -1130,8 +1249,12 @@ export const SessionChatInputArea = memo(
         canSendFileLocally,
         imageUploadFailedLabel,
         imageUploadMissingAuthLabel,
+        imageUploadMissingMachineLabel,
+        imageUploadUnsupportedMachineLabel,
+        machineSupportsImageSend,
         postHog,
         session.machineId,
+        useOfficialImageUpload,
         workspaceRuntime,
         sessionLocalProjectId,
         sessionProjectKind,

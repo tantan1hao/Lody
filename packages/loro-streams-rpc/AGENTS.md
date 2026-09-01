@@ -110,10 +110,12 @@ Machine RPC; the old session-scoped Code Collab Host RPC ingress has been remove
   owner binding is the authorization. Every encrypt/decrypt/error-decode site must go
   through `isOwnerScopedEncryptedRpcMethod` — the previous
   `method.startsWith('code-collab/')` checks silently excluded any new envelope method.
-- `session/image-send` is the same owner-scoped envelope for composer album
-  images. Official cloud uploads stay on `/session-images/upload`; local and
-  self-hosted web remote have no such service, so the bytes go to the session's
-  execution machine and the daemon stores them in the local image blob store.
+- `session/image-send` and `session/image-get` use the same owner-scoped
+  envelope for composer album images and transcript display. Official cloud
+  uploads stay on `/session-images/upload`; local and self-hosted web remote
+  have no such service, so the bytes go to the session's execution machine and
+  the daemon stores them in the local image blob store. Display reads that
+  store back through `session/image-get`.
 
 ## File Responsibilities
 

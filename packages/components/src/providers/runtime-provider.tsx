@@ -1,6 +1,12 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { useAtomValue, useSetAtom } from 'jotai';
-import { LODY_PRESENCE_HEARTBEAT_MS, type MachineId, type WorkspaceId } from '@lody/shared';
+import {
+  getSessionRoomId,
+  LODY_PRESENCE_HEARTBEAT_MS,
+  type MachineId,
+  type SessionId,
+  type WorkspaceId,
+} from '@lody/shared';
 import { authTokenAtom, runtimeAtom } from '@/atoms/runtime';
 import { currentWorkspaceIdAtom, currentWorkspaceSlugAtom } from '@/atoms';
 import { clearDocMetaCacheAtom, docMetaSubscriptionAtom } from '@/atoms/doc-meta';
@@ -31,6 +37,13 @@ import { resolveEffectiveWorkspaceId } from './resolve-effective-workspace-id';
 import { useImplicitLocalWorkspace } from './local-platform-provider';
 import { capturePostHogEvent } from '@/lib/posthog-analytics';
 import { maybeClearLodyCacheOnBoot } from '@/lib/clear-local-cache';
+import { base64ToBlob } from '@/lib/session-image-upload';
+import {
+  setSessionImageMachineBlobLoader,
+  setSessionImageOfficialFetchEnabled,
+} from '@/lib/session-image-cache';
+import { jotaiStore } from '@/lib/utils';
+import { sessionMetaAtomFamily } from '@/atoms/doc-meta';
 import { isElectronRenderer } from '@/lib/electron';
 import { isNativeAppShell } from '@/lib/native-platform';
 import { usePlatform } from '@lody/platform/react';
@@ -404,6 +417,39 @@ export function RuntimeProvider({ children }: { children: ReactNode }) {
   }, [localProbeAttempted, localProbeResult?.machineId, runtime]);
 
   // Listen for browser online/offline events and update the browserOnlineAtom
+  useEffect(() => {
+    setSessionImageOfficialFetchEnabled(platform.capabilities.has('officialAttachments'));
+    return () => {
+      setSessionImageOfficialFetchEnabled(true);
+    };
+  }, [platform.capabilities]);
+
+  useEffect(() => {
+    if (!runtime) {
+      setSessionImageMachineBlobLoader(null);
+      return;
+    }
+    setSessionImageMachineBlobLoader(async ({ sessionId, imageId }) => {
+      const sessionMeta = jotaiStore.get(sessionMetaAtomFamily(getSessionRoomId(sessionId)));
+      const machineId = sessionMeta?.machineId;
+      if (!machineId) {
+        return null;
+      }
+      const response = await runtime.requestSessionImageGet(
+        machineId,
+        { sessionId, imageId },
+        { ownerSessionId: sessionId as SessionId }
+      );
+      if (response.status !== 'ok') {
+        return null;
+      }
+      return base64ToBlob(response.data, response.mimeType);
+    });
+    return () => {
+      setSessionImageMachineBlobLoader(null);
+    };
+  }, [runtime]);
+
   useEffect(() => {
     const handleOnline = () => setBrowserOnline(true);
     const handleOffline = () => setBrowserOnline(false);

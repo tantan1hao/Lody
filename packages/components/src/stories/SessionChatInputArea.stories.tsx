@@ -10,10 +10,21 @@ import type {
   WorkspaceId,
 } from '@lody/shared';
 
+import { createLocalPlatformProvider, createStaticStore } from '@lody/platform';
+import { PlatformContext } from '@lody/platform/react';
 import { currentWorkspaceIdAtom } from '@/atoms';
 import { machineMetaCacheAtom } from '@/atoms/doc-meta';
 import { authTokenAtom } from '@/atoms/runtime';
 import { SessionChatInputArea } from '@/components/sessions/session-chat-input-area';
+
+const storyPlatform = createLocalPlatformProvider({
+  session: createStaticStore({ status: 'unauthenticated' }),
+  workspaces: createStaticStore({
+    status: 'ready',
+    workspaces: [],
+    activeWorkspaceId: null,
+  }),
+});
 
 const STORY_WORKSPACE_ID = 'workspace-storybook' as WorkspaceId;
 const STORY_MACHINE_ID = 'machine-storybook' as MachineId;
@@ -77,6 +88,7 @@ function StoryShell({
   );
 
   return (
+    <PlatformContext.Provider value={storyPlatform}>
     <Provider store={store}>
       <div className="min-h-screen bg-background px-6 py-10">
         <div className="mx-auto max-w-4xl overflow-hidden rounded-[28px] border border-border/70 bg-card shadow-xs">
@@ -114,6 +126,7 @@ function StoryShell({
         </div>
       </div>
     </Provider>
+    </PlatformContext.Provider>
   );
 }
 

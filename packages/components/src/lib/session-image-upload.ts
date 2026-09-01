@@ -11,6 +11,7 @@ import {
   type SessionImageThumbnailOptions,
   type SessionId,
   type SessionImagePayload,
+  type SessionImageSendRequest,
   type SessionImageSendResponse,
   type WorkspaceId,
 } from '@lody/shared';
@@ -148,14 +149,49 @@ const fileToBase64 = async (file: File): Promise<string> => {
 type SessionImageMachineSender = {
   requestSessionImageSend: (
     machineId: MachineId,
-    request: {
-      sessionId: SessionId;
-      fileName: string;
-      mimeType: SessionImagePayload['mimeType'];
-      data: string;
-    },
+    request: SessionImageSendRequest,
     options?: { ownerSessionId?: SessionId | string }
   ) => Promise<SessionImageSendResponse>;
+};
+
+export type SessionImagePersistPath =
+  | 'official'
+  | 'machine'
+  | 'missing_auth'
+  | 'missing_machine'
+  | 'unsupported_machine';
+
+/**
+ * Official `/session-images` exists only on the cloud platform. Local and
+ * self-hosted must put bytes on the session machine; they do not wait for a
+ * 404 from an API that was never composed in.
+ */
+export const resolveSessionImagePersistPath = (args: {
+  useOfficialUpload: boolean;
+  hasAuthToken: boolean;
+  hasRuntime: boolean;
+  hasMachineId: boolean;
+  machineSupportsSend: boolean;
+}): SessionImagePersistPath => {
+  if (args.useOfficialUpload && args.hasAuthToken) {
+    return 'official';
+  }
+  if (!args.hasRuntime || !args.hasMachineId) {
+    return args.useOfficialUpload ? 'missing_auth' : 'missing_machine';
+  }
+  if (!args.machineSupportsSend) {
+    return 'unsupported_machine';
+  }
+  return 'machine';
+};
+
+export const base64ToBlob = (data: string, mimeType: string): Blob => {
+  const binary = atob(data.replace(/\s/g, ''));
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new Blob([bytes], { type: mimeType });
 };
 
 export const sendSessionImageToMachine = async (args: {
@@ -168,7 +204,7 @@ export const sendSessionImageToMachine = async (args: {
   if (validationError) {
     throw new Error(validationError);
   }
-  const mimeType = args.file.type.trim().toLowerCase() as SessionImagePayload['mimeType'];
+  const mimeType = args.file.type.trim().toLowerCase() as SessionImageSendRequest['mimeType'];
   const data = await fileToBase64(args.file);
   const response = await args.runtime.requestSessionImageSend(
     args.machineId,

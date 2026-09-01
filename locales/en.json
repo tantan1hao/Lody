@@ -1657,6 +1657,8 @@
   "sessions.imageSelectionSkipped": "Some images were not added",
   "sessions.imageUploadFailed": "Image upload failed",
   "sessions.imageUploadMissingAuth": "Missing workspace or auth token",
+  "sessions.imageUploadMissingMachine": "This conversation has no execution machine to store images.",
+  "sessions.imageUploadUnsupportedMachine": "This machine cannot receive images. Update Lody on that machine.",
   "sessions.interruptFailed": "Failed to interrupt current task",
   "sessions.leftSidebar.show": "Show navigation sidebar",
   "sessions.loadingFullImage": "Loading full image...",

@@ -33,6 +33,8 @@ export const PLATFORM_CAPABILITIES = [
   'remotePreview',
   /** Product analytics / crash reporting. */
   'telemetry',
+  /** Official hosted `/session-images` upload and download. */
+  'officialAttachments',
 ] as const;
 
 export type PlatformCapability = (typeof PLATFORM_CAPABILITIES)[number];

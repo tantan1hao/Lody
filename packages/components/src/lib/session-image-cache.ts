@@ -6,6 +6,25 @@ import {
   buildSessionImageThumbnailUrl,
 } from './session-image-upload';
 
+export type SessionImageMachineBlobLoader = (args: {
+  workspaceId: WorkspaceId;
+  sessionId: SessionId;
+  imageId: string;
+}) => Promise<Blob | null>;
+
+let officialSessionImageFetchEnabled = true;
+let sessionImageMachineBlobLoader: SessionImageMachineBlobLoader | null = null;
+
+export const setSessionImageOfficialFetchEnabled = (enabled: boolean): void => {
+  officialSessionImageFetchEnabled = enabled;
+};
+
+export const setSessionImageMachineBlobLoader = (
+  loader: SessionImageMachineBlobLoader | null
+): void => {
+  sessionImageMachineBlobLoader = loader;
+};
+
 type CacheEntry = {
   key: string;
   blob: Blob;
@@ -141,7 +160,7 @@ type GetSessionImageCacheEntryArgs = {
   workspaceId: WorkspaceId;
   sessionId: SessionId;
   imageId: string;
-  token: string;
+  token?: string | null;
   variant?: SessionImageLoadVariant;
   thumbnailWidth?: number;
   thumbnailHeight?: number;
@@ -192,12 +211,28 @@ const getSessionImageCacheEntry = async (
       return writeBlobToMemoryCache(key, persistedBlob);
     }
 
+    if (!officialSessionImageFetchEnabled) {
+      const machineBlob = sessionImageMachineBlobLoader
+        ? await sessionImageMachineBlobLoader({
+            workspaceId,
+            sessionId,
+            imageId,
+          })
+        : null;
+      if (!machineBlob) {
+        throw new Error('Failed to load image');
+      }
+      const entry = writeBlobToMemoryCache(key, machineBlob);
+      void writeBlobToPersistentCache(requestUrl, machineBlob);
+      return entry;
+    }
+
     let response: Response | null = null;
     let requestError: unknown;
     try {
       response = await fetch(requestUrl, {
         headers: {
-          Authorization: `Bearer ${token}`,
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
           Accept: SESSION_IMAGE_FETCH_ACCEPT,
         },
       });
@@ -218,7 +253,7 @@ const getSessionImageCacheEntry = async (
       } else {
         const fallbackResponse = await fetch(originalUrl, {
           headers: {
-            Authorization: `Bearer ${token}`,
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
         });
         if (!fallbackResponse.ok) {
@@ -228,10 +263,21 @@ const getSessionImageCacheEntry = async (
         void writeBlobToPersistentCache(originalUrl, blob);
       }
     } else {
-      if (response) {
+      const machineBlob = sessionImageMachineBlobLoader
+        ? await sessionImageMachineBlobLoader({
+            workspaceId,
+            sessionId,
+            imageId,
+          })
+        : null;
+      if (machineBlob) {
+        blob = machineBlob;
+        shouldPersistRequestUrl = true;
+      } else if (response) {
         throw new Error(`Failed to load image (${response.status})`);
+      } else {
+        throw requestError instanceof Error ? requestError : new Error('Failed to load image');
       }
-      throw requestError instanceof Error ? requestError : new Error('Failed to load image');
     }
 
     const entry = writeBlobToMemoryCache(key, blob);

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState, type ClipboardEvent } from 'react';
+import { useAtomValue } from 'jotai';
 import type { MessageTextSpan } from '@lody/shared';
 import {
   SESSION_IMAGE_MAX_COUNT,
+  machineSupportsSessionImageSendProtocol,
   type SessionId,
   type SessionImagePayload,
   type SessionInputBlock,
@@ -11,13 +13,16 @@ import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { usePostHog } from '@posthog/react';
 import { capturePostHogEvent } from '@/lib/posthog-analytics';
+import { isAccountlessAppPlatform } from '@/lib/app-platform';
 import {
+  resolveSessionImagePersistPath,
   sendSessionImageToMachine,
   uploadSessionImage,
   validateSessionImageFile,
 } from '@/lib/session-image-upload';
 import { rememberSessionImageBlob } from '@/lib/session-image-cache';
 import type { MachineId } from '@lody/shared';
+import { getMachineMetaByIdAtomFamily } from '@/atoms/machines';
 import type { WorkspaceRuntime } from '@/atoms/runtime';
 type PendingImage = {
   localId: string;
@@ -77,11 +82,22 @@ export function useChatLandingImageDraft(args: {
     ensureSessionId,
   } = args;
   const postHog = usePostHog();
+  const useOfficialImageUpload = !isAccountlessAppPlatform();
+  const machineMeta = useAtomValue(getMachineMetaByIdAtomFamily(machineId ?? undefined));
+  const machineSupportsImageSend = machineSupportsSessionImageSendProtocol(machineMeta);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const imageUploadFailedLabel = t('sessions.imageUploadFailed', 'Image upload failed');
   const imageUploadMissingAuthLabel = t(
     'sessions.imageUploadMissingAuth',
     'Missing workspace or auth token'
+  );
+  const imageUploadMissingMachineLabel = t(
+    'sessions.imageUploadMissingMachine',
+    'This conversation has no execution machine to store images.'
+  );
+  const imageUploadUnsupportedMachineLabel = t(
+    'sessions.imageUploadUnsupportedMachine',
+    'This machine cannot receive images. Update Lody on that machine.'
   );
   const imageCountLimitLabel = t(
     'sessions.imageCountLimit',
@@ -146,7 +162,14 @@ export function useChatLandingImageDraft(args: {
 
   const startUpload = useCallback(
     async (localId: string, file: File, sessionId: SessionId) => {
-      if (!workspaceId || !authToken) {
+      const persistPath = resolveSessionImagePersistPath({
+        useOfficialUpload: useOfficialImageUpload,
+        hasAuthToken: Boolean(authToken),
+        hasRuntime: Boolean(runtime),
+        hasMachineId: Boolean(machineId),
+        machineSupportsSend: machineSupportsImageSend,
+      });
+      if (!workspaceId || persistPath === 'missing_auth') {
         capturePostHogEvent(postHog, 'session/image_upload_failed', {
           channel: 'web',
           entrypoint: 'chat_landing',
@@ -163,6 +186,18 @@ export function useChatLandingImageDraft(args: {
           status: 'failed',
           progress: 0,
           error: imageUploadMissingAuthLabel,
+        }));
+        return;
+      }
+      if (persistPath === 'missing_machine' || persistPath === 'unsupported_machine') {
+        updatePendingImage(localId, (image) => ({
+          ...image,
+          status: 'failed',
+          progress: 0,
+          error:
+            persistPath === 'missing_machine'
+              ? imageUploadMissingMachineLabel
+              : imageUploadUnsupportedMachineLabel,
         }));
         return;
       }
@@ -184,15 +219,12 @@ export function useChatLandingImageDraft(args: {
         project_kind: projectKind,
       });
 
-      try {
-        const uploaded = await uploadSessionImage({
+      const markUploaded = (uploaded: SessionImagePayload) => {
+        rememberSessionImageBlob({
           workspaceId,
           sessionId,
-          token: authToken,
-          file,
-          onProgress: (progress) => {
-            updatePendingImage(localId, (image) => ({ ...image, progress }));
-          },
+          imageId: uploaded.imageId,
+          blob: file,
         });
         updatePendingImage(localId, (image) => ({
           ...image,
@@ -212,39 +244,52 @@ export function useChatLandingImageDraft(args: {
           project_kind: projectKind,
           mime_type: uploaded.mimeType,
         });
-      } catch (error) {
-        if (runtime && machineId && workspaceId) {
-          try {
-            const uploaded = await sendSessionImageToMachine({
+      };
+
+      if (persistPath === 'machine' && runtime && machineId) {
+        try {
+          markUploaded(
+            await sendSessionImageToMachine({
               runtime,
               machineId,
               sessionId,
               file,
-            });
-            rememberSessionImageBlob({
-              workspaceId,
-              sessionId,
-              imageId: uploaded.imageId,
-              blob: file,
-            });
-            updatePendingImage(localId, (image) => ({
-              ...image,
-              status: 'uploaded',
-              progress: 100,
-              uploaded,
-              error: undefined,
-            }));
-            capturePostHogEvent(postHog, 'session/image_upload_succeeded', {
-              channel: 'web',
-              entrypoint: 'chat_landing',
-              actor: 'user',
-              workspace_id: workspaceId,
-              session_id: sessionId,
-              image_count: 1,
-              total_size_bytes: file.size,
-              project_kind: projectKind,
-              mime_type: uploaded.mimeType,
-            });
+            })
+          );
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : imageUploadFailedLabel;
+          updatePendingImage(localId, (image) => ({
+            ...image,
+            status: 'failed',
+            progress: 0,
+            error: errorMessage,
+          }));
+        }
+        return;
+      }
+
+      try {
+        const uploaded = await uploadSessionImage({
+          workspaceId,
+          sessionId,
+          token: authToken ?? '',
+          file,
+          onProgress: (progress) => {
+            updatePendingImage(localId, (image) => ({ ...image, progress }));
+          },
+        });
+        markUploaded(uploaded);
+      } catch (error) {
+        if (runtime && machineId && workspaceId) {
+          try {
+            markUploaded(
+              await sendSessionImageToMachine({
+                runtime,
+                machineId,
+                sessionId,
+                file,
+              })
+            );
             return;
           } catch {
             // Keep the original upload failure visible.
@@ -275,11 +320,15 @@ export function useChatLandingImageDraft(args: {
       authToken,
       imageUploadFailedLabel,
       imageUploadMissingAuthLabel,
+      imageUploadMissingMachineLabel,
+      imageUploadUnsupportedMachineLabel,
       machineId,
+      machineSupportsImageSend,
       postHog,
       projectKind,
       runtime,
       updatePendingImage,
+      useOfficialImageUpload,
       workspaceId,
     ]
   );

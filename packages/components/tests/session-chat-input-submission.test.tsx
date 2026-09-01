@@ -94,6 +94,7 @@ vi.mock('../src/hooks/use-code-collab-session-file-provider', () => ({
 }));
 
 import { SessionChatInputArea } from '../src/components/sessions/session-chat-input-area';
+import { TestCloudPlatformProvider } from './test-platform';
 import { initI18n } from '../src/i18n';
 
 (
@@ -164,7 +165,7 @@ describe('SessionChatInputArea submission feedback', () => {
 
     await act(async () => {
       root?.render(
-        createElement(SessionChatInputArea, {
+        createElement(TestCloudPlatformProvider, null, createElement(SessionChatInputArea, {
           session: {
             id: 'session-role-permission',
             userId: 'user-1',
@@ -190,7 +191,7 @@ describe('SessionChatInputArea submission feedback', () => {
           onSendMessage: async () => true,
           onStop: () => undefined,
           onRemoveQueueItem: async () => undefined,
-        })
+        }))
       );
     });
   };
@@ -223,7 +224,7 @@ describe('SessionChatInputArea submission feedback', () => {
 
     await act(async () => {
       root?.render(
-        createElement(SessionChatInputArea, {
+        createElement(TestCloudPlatformProvider, null, createElement(SessionChatInputArea, {
           session: {
             id: 'session-feedback',
             userId: 'user-1',
@@ -249,7 +250,7 @@ describe('SessionChatInputArea submission feedback', () => {
           onStop: () => undefined,
           onRemoveQueueItem: async () => undefined,
           initialInputText: 'preserved draft',
-        })
+        }))
       );
     });
 
@@ -284,7 +285,7 @@ describe('SessionChatInputArea submission feedback', () => {
 
     await act(async () => {
       root?.render(
-        createElement(SessionChatInputArea, {
+        createElement(TestCloudPlatformProvider, null, createElement(SessionChatInputArea, {
           session: {
             id: 'session-mobile-keyboard-send',
             userId: 'user-1',
@@ -310,7 +311,7 @@ describe('SessionChatInputArea submission feedback', () => {
           onStop: () => undefined,
           onRemoveQueueItem: async () => undefined,
           initialInputText: 'send from keyboard',
-        })
+        }))
       );
     });
 
@@ -372,7 +373,7 @@ describe('SessionChatInputArea submission feedback', () => {
 
     await act(async () => {
       root?.render(
-        createElement(SessionChatInputArea, {
+        createElement(TestCloudPlatformProvider, null, createElement(SessionChatInputArea, {
           session: {
             id: 'session-limit',
             userId: 'user-1',
@@ -398,7 +399,7 @@ describe('SessionChatInputArea submission feedback', () => {
           onStop: () => undefined,
           onRemoveQueueItem: async () => undefined,
           freeTurnLimitNotice: { current: 20, limit: 20 },
-        })
+        }))
       );
     });
 

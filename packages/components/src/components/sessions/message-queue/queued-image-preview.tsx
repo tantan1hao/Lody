@@ -34,7 +34,7 @@ export function QueuedImagePreview({
     setThumbnailUrl(null);
     setLoadFailed(false);
 
-    if (!workspaceId || !authToken) {
+    if (!workspaceId) {
       setLoadFailed(true);
       return () => {
         active = false;

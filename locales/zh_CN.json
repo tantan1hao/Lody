@@ -1657,6 +1657,8 @@
   "sessions.imageSelectionSkipped": "部分图片未添加",
   "sessions.imageUploadFailed": "图片上传失败",
   "sessions.imageUploadMissingAuth": "缺少工作空间或鉴权令牌",
+  "sessions.imageUploadMissingMachine": "这个对话没有执行机器，无法保存图片。",
+  "sessions.imageUploadUnsupportedMachine": "这台机器还不支持收图，请先更新那台机器上的 Lody。",
   "sessions.interruptFailed": "中断当前任务失败",
   "sessions.leftSidebar.show": "显示导航侧边栏",
   "sessions.loadingFullImage": "正在加载原图…",

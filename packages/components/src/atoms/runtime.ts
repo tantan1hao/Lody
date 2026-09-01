@@ -64,6 +64,8 @@ import type {
   CodeCollabV2SaveTextResponse,
   FilePreviewV3Request,
   FilePreviewV3Response,
+  SessionImageGetRequest,
+  SessionImageGetResponse,
   SessionImageSendRequest,
   SessionImageSendResponse,
 } from '@lody/shared';
@@ -385,6 +387,15 @@ export type WorkspaceRuntime = {
     request: SessionImageSendRequest,
     options?: { timeoutMs?: number; ownerSessionId?: SessionId | string }
   ) => Promise<SessionImageSendResponse>;
+  /**
+   * Read a stored session image from the execution machine. Official cloud
+   * downloads stay on `/session-images/...`; local/self-hosted use this path.
+   */
+  requestSessionImageGet: (
+    machineId: MachineId,
+    request: SessionImageGetRequest,
+    options?: { timeoutMs?: number; ownerSessionId?: SessionId | string }
+  ) => Promise<SessionImageGetResponse>;
   /**
    * Electron-only initial Code Collab tree/current-All-Changes snapshot. This
    * never falls back to the cloud Machine RPC transport.

@@ -467,10 +467,11 @@ Session conversation page chain:
   Pending-attachment state machines: `pendingImages` (images) **and** `pendingFiles`
   (files; cloud upload via `@/lib/session-file-upload.ts` with sha256/textPreview,
   abort + part retry). Oversize images (>5 MiB) auto-degrade to files. Send blocks
-  while either is uploading. Vision images first try official
-  `/session-images/upload`; when that service is absent (public self-hosted /
-  web remote) the composer falls back to `runtime.requestSessionImageSend`,
-  which puts the bytes on the session's execution machine. Desktop same-machine
+  while either is uploading.   Vision images use official `/session-images/upload` only on cloud.
+  Local and self-hosted skip that API and call
+  `runtime.requestSessionImageSend`, which puts the bytes on the session's
+  execution machine. Transcript display reads them back through
+  `runtime.requestSessionImageGet` when official download is absent. Desktop same-machine
   file uploads use
   `@/lib/electron-session-file-sender.ts` / `localProjects.sendSessionFileLocal`, return
   a `transport:'local'` block into the same `pendingFiles[].uploaded` slot, and fall

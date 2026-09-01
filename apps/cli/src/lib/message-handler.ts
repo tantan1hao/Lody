@@ -174,10 +174,11 @@ import {
   type LodyOperationItemResult,
   type StoredLodyOperation,
   CURRENT_MACHINE_PROTOCOL_CAPABILITIES,
-  SESSION_IMAGE_ALLOWED_MIME_TYPES,
-  SESSION_IMAGE_MAX_SIZE_BYTES,
+  type SessionImageGetRequest,
+  type SessionImageGetResponse,
   type SessionImageSendRequest,
   type SessionImageSendResponse,
+  sessionImageGetError,
   sessionImageSendError,
 } from '@lody/shared';
 import { ISession, SessionManager } from '../session/session-manager';
@@ -1911,6 +1912,53 @@ export class MessageHandler {
     }
   }
 
+  async handleSessionImageGet(request: SessionImageGetRequest): Promise<SessionImageGetResponse> {
+    const sessionMetaRecord = await this.workspaceDocument.repo.getDocMeta(
+      getSessionRoomId(request.sessionId)
+    );
+    if (!sessionMetaRecord?.meta || isLoroRepoDocDeleted(sessionMetaRecord)) {
+      return sessionImageGetError('session_not_found', {
+        message: `Session not found: ${request.sessionId}`,
+      });
+    }
+
+    try {
+      const record = await readSessionImageBlob({
+        workspaceId: this.workspaceId,
+        sessionId: request.sessionId,
+        imageId: request.imageId,
+      });
+      if (!record) {
+        return sessionImageGetError('not_found', {
+          message: `Session image not found: ${request.imageId}`,
+        });
+      }
+      const mimeType = record.mimeType.trim().toLowerCase();
+      if (!(SESSION_IMAGE_ALLOWED_MIME_TYPES as readonly string[]).includes(mimeType)) {
+        return sessionImageGetError('unsupported_type', {
+          message: `Unsupported image type: ${mimeType}`,
+        });
+      }
+      const allowedMime = mimeType as (typeof SESSION_IMAGE_ALLOWED_MIME_TYPES)[number];
+      return {
+        status: 'ok',
+        image: {
+          imageId: request.imageId,
+          mimeType: allowedMime,
+          sizeBytes: record.sizeBytes,
+          ...(record.fileName ? { fileName: record.fileName } : {}),
+        },
+        mimeType: allowedMime,
+        data: record.bytes.toString('base64'),
+      };
+    } catch (error) {
+      return sessionImageGetError('transient_io', {
+        message: formatErrorMessage(error),
+        retryable: true,
+      });
+    }
+  }
+
   private async uploadSessionImageFile(args: {
     workspaceId: WorkspaceId;
     sessionId: SessionId;
@@ -3536,6 +3584,7 @@ export class MessageHandler {
         resolveCodeCollabOwnerSessionId: this.resolveCodeCollabV2OwnerSessionId,
         previewFile: async (request) => await this.filePreviewService.previewFile(request),
         sendSessionImage: async (request) => await this.handleSessionImageSend(request),
+        getSessionImage: async (request) => await this.handleSessionImageGet(request),
         openCodeCollabText: async (request) => await this.codeCollabV2Service.openText(request),
         refreshCodeCollabText: async (request) =>
           await this.codeCollabV2Service.refreshText(request),
@@ -6670,6 +6719,9 @@ export class MessageHandler {
       case 'session/image-send':
         await assertOwner(request.params.sessionId as SessionId);
         return await this.handleSessionImageSend(request.params);
+      case 'session/image-get':
+        await assertOwner(request.params.sessionId as SessionId);
+        return await this.handleSessionImageGet(request.params);
       case 'session/cancel': {
         const result = await this.executionService.cancelSession({
           type: 'session/cancel',

@@ -4226,7 +4226,7 @@ function useImageBlobUrls(
   }, [open]);
 
   useEffect(() => {
-    if (!open || activeIndex === -1 || !workspaceId || !authToken) {
+    if (!open || activeIndex === -1 || !workspaceId) {
       return undefined;
     }
 
@@ -4368,7 +4368,7 @@ const UserImageBlock = ({
 
     setLocalActiveImageKey(null);
 
-    if (!workspaceId || !authToken) {
+    if (!workspaceId) {
       setThumbnailBlobUrl(null);
       setIsThumbnailLoading(false);
       setThumbnailLoadingError(imageLoadUnavailableLabel);
