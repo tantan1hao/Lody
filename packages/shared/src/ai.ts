@@ -884,10 +884,26 @@ const GROK_STATIC_CONFIG_OPTIONS: AcpConfigOptionSummary[] = [
     type: 'select',
     currentValue: 'high',
     options: [
-      { value: 'xhigh', name: 'X-High' },
-      { value: 'high', name: 'High' },
-      { value: 'medium', name: 'Medium' },
-      { value: 'low', name: 'Low' },
+      {
+        value: 'xhigh',
+        name: 'Extra High',
+        description: 'Highest effort and reasoning level',
+      },
+      {
+        value: 'high',
+        name: 'High',
+        description: 'Higher implementation quality with extensive reasoning',
+      },
+      {
+        value: 'medium',
+        name: 'Medium',
+        description: 'Balanced effort with standard implementation and testing',
+      },
+      {
+        value: 'low',
+        name: 'Low',
+        description: 'Quick, fast implementations',
+      },
     ],
   },
 ];

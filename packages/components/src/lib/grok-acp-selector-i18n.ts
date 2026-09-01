@@ -29,6 +29,33 @@ const INTERACTION_MODE_OPTIONS: Record<string, KnownOptionTranslation> = {
   },
 };
 
+const REASONING_EFFORT_OPTIONS: Record<string, KnownOptionTranslation> = {
+  xhigh: {
+    labelKey: 'chat.runConfig.grok.reasoning.xhigh.label',
+    labelFallback: 'Extra High',
+    descriptionKey: 'chat.runConfig.grok.reasoning.xhigh.description',
+    descriptionFallback: 'Highest effort and reasoning level',
+  },
+  high: {
+    labelKey: 'chat.runConfig.grok.reasoning.high.label',
+    labelFallback: 'High',
+    descriptionKey: 'chat.runConfig.grok.reasoning.high.description',
+    descriptionFallback: 'Higher implementation quality with extensive reasoning',
+  },
+  medium: {
+    labelKey: 'chat.runConfig.grok.reasoning.medium.label',
+    labelFallback: 'Medium',
+    descriptionKey: 'chat.runConfig.grok.reasoning.medium.description',
+    descriptionFallback: 'Balanced effort with standard implementation and testing',
+  },
+  low: {
+    labelKey: 'chat.runConfig.grok.reasoning.low.label',
+    labelFallback: 'Low',
+    descriptionKey: 'chat.runConfig.grok.reasoning.low.description',
+    descriptionFallback: 'Quick, fast implementations',
+  },
+};
+
 const PERMISSION_MODE_OPTIONS: Record<string, KnownOptionTranslation> = {
   ask: {
     labelKey: 'chat.runConfig.grok.permission.ask.label',
@@ -80,6 +107,14 @@ export const localizeBuiltinGrokSelectorOptions = (
         ),
         options: selector.options.map((option) =>
           translateOption(t, option, INTERACTION_MODE_OPTIONS[option.value])
+        ),
+      };
+    }
+    if (selector.type === 'select' && selector.configId === 'reasoning_effort') {
+      return {
+        ...selector,
+        options: selector.options.map((option) =>
+          translateOption(t, option, REASONING_EFFORT_OPTIONS[option.value])
         ),
       };
     }

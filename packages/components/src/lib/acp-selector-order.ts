@@ -1,4 +1,4 @@
-import { isAcpPlanModeConfigOption } from '@lody/shared';
+import { isAcpModelConfigOption, isAcpPlanModeConfigOption } from '@lody/shared';
 import {
   isFastModeSelector,
   isThoughtLevelSelector,
@@ -39,7 +39,10 @@ export const orderAcpConfigOptionSelectors = (
   };
 
   for (const selector of selectors) {
-    if (selector.category === 'model' && selector.type === 'select') {
+    if (
+      selector.type === 'select' &&
+      isAcpModelConfigOption({ id: selector.configId, category: selector.category })
+    ) {
       ordered.modelSelectors.push(selector);
       continue;
     }

@@ -93,6 +93,84 @@ describe('buildAcpSelectorOptions', () => {
     ]);
   });
 
+  it('keeps registry model selectors when config options omit category but publish id=model', () => {
+    const options = buildAcpSelectorOptions({
+      configId: agentConfigId,
+      cliType: 'registry',
+      agentType: 'cursor',
+      machine: machineWithCapabilities({
+        [agentConfigId]: {
+          cliType: 'registry',
+          agentType: 'cursor',
+          cacheVersion: ACP_CAPABILITY_CACHE_VERSION,
+          provenance: 'runtime',
+          modes: [],
+          models: [],
+          configOptions: [
+            {
+              id: 'model',
+              name: 'Model',
+              type: 'select',
+              currentValue: 'composer',
+              options: [
+                { value: 'composer', name: 'Composer' },
+                { value: 'gpt-5', name: 'GPT-5' },
+              ],
+            },
+          ],
+          fetchedAt: 1,
+        },
+      }),
+    });
+
+    const modelSelector = options.configOptionSelectors.find(
+      (selector) => selector.configId === 'model'
+    );
+    expect(modelSelector).toMatchObject({ category: 'model', configId: 'model' });
+    expect(modelSelector?.options.map((option) => option.value)).toEqual(['composer', 'gpt-5']);
+  });
+
+  it('merges the legacy models list when Cursor/Antigravity publish other config options', () => {
+    const options = buildAcpSelectorOptions({
+      configId: agentConfigId,
+      cliType: 'registry',
+      agentType: 'antigravity-acp',
+      machine: machineWithCapabilities({
+        [agentConfigId]: {
+          cliType: 'registry',
+          agentType: 'antigravity-acp',
+          cacheVersion: ACP_CAPABILITY_CACHE_VERSION,
+          provenance: 'runtime',
+          modes: [],
+          models: [
+            { modelId: 'gemini-3-pro', name: 'Gemini 3 Pro' },
+            { modelId: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' },
+          ],
+          configOptions: [
+            {
+              id: 'permission_mode',
+              name: 'Permission',
+              category: '_permission',
+              type: 'select',
+              currentValue: 'ask',
+              options: [{ value: 'ask', name: 'Ask' }],
+            },
+          ],
+          fetchedAt: 1,
+        },
+      }),
+    });
+
+    const modelSelector = options.configOptionSelectors.find(
+      (selector) => selector.category === 'model'
+    );
+    expect(modelSelector).toMatchObject({ configId: 'model' });
+    expect(modelSelector?.options.map((option) => option.value)).toEqual([
+      'gemini-3-pro',
+      'claude-sonnet-4-6',
+    ]);
+  });
+
   it('does not inject Lody-owned registry mode config selectors', () => {
     const options = buildAcpSelectorOptions({
       configId: agentConfigId,

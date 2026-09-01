@@ -5,6 +5,7 @@ import {
   ACP_COLLABORATION_MODE_DEFAULT_VALUE,
   ACP_COLLABORATION_MODE_PLAN_VALUE,
   isAcpFastModeConfigId,
+  isAcpModelConfigOption,
   isAcpThoughtLevelConfigOption,
   getAcpCapabilityCacheKey,
   getAcpCapabilityCacheEntryAuthority,
@@ -210,6 +211,43 @@ type ResolvedConfigOptions = {
   configOptions?: AcpConfigOptionSummary[];
 };
 
+type CapabilityModel = { modelId: string; name?: string; description?: string | null };
+
+const isSelectModelConfigOption = (option: AcpConfigOptionSummary): boolean =>
+  option.type === 'select' && isAcpModelConfigOption(option);
+
+const synthesizeModelConfigOption = (
+  models: readonly CapabilityModel[]
+): AcpConfigOptionSummary => ({
+  id: 'model',
+  name: 'Model',
+  category: 'model',
+  type: 'select',
+  currentValue: models[0]?.modelId ?? '',
+  options: models.map((model) => ({
+    value: model.modelId,
+    name: model.name ?? model.modelId,
+    description: model.description ?? undefined,
+  })),
+});
+
+/** Cursor / Antigravity (and other registry agents) often publish models only
+ *  on the legacy `models` list, or as `id: 'model'` without `category`. */
+const mergeLegacyModelsIntoConfigOptions = (
+  configOptions: readonly AcpConfigOptionSummary[],
+  models: readonly CapabilityModel[] | undefined
+): AcpConfigOptionSummary[] => {
+  const next = configOptions.map((option) =>
+    isSelectModelConfigOption(option) && option.category !== 'model'
+      ? { ...option, category: 'model' as const }
+      : option
+  );
+  if (next.some(isSelectModelConfigOption) || !models?.length) {
+    return next;
+  }
+  return [...next, synthesizeModelConfigOption(models)];
+};
+
 const resolveConfigOptions = (target?: AcpSelectorTarget): ResolvedConfigOptions => {
   if (!target?.cliType || !target.agentType) {
     return { authority: 'unavailable' };
@@ -221,7 +259,13 @@ const resolveConfigOptions = (target?: AcpSelectorTarget): ResolvedConfigOptions
     if (isAcpCapabilityCacheEntryCurrentForRuntimeOverrides(capability, target.runtimeOverrides)) {
       const authority = getAcpCapabilityCacheEntryAuthority(capability, target.runtimeOverrides);
       if (capability.configOptions?.length) {
-        return { authority, configOptions: capability.configOptions };
+        return {
+          authority,
+          configOptions: mergeLegacyModelsIntoConfigOptions(
+            capability.configOptions,
+            capability.models
+          ),
+        };
       }
       // Fallback: synthesize configOptions from legacy modes/models.
       const synthesized: AcpConfigOptionSummary[] = [];
@@ -240,17 +284,7 @@ const resolveConfigOptions = (target?: AcpSelectorTarget): ResolvedConfigOptions
         });
       }
       if (capability.models && capability.models.length > 0) {
-        synthesized.push({
-          id: 'model',
-          name: 'Model',
-          category: 'model',
-          type: 'select',
-          currentValue: capability.models[0]?.modelId ?? '',
-          options: capability.models.map((m) => ({
-            value: m.modelId,
-            name: m.name ?? m.modelId,
-          })),
-        });
+        synthesized.push(synthesizeModelConfigOption(capability.models));
       }
       return {
         authority,
@@ -331,7 +365,7 @@ const buildConfigOptionSelectors = (
       options: optionValues.map((v) => ({
         value: v.value,
         label:
-          opt.category === 'model'
+          isAcpModelConfigOption(opt)
             ? formatModelLabel(v.name, target)
             : opt.category === 'mode'
               ? formatModeLabel(v.value, v.name, target)
@@ -347,9 +381,7 @@ const resolveSelectedModelId = (
   target?: AcpSelectorTarget
 ): string | undefined => {
   if (target?.selectedModelId) return target.selectedModelId;
-  const modelOption = configOptions?.find(
-    (option) => option.category === 'model' && option.type === 'select'
-  );
+  const modelOption = configOptions?.find(isSelectModelConfigOption);
   return typeof modelOption?.currentValue === 'string' ? modelOption.currentValue : undefined;
 };
 
@@ -436,9 +468,7 @@ const buildModelOptions = (
   target?: AcpSelectorTarget,
   authority: AcpCapabilityAuthority = 'unavailable'
 ): AcpSessionSelectOption[] => {
-  const modelOption = configOptions?.find(
-    (opt) => opt.category === 'model' && opt.type === 'select'
-  );
+  const modelOption = configOptions?.find(isSelectModelConfigOption);
   if (!modelOption) {
     return [];
   }
@@ -511,9 +541,7 @@ export const buildAcpSelectorOptions = (target?: AcpSelectorTarget): AcpSelector
   const modelOptions = isAcpProbed
     ? []
     : buildModelOptions(configOptions, target, capabilityAuthority);
-  const modelConfigOption = configOptions?.find(
-    (option) => option.category === 'model' && option.type === 'select'
-  );
+  const modelConfigOption = configOptions?.find(isSelectModelConfigOption);
 
   const allSelectors = normalizeCodexReasoningEffortSelectors(
     buildConfigOptionSelectors(configOptions, target, capabilityAuthority),

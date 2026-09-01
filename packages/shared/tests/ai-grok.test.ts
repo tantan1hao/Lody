@@ -61,6 +61,12 @@ describe('builtin Grok shared contract', () => {
       'medium',
       'low',
     ]);
+    expect(capabilities?.configOptions[3]?.options.map((option) => option.name)).toEqual([
+      'Extra High',
+      'High',
+      'Medium',
+      'Low',
+    ]);
     expect(getBuiltinDefaultModeId('builtin', 'grok')).toBe('agent');
     expect(classifyPermissionModeFace('always-approve')).toEqual({
       kind: 'full-access',

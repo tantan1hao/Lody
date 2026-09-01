@@ -1,5 +1,6 @@
 import {
   getLocalProjectHistoryProviderKey,
+  isAcpModelConfigOption,
   type AcpConfigOptionValue,
   type AgentConfigCliType,
   type AgentType,
@@ -67,7 +68,9 @@ export function buildSessionCreateAcpAnalyticsProperties({
 }: BuildSessionCreateAcpAnalyticsPropertiesArgs): SessionCreateAcpAnalyticsProperties {
   const selectors = configOptionSelectors ?? [];
   const modeSelector = firstSelectSelector(selectors, (selector) => selector.category === 'mode');
-  const modelSelector = firstSelectSelector(selectors, (selector) => selector.category === 'model');
+  const modelSelector = firstSelectSelector(selectors, (selector) =>
+    isAcpModelConfigOption({ id: selector.configId, category: selector.category })
+  );
   const thinkingSelector = selectors.find(isThoughtLevelSelector);
   const getConfigOptionValue = (
     selector: AcpConfigOptionSelector | undefined
