@@ -119,6 +119,7 @@ import {
   shouldUseSingleShotUpload,
   isTextPreviewable,
   inputBlocksToHistoryItems,
+  SESSION_FILE_GET_MAX_CHUNK_BYTES,
   SESSION_FILE_MAX_COUNT,
   SESSION_FILE_MAX_SIZE_BYTES,
   SESSION_FILE_PART_SIZE_BYTES,
@@ -174,10 +175,13 @@ import {
   type LodyOperationItemResult,
   type StoredLodyOperation,
   CURRENT_MACHINE_PROTOCOL_CAPABILITIES,
+  type SessionFileGetRequest,
+  type SessionFileGetResponse,
   type SessionImageGetRequest,
   type SessionImageGetResponse,
   type SessionImageSendRequest,
   type SessionImageSendResponse,
+  sessionFileGetError,
   sessionImageGetError,
   sessionImageSendError,
 } from '@lody/shared';
@@ -224,6 +228,7 @@ import {
   listPendingLocalSessionFiles,
   markSessionFileBlobBackfilled,
   readSessionFileBlobBackfillMarker,
+  readSessionFileBlobRange,
   removeSessionFileBlob,
   sessionFileBlobExists,
   writeSessionFileBlobBackfillMarker,
@@ -3589,6 +3594,7 @@ export class MessageHandler {
         previewFile: async (request) => await this.filePreviewService.previewFile(request),
         sendSessionImage: async (request) => await this.handleSessionImageSend(request),
         getSessionImage: async (request) => await this.handleSessionImageGet(request),
+        getSessionFile: async (request) => await this.handleSessionFileGet(request),
         openCodeCollabText: async (request) => await this.codeCollabV2Service.openText(request),
         refreshCodeCollabText: async (request) =>
           await this.codeCollabV2Service.refreshText(request),
@@ -6728,6 +6734,9 @@ export class MessageHandler {
       case 'session/image-get':
         await assertOwner(request.params.sessionId as SessionId);
         return await this.handleSessionImageGet(request.params);
+      case 'session/file-get':
+        await assertOwner(request.params.sessionId as SessionId);
+        return await this.handleSessionFileGet(request.params);
       case 'session/cancel': {
         const result = await this.executionService.cancelSession({
           type: 'session/cancel',
@@ -7507,6 +7516,127 @@ export class MessageHandler {
     );
   }
 
+  private async storeLocalSessionFile(args: {
+    workspaceId: WorkspaceId;
+    sessionId: SessionId;
+    file: ValidatedUploadFile;
+  }): Promise<UploadedSessionFile> {
+    const fileId = `file-${uuidV4()}`;
+    const copied = await copyIntoSessionFileBlobStore({
+      workspaceId: args.workspaceId,
+      sessionId: args.sessionId,
+      fileId,
+      sourcePath: args.file.absolutePath,
+    });
+    if (copied.warn) {
+      this.logger.warn(
+        `Local session file blob store is ${Math.round(
+          (copied.usedBytes / copied.quotaBytes) * 100
+        )}% full; pending offline attachments are never evicted`
+      );
+    }
+    return {
+      type: 'file',
+      fileId,
+      fileName: args.file.fileName,
+      mimeType: args.file.mimeType,
+      sizeBytes: args.file.sizeBytes,
+      sha256: args.file.sha256,
+      textPreview: args.file.textPreview,
+      transport: 'local',
+      machineId: this.machineId,
+      uploadedAt: getServerNow(),
+      downloadUrl: `https://lody.local/session-files/${encodeURIComponent(fileId)}`,
+    };
+  }
+
+  async handleSessionFileGet(request: SessionFileGetRequest): Promise<SessionFileGetResponse> {
+    const sessionMetaRecord = await this.workspaceDocument.repo.getDocMeta(
+      getSessionRoomId(request.sessionId)
+    );
+    if (!sessionMetaRecord?.meta || isLoroRepoDocDeleted(sessionMetaRecord)) {
+      return sessionFileGetError('session_not_found', {
+        message: `Session not found: ${request.sessionId}`,
+      });
+    }
+
+    const offset = request.offset ?? 0;
+    const maxBytes = request.maxBytes ?? SESSION_FILE_GET_MAX_CHUNK_BYTES;
+
+    try {
+      const record = await readSessionFileBlobRange({
+        workspaceId: this.workspaceId,
+        sessionId: request.sessionId,
+        fileId: request.fileId,
+        offset,
+        maxBytes,
+      });
+      if (!record) {
+        return sessionFileGetError('not_found', {
+          message: `Session file not found: ${request.fileId}`,
+        });
+      }
+
+      const meta = await this.findSessionFileHistoryMeta({
+        sessionId: request.sessionId,
+        fileId: request.fileId,
+      });
+      const mimeType = meta?.mimeType ?? 'application/octet-stream';
+      const nextOffset = offset + record.bytes.byteLength;
+      return {
+        status: 'ok',
+        fileId: request.fileId,
+        mimeType,
+        ...(meta?.fileName ? { fileName: meta.fileName } : {}),
+        sizeBytes: record.sizeBytes,
+        offset,
+        byteLength: record.bytes.byteLength,
+        eof: nextOffset >= record.sizeBytes,
+        data: record.bytes.toString('base64'),
+      };
+    } catch (error) {
+      return sessionFileGetError('transient_io', {
+        message: formatErrorMessage(error),
+        retryable: true,
+      });
+    }
+  }
+
+  private async findSessionFileHistoryMeta(args: {
+    sessionId: SessionId;
+    fileId: string;
+  }): Promise<{ mimeType: string; fileName?: string } | null> {
+    try {
+      const sessionDoc = await this.workspaceDocument.getOrCreateSessionDoc(args.sessionId);
+      const history = await sessionDoc.getHistory();
+      for (const entry of history) {
+        const items = Array.isArray(entry.items) ? entry.items : [];
+        for (const item of items) {
+          if (
+            !item ||
+            typeof item !== 'object' ||
+            (item as { type?: unknown }).type !== 'file' ||
+            (item as { fileId?: unknown }).fileId !== args.fileId
+          ) {
+            continue;
+          }
+          const block = item as SessionFilePayload;
+          const mimeType = block.mimeType.trim();
+          if (!mimeType) {
+            continue;
+          }
+          return {
+            mimeType,
+            ...(block.fileName.trim() ? { fileName: block.fileName } : {}),
+          };
+        }
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  }
+
   private async uploadValidatedSessionFile(args: {
     workspaceId: WorkspaceId;
     sessionId: SessionId;
@@ -7514,6 +7644,9 @@ export class MessageHandler {
     /** Cancels the relay upload mid-flight (backfill revoke, S5/D10). */
     signal?: AbortSignal;
   }): Promise<UploadedSessionFile> {
+    if (!this.cloudPort.attachmentUpload?.serverBaseUrl.trim()) {
+      return await this.storeLocalSessionFile(args);
+    }
     if (shouldUseSingleShotUpload(args.file.sizeBytes)) {
       return await this.uploadSessionFileSingleShot(args);
     }

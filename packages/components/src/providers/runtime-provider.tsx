@@ -3,6 +3,7 @@ import { useAtomValue, useSetAtom } from 'jotai';
 import {
   getSessionRoomId,
   LODY_PRESENCE_HEARTBEAT_MS,
+  sessionFileGetError,
   type MachineId,
   type SessionId,
   type WorkspaceId,
@@ -42,6 +43,7 @@ import {
   setSessionImageMachineBlobLoader,
   setSessionImageOfficialFetchEnabled,
 } from '@/lib/session-image-cache';
+import { setSessionFileGetLoader } from '@/lib/session-file-download';
 import { jotaiStore } from '@/lib/utils';
 import { sessionMetaAtomFamily } from '@/atoms/doc-meta';
 import { isElectronRenderer } from '@/lib/electron';
@@ -447,6 +449,29 @@ export function RuntimeProvider({ children }: { children: ReactNode }) {
     });
     return () => {
       setSessionImageMachineBlobLoader(null);
+    };
+  }, [runtime]);
+
+  useEffect(() => {
+    if (!runtime) {
+      setSessionFileGetLoader(null);
+      return;
+    }
+    setSessionFileGetLoader(async (request) => {
+      const sessionMeta = jotaiStore.get(sessionMetaAtomFamily(getSessionRoomId(request.sessionId)));
+      const machineId = sessionMeta?.machineId;
+      if (!machineId) {
+        return sessionFileGetError('transient_io', {
+          message: 'Session machine is not available.',
+          retryable: true,
+        });
+      }
+      return runtime.requestSessionFileGet(machineId, request, {
+        ownerSessionId: request.sessionId as SessionId,
+      });
+    });
+    return () => {
+      setSessionFileGetLoader(null);
     };
   }, [runtime]);
 

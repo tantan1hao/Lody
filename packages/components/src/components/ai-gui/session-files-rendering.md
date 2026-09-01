@@ -24,6 +24,9 @@ File attachments use `file` blocks; the product contract is in
   cache dir → Share sheet → best-effort cleanup; never buffers the whole file). Base64
   streaming math is in `@/lib/base64-chunk.ts` (tested by `tests/base64-chunk.test.ts`).
   Capacitor plugins stay dynamically imported so web/electron bundles remain clean.
+  Local and self-hosted pass `source: 'machine'`: the runtime loader walks
+  `session/file-get` chunks and the card treats `transport: 'local'` as durable
+  (`localIsDurable`) instead of "Uploading…".
 
 ## Image-preview overlay (zoom / pan)
 

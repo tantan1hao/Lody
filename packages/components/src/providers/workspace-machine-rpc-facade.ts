@@ -26,8 +26,11 @@ import {
   type FilePreviewV3Response,
   FILE_PREVIEW_PROTOCOL_VERSION,
   filePreviewV3Error,
+  sessionFileGetError,
   sessionImageGetError,
   sessionImageSendError,
+  type SessionFileGetRequest,
+  type SessionFileGetResponse,
   type SessionImageGetRequest,
   type SessionImageGetResponse,
   type SessionImageSendRequest,
@@ -331,6 +334,51 @@ export function createWorkspaceMachineRpcFacade(deps: WorkspaceMachineRpcFacadeD
       return result;
     } catch (error) {
       return sessionImageGetError('transient_io', {
+        message: error instanceof Error ? error.message : String(error),
+        retryable: true,
+      });
+    }
+  };
+
+  const requestSessionFileGet = async (
+    machineId: MachineId,
+    request: SessionFileGetRequest,
+    options?: CodeCollabRequestOptions
+  ): Promise<SessionFileGetResponse> => {
+    try {
+      const result = await (async () => {
+        if (await canUseLocalMachineRpc(machineId)) {
+          const sender = getLocalMachineRpcSender();
+          if (!sender) {
+            throw new Error('Local Machine RPC is not available.');
+          }
+          const response = await sender({
+            machineId,
+            workspaceId,
+            method: 'session/file-get',
+            params: request,
+            ...ownerSessionFields(options),
+            timeoutMs: options?.timeoutMs ?? 60_000,
+          });
+          if (!response.ok) throw new Error(response.error);
+          return response.result as SessionFileGetResponse | null;
+        }
+        const client = await getMachineRpcClient(machineId);
+        return await client.requestSessionFileGet({
+          ...request,
+          ownerSessionId: options?.ownerSessionId,
+          timeoutMs: options?.timeoutMs ?? 60_000,
+        });
+      })();
+      if (result === null) {
+        return sessionFileGetError('transient_io', {
+          message: 'Session file get timed out.',
+          retryable: true,
+        });
+      }
+      return result;
+    } catch (error) {
+      return sessionFileGetError('transient_io', {
         message: error instanceof Error ? error.message : String(error),
         retryable: true,
       });
@@ -1247,6 +1295,7 @@ export function createWorkspaceMachineRpcFacade(deps: WorkspaceMachineRpcFacadeD
     requestFilePreview,
     requestSessionImageSend,
     requestSessionImageGet,
+    requestSessionFileGet,
     requestLocalCodeCollabFileIndex,
     requestCodeCollabOpenText,
     requestCodeCollabRefreshText,

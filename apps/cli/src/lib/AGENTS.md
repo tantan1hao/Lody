@@ -45,6 +45,10 @@ control-plane path is DEPRECATED; do not add functionality to it.
   `session/image-send` before the session document exists; store against that
   id and do not require Code Collab owner resolution when the envelope names
   the same draft.
+- `session/file-get` reads ranges from `session-file-blob-store.ts`. OSS
+  `lody_upload_files` writes that store when official attachment upload is
+  absent (`transport: 'local'`) and does not enqueue R2 backfill. The web
+  client downloads those bytes over Machine RPC rather than `/session-files`.
 - `machine-runtime.ts` — machine runtime bootstrap; still hosts the DEPRECATED
   hosted WS control-plane listener. Remote bridge
   attach/detach/revoke are serialized through `runBridgeTransition` (per-runtime
@@ -363,8 +367,9 @@ control-plane path is DEPRECATED; do not add functionality to it.
   publish. That coupling is exactly what this directory was split out to remove; see
   its own [AGENTS.md](file-preview/AGENTS.md).
 - **Session file attachments** (spec: `specs/session-files.md`): `message-handler.ts`
-  has `handleSessionFileUpload` (cloud, MCP `lody_upload_files`) and local
-  `handleSessionFileSendLocal`. Local bytes live in `session-file-blob-store.ts`
+  has `handleSessionFileUpload` (official cloud, MCP `lody_upload_files`; OSS
+  falls back to the local blob store) and local `handleSessionFileSendLocal`.
+  Local bytes live in `session-file-blob-store.ts`
   (`~/.lody/session-files/<ws>/<sess>/<fileId>`) as `transport:'local'`.
   Transcript download reads that store through `session/file-get` as a bounded
   range (`readSessionFileBlobRange`); one chunk stays inside the File Preview

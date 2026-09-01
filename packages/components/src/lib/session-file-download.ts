@@ -1,4 +1,12 @@
-import { SESSION_FILE_PREVIEW_FETCH_BYTES, type SessionId, type WorkspaceId } from '@lody/shared';
+import {
+  SESSION_FILE_GET_MAX_CHUNK_BYTES,
+  SESSION_FILE_MAX_SIZE_BYTES,
+  SESSION_FILE_PREVIEW_FETCH_BYTES,
+  type SessionFileGetRequest,
+  type SessionFileGetResponse,
+  type SessionId,
+  type WorkspaceId,
+} from '@lody/shared';
 import { buildSessionFileDownloadUrl, buildSessionFilePreviewUrl } from './session-file-upload';
 import { isNativeAppShell } from './native-platform';
 import { saveSessionFileToNativeShareSheet } from './session-file-native-save';
@@ -8,6 +16,120 @@ type FileFetchArgs = {
   sessionId: SessionId;
   fileId: string;
   token: string;
+  /** Official cloud uses HTTP; local/self-hosted walk Machine RPC chunks. */
+  source?: 'official' | 'machine';
+};
+
+export type SessionFileGetLoader = (request: SessionFileGetRequest) => Promise<SessionFileGetResponse>;
+
+let sessionFileGetLoader: SessionFileGetLoader | null = null;
+
+export const setSessionFileGetLoader = (loader: SessionFileGetLoader | null): void => {
+  sessionFileGetLoader = loader;
+};
+
+const decodeBase64Bytes = (data: string): Uint8Array => {
+  const binary = atob(data.replace(/\s/g, ''));
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+};
+
+const concatBytes = (chunks: Uint8Array[]): Uint8Array => {
+  const total = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return out;
+};
+
+const fetchSessionFileChunksFromMachine = async (args: {
+  sessionId: SessionId;
+  fileId: string;
+  maxTotalBytes?: number;
+}): Promise<{
+  bytes: Uint8Array;
+  mimeType: string;
+  fileName?: string;
+  sizeBytes: number;
+  eof: boolean;
+}> => {
+  if (!sessionFileGetLoader) {
+    throw new Error('Session file machine loader is not available');
+  }
+  const chunks: Uint8Array[] = [];
+  let offset = 0;
+  let mimeType = 'application/octet-stream';
+  let fileName: string | undefined;
+  let sizeBytes = 0;
+  let eof = false;
+  const limit = args.maxTotalBytes;
+  const maxChunks =
+    Math.ceil(SESSION_FILE_MAX_SIZE_BYTES / Math.max(1, SESSION_FILE_GET_MAX_CHUNK_BYTES)) + 1;
+  while (!eof && (limit === undefined || offset < limit)) {
+    if (chunks.length >= maxChunks) {
+      throw new Error('Session file get exceeded the chunk budget');
+    }
+    const remaining = limit === undefined ? SESSION_FILE_GET_MAX_CHUNK_BYTES : limit - offset;
+    const maxBytes = Math.min(SESSION_FILE_GET_MAX_CHUNK_BYTES, remaining);
+    if (maxBytes <= 0) {
+      break;
+    }
+    const response = await sessionFileGetLoader({
+      sessionId: args.sessionId,
+      fileId: args.fileId,
+      offset,
+      maxBytes,
+    });
+    if (response.status !== 'ok') {
+      throw new Error(response.message);
+    }
+    mimeType = response.mimeType;
+    fileName = response.fileName ?? fileName;
+    sizeBytes = response.sizeBytes;
+    if (response.byteLength > 0) {
+      chunks.push(decodeBase64Bytes(response.data));
+    }
+    eof = response.eof;
+    const nextOffset = response.offset + response.byteLength;
+    if (nextOffset <= offset && !eof) {
+      throw new Error('Session file get did not advance');
+    }
+    offset = nextOffset;
+  }
+  return { bytes: concatBytes(chunks), mimeType, fileName, sizeBytes, eof };
+};
+
+const triggerBrowserDownload = (blob: Blob, fileName: string): void => {
+  const objectUrl = URL.createObjectURL(blob);
+  try {
+    const anchor = document.createElement('a');
+    anchor.href = objectUrl;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+  } finally {
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+  }
+};
+
+const downloadSessionFileFromMachine = async (
+  args: FileFetchArgs & { fileName: string; mimeType?: string }
+): Promise<void> => {
+  const result = await fetchSessionFileChunksFromMachine({
+    sessionId: args.sessionId,
+    fileId: args.fileId,
+  });
+  const blob = new Blob([Uint8Array.from(result.bytes)], {
+    type: result.mimeType || args.mimeType || '',
+  });
+  triggerBrowserDownload(blob, args.fileName || result.fileName || args.fileId);
 };
 
 /**
@@ -34,23 +156,16 @@ const downloadSessionFileInBrowser = async (
     throw new Error(`Failed to download file (${response.status})`);
   }
   const blob = await response.blob();
-  const objectUrl = URL.createObjectURL(blob);
-  try {
-    const anchor = document.createElement('a');
-    anchor.href = objectUrl;
-    anchor.download = fileName || fileId;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-  } finally {
-    // Revoke on the next tick so the click has a chance to start the download.
-    setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
-  }
+  triggerBrowserDownload(blob, fileName || fileId);
 };
 
 export const downloadSessionFile = async (
   args: FileFetchArgs & { fileName: string; mimeType?: string }
 ): Promise<void> => {
+  if (args.source === 'machine') {
+    await downloadSessionFileFromMachine(args);
+    return;
+  }
   if (isNativeAppShell()) {
     await saveSessionFileToNativeShareSheet(args);
     return;
@@ -112,6 +227,19 @@ const readBoundedBytes = async (response: Response, maxBytes: number): Promise<U
 export const fetchSessionFilePreview = async (
   args: FileFetchArgs & { sizeBytes: number; signal?: AbortSignal }
 ): Promise<SessionFilePreviewResult> => {
+  if (args.source === 'machine') {
+    const maxBytes = SESSION_FILE_PREVIEW_FETCH_BYTES;
+    const result = await fetchSessionFileChunksFromMachine({
+      sessionId: args.sessionId,
+      fileId: args.fileId,
+      maxTotalBytes: maxBytes,
+    });
+    const fetchedBytes = result.bytes.byteLength;
+    const text = new TextDecoder('utf-8').decode(result.bytes);
+    const truncated =
+      args.sizeBytes > 0 ? args.sizeBytes > fetchedBytes : fetchedBytes >= maxBytes || !result.eof;
+    return { text, truncated, fetchedBytes };
+  }
   const { workspaceId, sessionId, fileId, token, sizeBytes, signal } = args;
   const maxBytes = SESSION_FILE_PREVIEW_FETCH_BYTES;
   const response = await fetch(buildSessionFilePreviewUrl(workspaceId, sessionId, fileId), {

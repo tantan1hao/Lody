@@ -14,6 +14,7 @@ import {
   listPendingLocalSessionFiles,
   markSessionFileBlobBackfilled,
   readSessionFileBlobBackfillMarker,
+  readSessionFileBlobRange,
   removeSessionFileBlob,
   sessionFileBlobExists,
   writeSessionFileBlobBackfillMarker,
@@ -114,6 +115,48 @@ describe('session file blob store', () => {
     const source2 = await makeSource('a2.txt', 'world!');
     await copyIntoSessionFileBlobStore({ ...args, sourcePath: source2 });
     expect(await readFile(dest, 'utf8')).toBe('world!');
+  });
+
+  it('reads a bounded byte range from a stored blob', async () => {
+    const source = await makeSource('range.txt', 'abcdefghij');
+    await copyIntoSessionFileBlobStore({
+      workspaceId: 'ws',
+      sessionId: 'sess',
+      fileId: 'file-range',
+      sourcePath: source,
+      homeDir,
+    });
+
+    const middle = await readSessionFileBlobRange({
+      workspaceId: 'ws',
+      sessionId: 'sess',
+      fileId: 'file-range',
+      offset: 3,
+      maxBytes: 4,
+      homeDir,
+    });
+    expect(middle).toEqual({ bytes: Buffer.from('defg'), sizeBytes: 10 });
+
+    const pastEnd = await readSessionFileBlobRange({
+      workspaceId: 'ws',
+      sessionId: 'sess',
+      fileId: 'file-range',
+      offset: 10,
+      maxBytes: 4,
+      homeDir,
+    });
+    expect(pastEnd).toEqual({ bytes: Buffer.alloc(0), sizeBytes: 10 });
+
+    expect(
+      await readSessionFileBlobRange({
+        workspaceId: 'ws',
+        sessionId: 'sess',
+        fileId: 'missing',
+        offset: 0,
+        maxBytes: 4,
+        homeDir,
+      })
+    ).toBeNull();
   });
 
   it('removes blobs idempotently', async () => {

@@ -182,6 +182,7 @@ import {
 } from './session-file-preview-dialog';
 import { downloadSessionFile, fetchSessionFilePreview } from '@/lib/session-file-download';
 import { getMachineMetaByIdAtomFamily } from '@/atoms/machines';
+import { isAccountlessAppPlatform } from '@/lib/app-platform';
 import { isHtmlSessionFile } from '@/lib/session-file-presentation';
 import type {
   MachineId,
@@ -4617,6 +4618,7 @@ export const SessionFileGroup = ({
   const { t } = useTranslation();
   const workspaceId = useAtomValue(currentWorkspaceIdAtom) as WorkspaceId | null;
   const authToken = useAtomValue(authTokenAtom);
+  const localIsDurable = isAccountlessAppPlatform();
   const { openHtmlFile } = useContext(SessionChatActionContext);
   const [previewFile, setPreviewFile] = useState<SessionFilePayload | null>(null);
   const [previewStatus, setPreviewStatus] = useState<SessionFilePreviewStatus>({ kind: 'loading' });
@@ -4625,22 +4627,24 @@ export const SessionFileGroup = ({
 
   const handleDownload = useCallback(
     (file: SessionFilePayload) => {
-      if (!workspaceId || !authToken) return;
+      if (!workspaceId) return;
+      if (!localIsDurable && !authToken) return;
       setDownloadingId(file.fileId);
       void downloadSessionFile({
         workspaceId,
         sessionId: file.storageSessionId ?? sessionId,
         fileId: file.fileId,
-        token: authToken,
+        token: authToken ?? '',
         fileName: file.fileName,
         mimeType: file.mimeType,
+        source: localIsDurable ? 'machine' : 'official',
       })
         .catch(() => {
           toast.error(t('sessions.fileDownloadFailed', { name: file.fileName }));
         })
         .finally(() => setDownloadingId((current) => (current === file.fileId ? null : current)));
     },
-    [authToken, sessionId, t, workspaceId]
+    [authToken, localIsDurable, sessionId, t, workspaceId]
   );
 
   const handlePreview = useCallback(
@@ -4650,7 +4654,7 @@ export const SessionFileGroup = ({
       }
       setPreviewFile(file);
       setPreviewStatus({ kind: 'loading' });
-      if (!workspaceId || !authToken) {
+      if (!workspaceId || (!localIsDurable && !authToken)) {
         setPreviewStatus({
           kind: 'error',
           message: t('sessions.filePreviewUnavailable', 'Preview unavailable'),
@@ -4664,8 +4668,9 @@ export const SessionFileGroup = ({
         workspaceId,
         sessionId: file.storageSessionId ?? sessionId,
         fileId: file.fileId,
-        token: authToken,
+        token: authToken ?? '',
         sizeBytes: file.sizeBytes,
+        source: localIsDurable ? 'machine' : 'official',
       })
         .then((result) => {
           if (previewRequestRef.current !== file.fileId) return;
@@ -4684,7 +4689,7 @@ export const SessionFileGroup = ({
           });
         });
     },
-    [authToken, openHtmlFile, sessionId, t, workspaceId]
+    [authToken, localIsDurable, openHtmlFile, sessionId, t, workspaceId]
   );
 
   // The send path caps at 8 files/message, but a block list synced from another
@@ -4703,6 +4708,7 @@ export const SessionFileGroup = ({
             // remount the card and drop in-flight download/preview state.
             key={`${file.sha256}-${index}`}
             file={file}
+            localIsDurable={localIsDurable}
             onPreview={handlePreview}
             onDownload={handleDownload}
             isDownloading={downloadingId === file.fileId}
@@ -4733,11 +4739,13 @@ export const SessionFileGroup = ({
 /** One card, resolving the pending machine name when transport is local. */
 const SessionFileBlockCard = ({
   file,
+  localIsDurable,
   onPreview,
   onDownload,
   isDownloading,
 }: {
   file: SessionFilePayload;
+  localIsDurable: boolean;
   onPreview: (file: SessionFilePayload) => void;
   onDownload: (file: SessionFilePayload) => void;
   isDownloading: boolean;
@@ -4750,7 +4758,8 @@ const SessionFileBlockCard = ({
   return (
     <SessionFileCard
       file={file}
-      pendingMachineName={machineMeta?.name ?? file.machineId}
+      localIsDurable={localIsDurable}
+      pendingMachineName={localIsDurable ? undefined : (machineMeta?.name ?? file.machineId)}
       onPreview={onPreview}
       onDownload={onDownload}
       isDownloading={isDownloading}

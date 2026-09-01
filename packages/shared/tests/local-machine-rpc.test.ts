@@ -109,6 +109,15 @@ describe('local Machine RPC', () => {
         imageId: 'img-1',
       },
     },
+    {
+      method: 'session/file-get',
+      params: {
+        sessionId: 'session-1',
+        fileId: 'file-1',
+        offset: 0,
+        maxBytes: 1024,
+      },
+    },
   ])('accepts $method requests', ({ method, params }) => {
     const result = safeParseLocalMachineRpcRequest(
       JSON.stringify({

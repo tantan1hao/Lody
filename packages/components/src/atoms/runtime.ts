@@ -64,6 +64,8 @@ import type {
   CodeCollabV2SaveTextResponse,
   FilePreviewV3Request,
   FilePreviewV3Response,
+  SessionFileGetRequest,
+  SessionFileGetResponse,
   SessionImageGetRequest,
   SessionImageGetResponse,
   SessionImageSendRequest,
@@ -396,6 +398,16 @@ export type WorkspaceRuntime = {
     request: SessionImageGetRequest,
     options?: { timeoutMs?: number; ownerSessionId?: SessionId | string }
   ) => Promise<SessionImageGetResponse>;
+  /**
+   * Read a stored session file chunk from the execution machine. Official
+   * downloads stay on `/session-files/...`; local/self-hosted walk this
+   * path until `eof` and assemble a browser download.
+   */
+  requestSessionFileGet: (
+    machineId: MachineId,
+    request: SessionFileGetRequest,
+    options?: { timeoutMs?: number; ownerSessionId?: SessionId | string }
+  ) => Promise<SessionFileGetResponse>;
   /**
    * Electron-only initial Code Collab tree/current-All-Changes snapshot. This
    * never falls back to the cloud Machine RPC transport.

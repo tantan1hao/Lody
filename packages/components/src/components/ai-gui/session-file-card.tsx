@@ -42,6 +42,11 @@ const KIND_ICON: Record<SessionFileKind, typeof FileIcon> = {
 
 export type SessionFileCardProps = {
   file: SessionFilePayload;
+  /**
+   * Local/self-hosted keep `transport: 'local'` as the durable store. Official
+   * cloud still treats that value as "waiting for R2 backfill".
+   */
+  localIsDurable?: boolean;
   /** Resolved display name of the machine holding the bytes (transport='local'). */
   pendingMachineName?: string;
   /** Click opens the in-app preview (text-previewable, available files only). */
@@ -114,6 +119,7 @@ const buildActionIcon = ({
  */
 export function SessionFileCard({
   file,
+  localIsDurable = false,
   pendingMachineName,
   onPreview,
   onDownload,
@@ -121,7 +127,7 @@ export function SessionFileCard({
   className,
 }: SessionFileCardProps) {
   const { t } = useTranslation();
-  const state = getSessionFileDisplayState(file);
+  const state = getSessionFileDisplayState(file, undefined, { localIsDurable });
   const kind = getSessionFileKind(file.fileName, file.mimeType);
   const Icon = KIND_ICON[kind];
 

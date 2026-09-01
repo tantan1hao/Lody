@@ -471,7 +471,9 @@ Session conversation page chain:
   Local and self-hosted skip that API and call
   `runtime.requestSessionImageSend`, which puts the bytes on the session's
   execution machine. Transcript display reads them back through
-  `runtime.requestSessionImageGet` when official download is absent. Desktop same-machine
+  `runtime.requestSessionImageGet` when official download is absent. Local and
+  self-hosted file cards download through `runtime.requestSessionFileGet` the
+  same way. Desktop same-machine
   file uploads use
   `@/lib/electron-session-file-sender.ts` / `localProjects.sendSessionFileLocal`, return
   a `transport:'local'` block into the same `pendingFiles[].uploaded` slot, and fall

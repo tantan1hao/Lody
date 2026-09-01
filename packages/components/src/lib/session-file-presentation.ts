@@ -180,9 +180,10 @@ export type SessionFileDisplayState = 'pending' | 'expired' | 'previewable' | 'd
 
 export const getSessionFileDisplayState = (
   file: SessionFilePayload,
-  now: number = getServerNow()
+  now: number = getServerNow(),
+  options?: { localIsDurable?: boolean }
 ): SessionFileDisplayState => {
-  if (file.transport === 'local') return 'pending';
+  if (file.transport === 'local' && !options?.localIsDurable) return 'pending';
   if (isSessionFileExpired(file, now)) return 'expired';
   return file.textPreview ? 'previewable' : 'downloadable';
 };

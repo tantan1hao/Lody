@@ -73,6 +73,10 @@ import {
   filePreviewV3Error,
   type FilePreviewV3Request,
   type FilePreviewV3Response,
+  SessionFileGetRequestSchema,
+  sessionFileGetError,
+  type SessionFileGetRequest,
+  type SessionFileGetResponse,
   SessionImageGetRequestSchema,
   sessionImageGetError,
   type SessionImageGetRequest,
@@ -382,6 +386,8 @@ type RpcServerDeps = {
   sendSessionImage?: (args: SessionImageSendRequest) => Promise<SessionImageSendResponse>;
   /** Return a stored session image for transcript display. */
   getSessionImage?: (args: SessionImageGetRequest) => Promise<SessionImageGetResponse>;
+  /** Return a stored session file attachment for download. */
+  getSessionFile?: (args: SessionFileGetRequest) => Promise<SessionFileGetResponse>;
   refreshCodeCollabText?: (
     args: CodeCollabV2RefreshTextRequest
   ) => Promise<CodeCollabV2RefreshTextResponse>;
@@ -1404,6 +1410,22 @@ export class LoroStreamsMachineRpcServer {
           });
           return;
         }
+        case 'session/file-get': {
+          const decoded = await this.decryptCodeCollabV2RequestParams(request.params);
+          codeCollabOwnerSessionId = decoded.ownerSessionId;
+          const params = SessionFileGetRequestSchema.parse(decoded.payload);
+          await this.verifyCodeCollabV2OwnerSession(decoded.ownerSessionId, params.sessionId);
+          const response: SessionFileGetResponse = this.deps.getSessionFile
+            ? await this.deps.getSessionFile(params)
+            : sessionFileGetError('transient_io', {
+                message: 'Session file get is not available on this machine.',
+                retryable: true,
+              });
+          await this.appendResultResponse(request.replyTo, request.id, request.method, response, {
+            codeCollabOwnerSessionId: decoded.ownerSessionId,
+          });
+          return;
+        }
         case 'session/preview-create': {
           if (!this.deps.createSessionPreview) {
             await this.appendErrorResponse(request.replyTo, request.id, request.method, {
@@ -1486,7 +1508,13 @@ export class LoroStreamsMachineRpcServer {
                   message,
                   data: sessionImageGetError('transient_io', { message, retryable: true }),
                 }
-              : null;
+              : request.method === 'session/file-get'
+                ? {
+                    code: 'transient_io',
+                    message,
+                    data: sessionFileGetError('transient_io', { message, retryable: true }),
+                  }
+                : null;
       await this.appendErrorResponse(
         request.replyTo,
         request.id,
@@ -1580,6 +1608,7 @@ export class LoroStreamsMachineRpcServer {
       | FilePreviewV3Response
       | SessionImageSendResponse
       | SessionImageGetResponse
+      | SessionFileGetResponse
       | SessionPreviewCreateResponse
       | SessionPreviewRevokeResponse
       | LocalProjectGitStateRpcResponse

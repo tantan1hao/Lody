@@ -1396,6 +1396,89 @@ describe('LoroStreamsMachineRpcServer', () => {
     server.stop();
   });
 
+  it('serves session/file-get through the owner-scoped encrypted envelope', async () => {
+    const workspaceId = 'workspace-1' as WorkspaceId;
+    const machineId = 'machine-1' as MachineId;
+    const fake = createFakeStreamClient();
+    const getSessionFile = vi.fn(async () => ({
+      status: 'ok' as const,
+      fileId: 'file-1',
+      mimeType: 'text/plain',
+      fileName: 'notes.txt',
+      sizeBytes: 4,
+      offset: 0,
+      byteLength: 4,
+      eof: true,
+      data: Buffer.from('abcd').toString('base64'),
+    }));
+    const resolveCodeCollabOwnerSessionId = vi.fn(
+      async (): Promise<SessionId> => 'session-parent' as SessionId
+    );
+
+    const server = new LoroStreamsMachineRpcServer({
+      logger: createSilentLogger(),
+      workspaceId,
+      machineId,
+      streamClient: fake.streamClient,
+      getMachineStatus: vi.fn(),
+      refreshMachineAcpCapabilities: vi.fn(),
+      resolveCodeCollabOwnerSessionId,
+      getSessionFile,
+    });
+
+    fake.pushBatch({
+      messages: [
+        {
+          jsonrpc: '2.0',
+          id: 'req-1',
+          method: 'session/file-get',
+          rpcVersion: '1',
+          machineId: 'machine-1',
+          workspaceId: 'workspace-1',
+          replyTo: 'workspace-1:rpc:res:machine-1',
+          sentAt: Date.now(),
+          expiresAt: Date.now() + 5000,
+          params: await encryptCodeCollabV2RpcPayload('session-parent', {
+            sessionId: 'session-child',
+            fileId: 'file-1',
+            offset: 0,
+            maxBytes: 1024,
+          }),
+        },
+      ],
+      nextOffset: '1',
+      cursor: 'cursor-1',
+      upToDate: true,
+    });
+
+    await server.start();
+
+    await vi.waitFor(() => {
+      expect(fake.appended).toHaveLength(1);
+    });
+
+    expect(getSessionFile).toHaveBeenCalledWith({
+      sessionId: 'session-child',
+      fileId: 'file-1',
+      offset: 0,
+      maxBytes: 1024,
+    });
+    const response = fake.appended[0]?.value as { result: unknown };
+    await expect(
+      decryptCodeCollabV2RpcPayload(
+        response.result as CodeCollabV2RpcContentEnvelope,
+        'session-parent'
+      )
+    ).resolves.toMatchObject({
+      status: 'ok',
+      fileId: 'file-1',
+      mimeType: 'text/plain',
+      eof: true,
+    });
+
+    server.stop();
+  });
+
   it('rejects a file/preview request whose envelope owner is not the session owner', async () => {
     const workspaceId = 'workspace-1' as WorkspaceId;
     const machineId = 'machine-1' as MachineId;
