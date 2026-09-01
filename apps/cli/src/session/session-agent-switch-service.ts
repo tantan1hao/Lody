@@ -96,6 +96,7 @@ export class SessionAgentSwitchService {
         cliType: target.cliType,
         agentType: target.agentType,
         acpSessionId: '' as ACPSessionId,
+        contextWindowUsage: undefined,
       } satisfies Partial<SessionMeta>);
       await this.deps.workspaceDocument.persistPendingChanges('session-switch-agent-commit');
       return {

@@ -50,6 +50,9 @@ function createHarness(
       } satisfies AgentConfigMeta);
 
   let barrierHeld = false;
+  const upsertDocMeta = vi.fn(async () => {
+    events.push('meta');
+  });
   const service = new SessionAgentSwitchService({
     workspaceDocument: {
       getOrCreateSessionDoc: vi.fn(async () => ({
@@ -57,9 +60,7 @@ function createHarness(
       })),
       getAgentConfigById: vi.fn(async () => target),
       repo: {
-        upsertDocMeta: vi.fn(async () => {
-          events.push('meta');
-        }),
+        upsertDocMeta,
       },
       persistPendingChanges: vi.fn(async () => {
         events.push('persist');
@@ -95,7 +96,7 @@ function createHarness(
     hasPendingDispatch: () => options.pendingDispatch === true,
   });
 
-  return { events, service };
+  return { events, service, upsertDocMeta };
 }
 
 const spec = {
@@ -116,6 +117,13 @@ describe('SessionAgentSwitchService', () => {
       replayed: true,
     });
     expect(harness.events).toEqual(['barrier-acquire', 'terminate', 'meta', 'persist', 'barrier-release']);
+    expect(harness.upsertDocMeta).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        agentType: 'claude',
+        contextWindowUsage: undefined,
+      })
+    );
   });
 
   it('no-ops without tearing down the ACP process when the agent is unchanged', async () => {

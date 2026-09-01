@@ -1,5 +1,6 @@
 import {
   deriveModelReasoningEffortsFromLegacyModelIds,
+  isAcpModelConfigOption,
   type AcpCommandSummary,
   type AcpConfigOptionSummary,
 } from '@lody/shared';
@@ -159,7 +160,9 @@ export function normalizeAcpSessionCapabilities(
     description: mode.description ?? undefined,
   }));
   const configOptions = normalizeConfigOptions(sessionResponse.configOptions);
-  const modelOption = configOptions?.find((option) => option.category === 'model');
+  const modelOption = configOptions?.find(
+    (option) => option.type === 'select' && isAcpModelConfigOption(option)
+  );
   const modelsFromConfigOptions = (modelOption?.options ?? []).map((option) => ({
     modelId: option.value,
     name: option.name,

@@ -250,6 +250,7 @@ import {
   FloatingPermissionRequest,
   hasPendingPermissionRequest,
 } from './floating-permission-request';
+import { SessionUsagePopover } from './session-usage-popover';
 import { SessionPin } from './session-pin';
 import { SessionPinContext, type SessionPinContextValue } from './session-pin-context';
 import { SessionSyncingIndicator } from './session-syncing-indicator';
@@ -5424,6 +5425,20 @@ export const SessionChatInterface = memo(
       liveSessionStatus ?? undefined,
       permissionSessionHistory
     );
+    const selectedModelLabel =
+      modelOptions.find((option) => option.value === selectedModelId)?.label ?? null;
+    const sessionUsagePopover = (
+      <SessionUsagePopover
+        contextWindowUsage={session.contextWindowUsage}
+        rateLimits={sessionRateLimits}
+        agentType={session.agentType}
+        modelId={selectedModelId}
+        modelLabel={selectedModelLabel}
+        isContextCompacting={isContextCompacting}
+        showRateLimitWithoutContext
+        showCodexResetForecast={showCodexResetForecast}
+      />
+    );
 
     /* Shared header pieces used by both header variants. */
     const headerLauncherActions = (
@@ -5817,8 +5832,14 @@ export const SessionChatInterface = memo(
 
                   {/* Input area - isolated component to prevent full re-renders on typing.
                       Hidden while a permission is pending so the response buttons claim
-                      the bottom surface; chat queue is bypassed for the same reason. */}
-                  {shouldReplaceComposerWithPermission ? null : (
+                      the bottom surface; chat queue is bypassed for the same reason.
+                      The usage ring stays: it is not part of the prompt, and losing it
+                      reads as the quota disappearing. */}
+                  {shouldReplaceComposerWithPermission ? (
+                    <ConversationColumn>
+                      <div className="flex items-center pb-2">{sessionUsagePopover}</div>
+                    </ConversationColumn>
+                  ) : (
                     <SessionChatInputArea
                       ref={inputAreaRef}
                       session={session}

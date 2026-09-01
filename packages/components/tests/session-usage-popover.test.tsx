@@ -68,6 +68,28 @@ describe('SessionUsagePopover', () => {
     });
   };
 
+  it('shows a Gemini context ring before Antigravity reports usage', async () => {
+    await renderUsage({
+      agentType: 'antigravity-acp',
+      modelId: 'gemini-3.7-flash-high',
+    });
+
+    const trigger = container.querySelector('button');
+    expect(trigger?.textContent).toBe('0%');
+  });
+
+  it('rebases the ring when the selected model leaves the recorded window', async () => {
+    await renderUsage({
+      agentType: 'claude',
+      modelId: 'claude-fable-5[1m]',
+      modelLabel: 'Fable',
+      contextWindowUsage: { size: 200_000, used: 40_000, modelId: 'sonnet' },
+    });
+
+    const trigger = container.querySelector('button');
+    expect(trigger?.textContent).toBe('4%');
+  });
+
   it('shows the used context percentage in the composer trigger', async () => {
     await renderUsage({ contextWindowUsage: { size: 128_000, used: 32_000 } });
 

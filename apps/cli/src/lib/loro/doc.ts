@@ -2357,13 +2357,19 @@ export class SessionDocument implements LoroDocument<SessionDocMeta, SessionMeta
     const current = await this.repo.getDocMeta(this.roomId);
     if (isLoroRepoDocDeleted(current)) return;
     const currentUsage = (current?.meta as SessionMeta | undefined)?.contextWindowUsage;
-    if (currentUsage && currentUsage.size === size && currentUsage.used === used) {
+    if (
+      currentUsage &&
+      currentUsage.size === size &&
+      currentUsage.used === used &&
+      currentUsage.modelId === usage.modelId
+    ) {
       return;
     }
     await this.repo.upsertDocMeta(this.roomId, {
       contextWindowUsage: {
         size,
         used,
+        ...(usage.modelId ? { modelId: usage.modelId } : {}),
       },
     });
   }

@@ -1,8 +1,10 @@
 import {
   CODEX_SPARK_LIMIT_ID,
+  hasExplicitExtendedContextMarker,
   normalizePersistedRateLimit,
   parseRateLimitEntryKey,
   resolveAgentBrandId,
+  resolveModelContextWindow,
   type AgentConfigCliType,
   type AgentConfigMeta,
   type MachineViewMeta,
@@ -79,6 +81,52 @@ export function formatRateLimitWindowShortLabel(windowDurationSeconds: number | 
   return `${windowDurationSeconds / 60}m`;
 }
 
+export function resolveDisplayedContextWindowUsage({
+  usage,
+  agentType,
+  modelId,
+  modelLabel,
+}: {
+  usage?: SessionContextWindowUsage | null;
+  agentType: string;
+  modelId?: string | null;
+  modelLabel?: string | null;
+}): SessionContextWindowUsage | null {
+  const inferred = resolveModelContextWindow({ agentType, modelId, modelLabel });
+  const persisted =
+    usage && Number.isFinite(usage.size) && usage.size > 0
+      ? {
+          size: usage.size,
+          used: Number.isFinite(usage.used) ? Math.max(0, usage.used) : 0,
+          ...(usage.modelId ? { modelId: usage.modelId } : {}),
+        }
+      : null;
+  const currentModelId = modelId?.trim() || null;
+  const usageModelId = persisted?.modelId?.trim() || null;
+  const modelChanged = Boolean(currentModelId && usageModelId && currentModelId !== usageModelId);
+  if (modelChanged && inferred) {
+    return {
+      size: inferred,
+      used: persisted?.used ?? 0,
+      ...(currentModelId ? { modelId: currentModelId } : {}),
+    };
+  }
+  if (
+    persisted &&
+    inferred &&
+    inferred !== persisted.size &&
+    !usageModelId &&
+    hasExplicitExtendedContextMarker(modelId, modelLabel)
+  ) {
+    return { size: inferred, used: persisted.used, ...(currentModelId ? { modelId: currentModelId } : {}) };
+  }
+  if (persisted) return persisted;
+  if (inferred) {
+    return { size: inferred, used: 0, ...(currentModelId ? { modelId: currentModelId } : {}) };
+  }
+  return null;
+}
+
 export function getContextWindowUsageData(
   usage: SessionContextWindowUsage | null | undefined
 ): ContextWindowUsageData | null {
@@ -100,28 +148,20 @@ export function getContextWindowUsageData(
 
 export function canShowSubscriptionRateLimits({
   cliType,
-  agentType,
+  agentType: _agentType,
   config,
 }: {
   cliType: AgentConfigCliType;
   agentType: string;
   config?: Pick<AgentConfigMeta, 'brandId' | 'env'> | null;
 }): boolean {
-  if (
-    cliType !== 'builtin' ||
-    (agentType !== 'claude' &&
-      agentType !== 'codex' &&
-      agentType !== 'grok' &&
-      agentType !== 'kimi')
-  ) {
-    return false;
-  }
+  // Custom endpoints and third-party brands (DeepSeek / MiniMax / …) do not
+  // own the subscription Lody would be showing. Official builtins, registry
+  // agents, and env-authenticated official accounts can all surface quota
+  // when the machine has windows for that agentType.
+  if (cliType === 'custom') return false;
   if (!config) return true;
-
-  return (
-    Object.keys(config.env).length === 0 &&
-    !resolveAgentBrandId({ brandId: config.brandId, env: config.env })
-  );
+  return !resolveAgentBrandId({ brandId: config.brandId, env: config.env });
 }
 
 const normalizeModelName = (value: string | null | undefined): string =>

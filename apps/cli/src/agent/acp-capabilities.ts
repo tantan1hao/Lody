@@ -3,6 +3,7 @@ import {
   type BuiltinRuntimeOverrides,
   type CustomAcpLaunchSpec,
 } from '@lody/shared';
+import type { RateLimit } from 'acp-extension-core';
 import type { Logger } from '@/utils/logger';
 import { shutdownLocalAcpAgent, startLocalAcpAgent } from '@/agent/acp-runner';
 import { scrubInheritedClaudeAuthEnv, shouldScrubClaudeAuthEnv } from '@/agent/claude-env-conflict';
@@ -13,6 +14,7 @@ import {
   normalizeAcpSessionCapabilities,
   type AcpCapabilitiesResult,
 } from '@/agent/acp-capability-normalization';
+import { formatErrorMessage } from '@/utils/format-error';
 
 export { normalizeConfigOptions } from '@/agent/acp-capability-normalization';
 export type { AcpCapabilitiesResult } from '@/agent/acp-capability-normalization';
@@ -24,6 +26,7 @@ export type FetchAcpCapabilitiesOptions = {
 
 export type FetchedAcpCapabilities = AcpCapabilitiesResult & {
   capabilitySourceVersion?: string;
+  rateLimits?: RateLimit[];
 };
 
 /**
@@ -88,12 +91,29 @@ export async function fetchAcpCapabilities(
     });
 
   try {
+    const capabilities = normalizeAcpSessionCapabilities(sessionResponse, {
+      sessionFork: client.supportsSessionFork?.() === true,
+      acknowledgedSteer: client.supportsAcknowledgedSteer(),
+    });
+    let rateLimits: RateLimit[] | undefined;
+    const getRateLimits = client.getRateLimits?.bind(client);
+    if (typeof getRateLimits === 'function') {
+      try {
+        options.signal?.throwIfAborted();
+        const snapshot = await getRateLimits();
+        if (snapshot.rateLimits.length > 0) {
+          rateLimits = snapshot.rateLimits;
+        }
+      } catch (error) {
+        logger.debug(
+          `[acp-capabilities] Rate limits unavailable (cliType=${cliType} agentType=${agentType}): ${formatErrorMessage(error)}`
+        );
+      }
+    }
     return {
-      ...normalizeAcpSessionCapabilities(sessionResponse, {
-        sessionFork: client.supportsSessionFork?.() === true,
-        acknowledgedSteer: client.supportsAcknowledgedSteer(),
-      }),
+      ...capabilities,
       capabilitySourceVersion,
+      ...(rateLimits ? { rateLimits } : {}),
     };
   } finally {
     await shutdownLocalAcpAgent({

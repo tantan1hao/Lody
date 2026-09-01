@@ -666,6 +666,8 @@ export type SessionDiffStats = {
 export type SessionContextWindowUsage = {
   size: number;
   used: number;
+  /** Model the `size` was recorded for. Display rebases when the picker moves. */
+  modelId?: string;
 };
 
 export type SessionTitleSource = 'user' | 'generated' | 'draft';

@@ -109,6 +109,26 @@ describe('ACP capability normalization', () => {
     expect(capabilities.models.map((model) => model.modelId)).toEqual(['opus', 'sonnet']);
   });
 
+  it('reads models from id=model when the agent omits category', () => {
+    const capabilities = normalizeAcpSessionCapabilities({
+      modes: { availableModes: [] },
+      configOptions: [
+        {
+          id: 'model',
+          name: 'Model',
+          type: 'select',
+          currentValue: 'composer',
+          options: [
+            { value: 'composer', name: 'Composer' },
+            { value: 'gpt-5', name: 'GPT-5' },
+          ],
+        },
+      ],
+    });
+
+    expect(capabilities.models.map((model) => model.modelId)).toEqual(['composer', 'gpt-5']);
+  });
+
   it('preserves acknowledged steering support discovered from the live client', () => {
     const capabilities = normalizeAcpSessionCapabilities(
       { modes: { availableModes: [] } },

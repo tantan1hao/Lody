@@ -273,6 +273,12 @@ delegation proofs or a shared-machine gate without a new product and security de
   rooms or open docs to find candidates: each open joins the room and pulls its stream, so a full
   scan is O(all historical sessions) of Streams subscriptions at every daemon start, and it must
   never `cleanSessionDoc` a doc it did not exclusively own (see `../lib/loro/AGENTS.md`).
+- Antigravity context usage is read from ACP-agent stderr `usageUpdate`
+  (internal WS). Its adapter does not emit ACP `usage_update`; do not infer
+  Gemini window fill from the CLI release version or from Claude/Codex
+  telemetry. Display `size` follows the current picker model
+  (`resolveModelContextWindow`); a model or agent switch must not keep the
+  previous model's window. Parser: `../agent/acp-usage-update.ts`.
 - `session-agent-switch-service.ts` owns same-Lody-session mid-conversation agent changes.
   It is idle-only, same-machine only, and never resumes the previous ACP session: terminate the
   current process, rebind `agentConfigId`/`cliType`/`agentType`, clear `acpSessionId`, then let

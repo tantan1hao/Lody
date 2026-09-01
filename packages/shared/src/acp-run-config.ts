@@ -29,6 +29,10 @@ export const ACP_REASONING_EFFORT_CONFIG_ID = 'reasoning_effort';
 /** Category agents use for the reasoning-effort/thinking-level option. */
 export const ACP_THOUGHT_LEVEL_CATEGORY = 'thought_level';
 
+/** Config option id / category agents use for the model picker. */
+export const ACP_MODEL_CONFIG_ID = 'model';
+export const ACP_MODEL_CATEGORY = 'model';
+
 export const ACP_CONFIG_OPTION_ON_VALUE = 'on';
 export const ACP_CONFIG_OPTION_OFF_VALUE = 'off';
 
@@ -42,6 +46,10 @@ type ConfigOptionIdentity = Pick<AcpConfigOptionSummary, 'id' | 'category'>;
 
 export const isAcpThoughtLevelConfigOption = (option: ConfigOptionIdentity): boolean =>
   option.id === ACP_REASONING_EFFORT_CONFIG_ID || option.category === ACP_THOUGHT_LEVEL_CATEGORY;
+
+/** Registry agents often omit `category: 'model'` and only publish `id: 'model'`. */
+export const isAcpModelConfigOption = (option: ConfigOptionIdentity): boolean =>
+  option.id === ACP_MODEL_CONFIG_ID || option.category === ACP_MODEL_CATEGORY;
 
 /**
  * Codex is the only agent that carries plan mode as a config option, and it
@@ -219,7 +227,7 @@ const findCurrentModelId = (
 ): string | undefined => {
   const modelOption = findConfigOption(
     capability,
-    (option) => option.category === 'model' && option.type === 'select'
+    (option) => option.type === 'select' && isAcpModelConfigOption(option)
   );
   return typeof modelOption?.currentValue === 'string' ? modelOption.currentValue : undefined;
 };
@@ -229,7 +237,7 @@ const listModels = (
 ): Array<{ id: string; name: string }> => {
   const modelOption = findConfigOption(
     capability,
-    (option) => option.category === 'model' && option.type === 'select'
+    (option) => option.type === 'select' && isAcpModelConfigOption(option)
   );
   if (modelOption) {
     return modelOption.options.map((value) => ({ id: value.value, name: value.name }));

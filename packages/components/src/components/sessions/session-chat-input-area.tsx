@@ -2330,10 +2330,11 @@ export const SessionChatInputArea = memo(
       (option) => option.value === selectedModelId
     )?.label;
     const footerSelectorNode = (
-      <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-1.5 overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-1.5">
         {/* Mobile: run-config button is w-full inside this flex-1 slot so the
             model label can shrink. Desktop: two trigger buttons sit natural-
-            width with gap (fragment children of this flex row). */}
+            width with gap (fragment children of this flex row). Usage stays
+            shrink-0 outside this clip so a long model name cannot hide it. */}
         <div
           className={
             isMobile
@@ -2350,6 +2351,7 @@ export const SessionChatInputArea = memo(
           modelId={selectedModelId}
           modelLabel={selectedModelLabel}
           isContextCompacting={isContextCompacting}
+          showRateLimitWithoutContext
           showCodexResetForecast={showCodexResetForecast}
           className={isMobile ? 'h-8 shrink-0' : 'shrink-0'}
         />

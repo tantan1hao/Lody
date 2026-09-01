@@ -957,7 +957,7 @@ export function ChatComposer({
                 {/* Single row only: long model names must shrink/truncate inside
                     the run-config face rather than wrapping config chips onto a
                     second line (especially on mobile). */}
-                <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-x-2 overflow-hidden">
+                <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-x-2">
                   {footerSelector ?? selector}
                 </div>
 

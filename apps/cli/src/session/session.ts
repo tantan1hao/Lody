@@ -47,6 +47,7 @@ import {
 } from './session-sandbox';
 import { formatErrorMessage } from '@/utils/format-error';
 import { truncateLogText } from '@/utils/log-format';
+import { isAntigravityAgentType, parseAntigravityStderrUsage } from '@/agent/acp-usage-update';
 import { createStdinWritableStream, createStdoutReadableStream } from '@/utils/stream';
 import { resolveSessionGitIdentity } from './git-identity';
 import {
@@ -577,6 +578,10 @@ export class Session extends EventEmitter<SessionEvents> implements ISession {
 
       // Use setEncoding to handle UTF-8 multibyte boundaries correctly
       let stderrTail = '';
+      let liveModelId =
+        typeof this.config.configOptionValues?.model === 'string'
+          ? this.config.configOptionValues.model
+          : undefined;
       agentProcess.stderr?.setEncoding('utf8');
       agentProcess.stderr?.on('data', (chunk: string) => {
         if (chunk) {
@@ -590,6 +595,13 @@ export class Session extends EventEmitter<SessionEvents> implements ISession {
           this.logger.debug(
             `[${this.sessionId}] ACP agent stderr (${chunk.length} chars): ${preview}`
           );
+          if (isAntigravityAgentType(callbacks.agentType)) {
+            const usage = parseAntigravityStderrUsage(stderrTail, {
+              agentType: callbacks.agentType,
+              modelId: liveModelId,
+            });
+            if (usage) callbacks.onContextWindowUsageUpdate?.(usage);
+          }
         }
       });
 
@@ -681,6 +693,7 @@ export class Session extends EventEmitter<SessionEvents> implements ISession {
       this.acpSessionId = acpSessionId;
       this.agentClient = client;
       this.acpCapabilities = acpCapabilities;
+      liveModelId = client.currentModel?.modelId ?? liveModelId;
       this.logger.debug(`[${this.sessionId}] ACP agent process started, returning acpSessionId`);
       return acpSessionId;
     };

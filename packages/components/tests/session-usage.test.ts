@@ -8,6 +8,7 @@ import {
   getContextWindowUsageData,
   getRateLimitRemainingPercent,
   resolveAgentRateLimitForModel,
+  resolveDisplayedContextWindowUsage,
   type MachineRateLimits,
 } from '../src/lib/session-usage';
 
@@ -31,6 +32,37 @@ const usage = (overrides: Partial<MachineRateLimits[string]> = {}): MachineRateL
 });
 
 describe('session usage', () => {
+  it('rebases the context denominator when the picker leaves the recorded model', () => {
+    expect(
+      resolveDisplayedContextWindowUsage({
+        usage: { size: 200_000, used: 40_000, modelId: 'sonnet' },
+        agentType: 'claude',
+        modelId: 'claude-fable-5[1m]',
+        modelLabel: 'Fable',
+      })
+    ).toEqual({ size: 1_000_000, used: 40_000, modelId: 'claude-fable-5[1m]' });
+  });
+
+  it('keeps a learned Claude window while the picker stays on that model', () => {
+    expect(
+      resolveDisplayedContextWindowUsage({
+        usage: { size: 1_000_000, used: 120_000, modelId: 'sonnet' },
+        agentType: 'claude',
+        modelId: 'sonnet',
+      })
+    ).toEqual({ size: 1_000_000, used: 120_000, modelId: 'sonnet' });
+  });
+
+  it('shows a Gemini window at 0% before Antigravity reports usage', () => {
+    expect(
+      resolveDisplayedContextWindowUsage({
+        usage: null,
+        agentType: 'antigravity-acp',
+        modelId: 'gemini-3.7-flash-high',
+      })
+    ).toEqual({ size: 1_048_576, used: 0, modelId: 'gemini-3.7-flash-high' });
+  });
+
   it('derives remaining context tokens and clamps over-capacity usage', () => {
     expect(getContextWindowUsageData({ size: 128_000, used: 32_000 })).toMatchObject({
       remainingTokens: 96_000,
@@ -174,7 +206,7 @@ describe('session usage', () => {
     ).toBeNull();
   });
 
-  it('hides subscription limits for custom providers and configured endpoints', () => {
+  it('shows official and registry quota, but hides custom endpoints and branded presets', () => {
     expect(
       canShowSubscriptionRateLimits({
         cliType: 'builtin',
@@ -186,7 +218,19 @@ describe('session usage', () => {
       canShowSubscriptionRateLimits({
         cliType: 'builtin',
         agentType: 'grok',
-        config: { env: {} },
+        config: { env: { XAI_API_KEY: 'xai-test' } },
+      })
+    ).toBe(true);
+    expect(
+      canShowSubscriptionRateLimits({
+        cliType: 'registry',
+        agentType: 'cursor',
+      })
+    ).toBe(true);
+    expect(
+      canShowSubscriptionRateLimits({
+        cliType: 'registry',
+        agentType: 'antigravity-acp',
       })
     ).toBe(true);
     expect(

@@ -9,7 +9,10 @@
   and primary/secondary action placement.
 - `attachment-add-menu.tsx` is the composer's single "+" menu and owns the
   per-turn MCP selection (`ChatComposer mcp` → `AttachmentAddMenuMcp`), NOT the
-  footer selector row — the footer stays run config → permission → usage. MCP is
+  footer selector row — the footer stays run config → permission → usage.
+  Usage is shrink-0 and must sit outside the truncated run-config face; do not
+  wrap the whole footer slot in overflow-hidden or a long model label hides it.
+  MCP is
   always a second level because the catalog is multi-select and unbounded:
   desktop opens a hover submenu, touch has no hover so mobile pushes the panel
   onto the same surface with a back row. Toggling never closes the menu. The

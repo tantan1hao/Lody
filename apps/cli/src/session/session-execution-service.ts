@@ -85,7 +85,10 @@ import {
   type ManagedRuntimeProgressEvent,
   type ManagedRuntimeName,
 } from '@/agent/managed-agent-runtime';
-import type { FetchAcpCapabilitiesOptions } from '@/agent/acp-capabilities';
+import type {
+  FetchAcpCapabilitiesOptions,
+  FetchedAcpCapabilities,
+} from '@/agent/acp-capabilities';
 import { AcpAuthenticationRequiredError, AgentSteerNotDeliveredError } from '@/agent/agent-client';
 import {
   AcpAuthenticationManager,
@@ -489,16 +492,7 @@ export type SessionExecutionServiceDeps = {
     customAcp?: CustomAcpLaunchSpec,
     runtimeOverrides?: BuiltinRuntimeOverrides,
     options?: FetchAcpCapabilitiesOptions
-  ) => Promise<{
-    modes: NonNullable<MachineAcpCapabilitiesRefreshResponse['modes']>;
-    models: NonNullable<MachineAcpCapabilitiesRefreshResponse['models']>;
-    configOptions?: AcpConfigOptionSummary[];
-    availableCommands?: AcpCommandSummary[];
-    sessionFork: boolean;
-    acknowledgedSteer: boolean;
-    modelReasoningEfforts?: Record<string, string[]>;
-    capabilitySourceVersion?: string;
-  }>;
+  ) => Promise<FetchedAcpCapabilities>;
   /** Evict idle sessions if system memory is under pressure */
   evictForMemoryPressure: (excludeSessionId?: SessionId) => Promise<MemoryPressureEvictionResult>;
 };
@@ -5091,6 +5085,7 @@ export class SessionExecutionService {
         acknowledgedSteer,
         modelReasoningEfforts,
         capabilitySourceVersion,
+        rateLimits,
       } = await this.deps.fetchAcpCapabilities(
         message.cliType,
         message.agentType,
@@ -5130,6 +5125,15 @@ export class SessionExecutionService {
         acknowledgedSteer,
         { signal: options.signal }
       );
+
+      for (const limits of rateLimits ?? []) {
+        options.signal?.throwIfAborted();
+        await this.deps.workspaceDocument.updateRateLimits(
+          this.deps.machineId,
+          message.agentType,
+          limits
+        );
+      }
 
       return {
         type: 'machine/acp-capabilities-refresh_response',

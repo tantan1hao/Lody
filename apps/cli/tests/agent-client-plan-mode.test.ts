@@ -370,6 +370,43 @@ describe('AgentClient plan mode permission restoration', () => {
 
       expect(onContextWindowUsageUpdate).toHaveBeenCalledWith({ size: 200_000, used: 12_000 });
     });
+
+    it('maps Codex Lody usage extensions into the context meter', async () => {
+      const { client, onContextWindowUsageUpdate, onUsageUpdate } = createTestClient();
+
+      await expect(
+        client.extNotification?.('_lody/session/usage_update', {
+          sessionId: 'acp-test',
+          usage: {
+            inputTokens: 2800,
+            outputTokens: 600,
+            cacheReadInputTokens: 500,
+            reasoningOutputTokens: 100,
+            contextWindow: 272_000,
+          },
+        })
+      ).resolves.toBeUndefined();
+
+      expect(onUsageUpdate).toHaveBeenCalled();
+      expect(onContextWindowUsageUpdate).toHaveBeenCalledWith({ size: 272_000, used: 3_500 });
+    });
+
+    it('keeps billing-only Codex usage from inventing a context window', async () => {
+      const { client, onContextWindowUsageUpdate, onUsageUpdate } = createTestClient();
+
+      await expect(
+        client.extNotification?.('_acp_ext:session_usage_update', {
+          usage: {
+            inputTokens: 800,
+            outputTokens: 200,
+            cacheReadInputTokens: 0,
+          },
+        })
+      ).resolves.toBeUndefined();
+
+      expect(onUsageUpdate).toHaveBeenCalled();
+      expect(onContextWindowUsageUpdate).not.toHaveBeenCalled();
+    });
   });
 
   describe('ACP extension updates', () => {

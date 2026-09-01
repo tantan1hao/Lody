@@ -22,6 +22,7 @@ import {
   formatRateLimitWindowShortLabel,
   getAgentRateLimitWindows,
   getContextWindowUsageData,
+  resolveDisplayedContextWindowUsage,
   resolveAgentRateLimitForModel,
   type MachineRateLimits,
 } from '@/lib/session-usage';
@@ -59,7 +60,13 @@ export const SessionUsagePopover = memo(function SessionUsagePopover({
   const [isForecastOpen, setIsForecastOpen] = useState(false);
   const locale: Locale = i18n.language?.startsWith('zh') ? zhCN : enUS;
   const intlLocale = toIntlLocaleOrEn(i18n.resolvedLanguage ?? i18n.language);
-  const context = getContextWindowUsageData(contextWindowUsage);
+  const displayedUsage = resolveDisplayedContextWindowUsage({
+    usage: contextWindowUsage,
+    agentType,
+    modelId,
+    modelLabel,
+  });
+  const context = getContextWindowUsageData(displayedUsage);
   const rateLimit = resolveAgentRateLimitForModel({ rateLimits, agentType, modelId });
   const rateLimitWindows = rateLimit
     ? getAgentRateLimitWindows(rateLimit.limits).sort(

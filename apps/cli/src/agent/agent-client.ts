@@ -36,9 +36,15 @@ import {
   buildAskUserQuestionElicitationResponse,
   formatMcpResolutionProblem,
   getServerNow,
+  isAcpModelConfigOption,
+  resolveModelContextWindow,
 } from '@lody/shared';
 import { getLocalControlSocketPath } from '@lody/shared/node/local-ipc';
-import { isAcpUsageUpdate, parseAcpContextWindowUsage } from './acp-usage-update';
+import {
+  isAcpUsageUpdate,
+  parseAcpContextWindowUsage,
+  parseSessionUsageContextWindow,
+} from './acp-usage-update';
 import { getLodyMcpHttpEndpoint } from '@/mcp/lody-mcp-http-server';
 import { buildLodyMcpHttpHeaders } from '@/mcp/lody-mcp-http-protocol';
 import { TerminalManager } from '@/session/terminal-manager';
@@ -651,6 +657,7 @@ export class AgentClient implements acp.Client {
   /** Legacy top-level `models` state proves that `session/set_model` is supported. */
   private legacySessionModelState: LegacySessionModelState | null = null;
   public currentModel?: ModelInfo;
+  private lastContextWindowUsage: SessionContextWindowUsage | null = null;
   /**
    * Tool-call IDs identified by the canonical Lody tool name. We need this so the
    * follow-up `tool_call_update` notifications — which never repeat the title —
@@ -1184,7 +1191,10 @@ export class AgentClient implements acp.Client {
 
     const usage = parseAcpContextWindowUsage(update);
     if (usage) {
-      this.options.onContextWindowUsageUpdate?.(usage);
+      this.publishContextWindowUsage({
+        ...usage,
+        ...(this.currentModel?.modelId ? { modelId: this.currentModel.modelId } : {}),
+      });
     }
     return true;
   }
@@ -1407,6 +1417,13 @@ export class AgentClient implements acp.Client {
             ? { [this.currentModel.modelId]: toModelUsageFromUsage(event.update.usage) }
             : sanitizeModelUsage(event.update.modelUsage);
         this.options.onUsageUpdate?.({ ...event.update, modelUsage });
+        const contextWindowUsage = parseSessionUsageContextWindow(
+          event.update.usage,
+          this.currentModel?.modelId
+        );
+        if (contextWindowUsage) {
+          this.publishContextWindowUsage(contextWindowUsage);
+        }
         return;
       }
       case 'rateLimits':
@@ -2486,7 +2503,17 @@ export class AgentClient implements acp.Client {
       }
     }
 
-    if (result) this.configOptionValues[configId] = value;
+    if (result) {
+      this.configOptionValues[configId] = value;
+      const changedOption = this.configOptions.find((option) => option.id === configId);
+      if (
+        typeof value === 'string' &&
+        isAcpModelConfigOption({ id: configId, category: changedOption?.category ?? undefined })
+      ) {
+        this.currentModel = this.resolveModelInfo(value);
+        this.rebaseContextWindowForCurrentModel();
+      }
+    }
 
     this.logger.debug(
       `[${this.options.sessionId}] ACP session config option set: ${configId}=${value}`
@@ -2504,6 +2531,30 @@ export class AgentClient implements acp.Client {
    */
   private findConfigOptionByCategory(category: string): acp.SessionConfigOption | undefined {
     return this.configOptions.find((opt) => opt.category === category);
+  }
+
+  private publishContextWindowUsage(usage: SessionContextWindowUsage): void {
+    this.lastContextWindowUsage = usage;
+    this.options.onContextWindowUsageUpdate?.(usage);
+  }
+
+  private rebaseContextWindowForCurrentModel(): void {
+    const modelId = this.currentModel?.modelId;
+    if (!modelId) return;
+    const size = resolveModelContextWindow({
+      agentType: this.options.agentConfig?.agentType,
+      modelId,
+      modelLabel: this.currentModel?.name,
+    });
+    if (!size) return;
+    if (this.lastContextWindowUsage?.size === size && this.lastContextWindowUsage.modelId === modelId) {
+      return;
+    }
+    this.publishContextWindowUsage({
+      size,
+      used: this.lastContextWindowUsage?.used ?? 0,
+      modelId,
+    });
   }
 
   /**
@@ -2648,6 +2699,7 @@ export class AgentClient implements acp.Client {
         );
         if (!updatedConfigOptions) return;
         this.currentModel = this.resolveModelInfo(modelId);
+        this.rebaseContextWindowForCurrentModel();
         this.logger.debug(
           `[${this.options.sessionId}] ACP session model set via configOption: ${modelId}`
         );
@@ -2692,6 +2744,7 @@ export class AgentClient implements acp.Client {
     );
     if (!switched) return;
     this.currentModel = this.resolveModelInfo(modelId);
+    this.rebaseContextWindowForCurrentModel();
     this.logger.debug(
       `[${this.options.sessionId}] ACP session model set via legacy session/set_model: ${modelId}`
     );

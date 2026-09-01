@@ -360,4 +360,45 @@ describe('fetchAcpCapabilities', () => {
 
     expect(result.configOptions).toBeUndefined();
   });
+
+  it('returns advertised rate limits from the live ACP session', async () => {
+    const getRateLimits = vi.fn(async () => ({
+      rateLimits: [
+        {
+          limitId: 'claude',
+          scope: { providerId: 'claude' },
+          windows: [{ usedPercent: 18, windowDurationSeconds: 7 * 24 * 60 * 60, resetsAtEpochSeconds: null }],
+        },
+      ],
+    }));
+    mocks.startLocalAcpAgent.mockImplementation(async () => ({
+      ...createSuccessfulStartupResult(),
+      client: {
+        supportsAcknowledgedSteer: () => false,
+        getRateLimits,
+      } as never,
+    }));
+
+    const result = await fetchAcpCapabilities('builtin', 'claude', createSilentLogger());
+
+    expect(getRateLimits).toHaveBeenCalledTimes(1);
+    expect(result.rateLimits?.[0]?.windows[0]?.usedPercent).toBe(18);
+  });
+
+  it('omits rate limits when the agent does not advertise them', async () => {
+    const getRateLimits = vi.fn(async () => {
+      throw new Error('[ACP_RATE_LIMITS_UNSUPPORTED] Agent did not advertise rate-limit queries');
+    });
+    mocks.startLocalAcpAgent.mockImplementation(async () => ({
+      ...createSuccessfulStartupResult(),
+      client: {
+        supportsAcknowledgedSteer: () => false,
+        getRateLimits,
+      } as never,
+    }));
+
+    const result = await fetchAcpCapabilities('registry', 'cursor', createSilentLogger());
+
+    expect(result.rateLimits).toBeUndefined();
+  });
 });

@@ -5487,6 +5487,16 @@ describe('SessionExecutionService', () => {
 
   it('refreshes machine ACP capabilities and persists them to machine meta', async () => {
     const updateAcpCapabilities = vi.fn(async () => {});
+    const updateRateLimits = vi.fn(async () => {});
+    const rateLimits = [
+      {
+        limitId: 'codex',
+        scope: { providerId: 'codex' },
+        windows: [
+          { usedPercent: 22, windowDurationSeconds: 7 * 24 * 60 * 60, resetsAtEpochSeconds: null },
+        ],
+      },
+    ];
     const fetchAcpCapabilities = vi.fn(async () => ({
       modes: [{ id: 'agent', name: 'Agent Mode' }],
       models: [{ modelId: 'gpt-5', name: 'GPT-5' }],
@@ -5501,6 +5511,7 @@ describe('SessionExecutionService', () => {
       availableCommands: [{ name: 'review', description: 'Review changes' }],
       sessionFork: false,
       acknowledgedSteer: true,
+      rateLimits,
     }));
 
     const deps = createBaseDeps({
@@ -5511,6 +5522,7 @@ describe('SessionExecutionService', () => {
         },
         getOrCreateSessionDoc: vi.fn(),
         updateAcpCapabilities,
+        updateRateLimits,
       } as unknown as LoroDocumentManager,
       fetchAcpCapabilities,
     });
