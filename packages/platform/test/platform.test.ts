@@ -11,6 +11,7 @@ import {
   createSelfHostedCloudPort,
   createSelfHostedPlatformProvider,
   createSelfHostedStreamsConfig,
+  createStaticLoroStreamsTokenProvider,
   createStaticStore,
   createStore,
   isLocalUserId,
@@ -280,6 +281,18 @@ describe('self-hosted config', () => {
 });
 
 describe('self-hosted adapters', () => {
+  it('preserves browser HTTP auth on same-origin Streams requests', async () => {
+    const streams = createSelfHostedStreamsConfig(selfHostedConfig.controlOrigin);
+    const sameOrigin = createStaticLoroStreamsTokenProvider(
+      streams,
+      selfHostedConfig.controlOrigin
+    );
+    const crossOrigin = createStaticLoroStreamsTokenProvider(streams, 'https://desktop.invalid');
+
+    await expect(sameOrigin.createAuthCallback()()).resolves.toBeUndefined();
+    await expect(crossOrigin.createAuthCallback()()).resolves.toBe(streams.token);
+  });
+
   it('reuses the fixed workspace and static Streams endpoint in web mode', () => {
     const configStore = createStaticStore({
       status: 'ready',

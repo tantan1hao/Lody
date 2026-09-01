@@ -223,17 +223,19 @@ export async function loadSelfHostedConfig(options: {
 }
 
 export function createStaticLoroStreamsTokenProvider(
-  config: SelfHostedStreamsConfig
+  config: SelfHostedStreamsConfig,
+  requestOrigin = globalThis.location?.origin
 ): LoroStreamsTokenProvider {
   const baseUrl = parseHttpsUrl(config.baseUrl, 'Streams base URL').replace(/\/$/u, '');
   const token = config.token.trim();
   if (!token) throw new Error('Streams token must not be empty');
+  const useSameOriginCredentials = requestOrigin === new URL(baseUrl).origin;
   return {
     getToken: () => Promise.resolve(token),
     invalidate: () => {},
     getGatewayBaseUrl: () => baseUrl,
     getShardHostSuffix: () => undefined,
-    createAuthCallback: () => async () => token,
+    createAuthCallback: () => async () => (useSameOriginCredentials ? undefined : token),
   };
 }
 
