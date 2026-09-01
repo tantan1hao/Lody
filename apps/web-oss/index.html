@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
     />
     <meta name="color-scheme" content="light dark" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -28,10 +28,19 @@
         overflow: hidden;
         margin: 0;
       }
+
+      #boot-status {
+        display: grid;
+        height: 100%;
+        place-items: center;
+        background: #111;
+        color: #aaa;
+        font: 14px system-ui, sans-serif;
+      }
     </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><div id="boot-status" role="status">正在加载 Lody OSS…</div></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

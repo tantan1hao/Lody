@@ -204,7 +204,8 @@ export function getChatComposerTextareaClassName({
   const isLanding = variant === 'landing';
 
   return cn(
-    'input-scrollbar resize-none text-sm leading-6 transition-shadow',
+    'input-scrollbar resize-none leading-6 transition-shadow',
+    isMobile ? 'text-base' : 'text-sm',
     isLanding
       ? 'min-h-[120px] border-transparent bg-transparent px-0 py-0 sm:min-h-[140px]'
       : cn(
