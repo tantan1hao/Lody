@@ -109,6 +109,46 @@ export const getSessionFileBlobPath = (args: {
   return path.join(getSessionFileBlobDir(args), args.fileId);
 };
 
+export const readSessionFileBlobRange = async (args: {
+  workspaceId: string;
+  sessionId: string;
+  fileId: string;
+  offset: number;
+  maxBytes: number;
+  homeDir?: string;
+}): Promise<{ bytes: Buffer; sizeBytes: number } | null> => {
+  const destPath = getSessionFileBlobPath(args);
+  let handle: fs.promises.FileHandle;
+  try {
+    handle = await fs.promises.open(destPath, fs.constants.O_RDONLY);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return null;
+    }
+    throw error;
+  }
+  try {
+    const stat = await handle.stat();
+    const sizeBytes = stat.size;
+    if (args.offset >= sizeBytes || args.maxBytes <= 0) {
+      return { bytes: Buffer.alloc(0), sizeBytes };
+    }
+    const length = Math.min(args.maxBytes, sizeBytes - args.offset);
+    const bytes = Buffer.alloc(length);
+    let filled = 0;
+    while (filled < length) {
+      const read = await handle.read(bytes, filled, length - filled, args.offset + filled);
+      if (read.bytesRead <= 0) {
+        break;
+      }
+      filled += read.bytesRead;
+    }
+    return { bytes: filled === length ? bytes : bytes.subarray(0, filled), sizeBytes };
+  } finally {
+    await handle.close();
+  }
+};
+
 const getBackfilledSessionFileBlobPath = (args: {
   workspaceId: string;
   sessionId: string;

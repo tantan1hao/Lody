@@ -13,6 +13,7 @@ export const MACHINE_PROTOCOL_CAPABILITIES = {
   sessionAgentSwitch: 'sessionAgentSwitch',
   sessionImageSend: 'sessionImageSend',
   sessionImageGet: 'sessionImageGet',
+  sessionFileGet: 'sessionFileGet',
 } as const;
 
 export const LOCAL_PROJECT_REMOVAL_PROTOCOL_VERSION = 1;
@@ -20,6 +21,7 @@ export const PROVIDER_SETUP_PROTOCOL_VERSION = 1;
 export const SESSION_AGENT_SWITCH_PROTOCOL_VERSION = 1;
 export const SESSION_IMAGE_SEND_PROTOCOL_VERSION = 1;
 export const SESSION_IMAGE_GET_PROTOCOL_VERSION = 1;
+export const SESSION_FILE_GET_PROTOCOL_VERSION = 1;
 
 type MachineProtocolCapabilityCarrier = {
   protocolCapabilities?: MachineProtocolCapabilities;
@@ -54,6 +56,7 @@ export const CURRENT_MACHINE_PROTOCOL_CAPABILITIES: MachineProtocolCapabilities 
   [MACHINE_PROTOCOL_CAPABILITIES.sessionAgentSwitch]: SESSION_AGENT_SWITCH_PROTOCOL_VERSION,
   [MACHINE_PROTOCOL_CAPABILITIES.sessionImageSend]: SESSION_IMAGE_SEND_PROTOCOL_VERSION,
   [MACHINE_PROTOCOL_CAPABILITIES.sessionImageGet]: SESSION_IMAGE_GET_PROTOCOL_VERSION,
+  [MACHINE_PROTOCOL_CAPABILITIES.sessionFileGet]: SESSION_FILE_GET_PROTOCOL_VERSION,
 };
 
 /** Whether the target daemon supports preflighted local-project worktree cleanup and results. */
@@ -108,5 +111,16 @@ export function machineSupportsSessionImageGetProtocol(
     machine,
     MACHINE_PROTOCOL_CAPABILITIES.sessionImageGet,
     SESSION_IMAGE_GET_PROTOCOL_VERSION
+  );
+}
+
+/** Whether the target daemon can return a stored session file for download. */
+export function machineSupportsSessionFileGetProtocol(
+  machine: MachineProtocolCapabilityCarrier | null | undefined
+): boolean {
+  return machineSupportsProtocolCapability(
+    machine,
+    MACHINE_PROTOCOL_CAPABILITIES.sessionFileGet,
+    SESSION_FILE_GET_PROTOCOL_VERSION
   );
 }

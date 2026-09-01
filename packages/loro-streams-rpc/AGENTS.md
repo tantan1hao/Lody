@@ -116,6 +116,11 @@ Machine RPC; the old session-scoped Code Collab Host RPC ingress has been remove
   have no such service, so the bytes go to the session's execution machine and
   the daemon stores them in the local image blob store. Display reads that
   store back through `session/image-get`.
+- `session/file-get` is the same owner-scoped read for transcript file
+  attachments. Official downloads stay on `/session-files`; local and
+  self-hosted return a bounded chunk from the session file blob store.
+  Callers walk `offset` until `eof` so one response stays inside the File
+  Preview binary budget.
 
 ## File Responsibilities
 

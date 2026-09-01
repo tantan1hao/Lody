@@ -366,6 +366,9 @@ control-plane path is DEPRECATED; do not add functionality to it.
   has `handleSessionFileUpload` (cloud, MCP `lody_upload_files`) and local
   `handleSessionFileSendLocal`. Local bytes live in `session-file-blob-store.ts`
   (`~/.lody/session-files/<ws>/<sess>/<fileId>`) as `transport:'local'`.
+  Transcript download reads that store through `session/file-get` as a bounded
+  range (`readSessionFileBlobRange`); one chunk stays inside the File Preview
+  binary budget, and callers walk `offset` until `eof`.
   At dispatch, `materializeSessionFileAttachments` copies/downloads to
   `<workspace>/.lody/attachments/...` and sends ACP `resource_link` blocks with
   `file://` URIs; do not degrade this to text-only paths. Backfill
