@@ -55,6 +55,22 @@ location ^~ /icons/ {
     add_header X-Content-Type-Options "nosniff" always;
 }
 
+# iOS also probes these well-known root paths when adding to Home Screen,
+# often before the session cookie is sent (same as /icons/).
+location = /apple-touch-icon.png {
+    root /srv/lody-oss/web;
+    default_type image/png;
+    add_header Cache-Control "public, max-age=86400" always;
+    add_header X-Content-Type-Options "nosniff" always;
+}
+
+location = /apple-touch-icon-precomposed.png {
+    root /srv/lody-oss/web;
+    default_type image/png;
+    add_header Cache-Control "public, max-age=86400" always;
+    add_header X-Content-Type-Options "nosniff" always;
+}
+
 location = /push/vapid-public-key {
     include /etc/nginx/snippets/lody-oss-public-session-check-api.inc;
     proxy_pass http://127.0.0.1:8096/vapid-public-key;
