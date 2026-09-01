@@ -83,14 +83,13 @@ describe('buildAcpSelectorOptions', () => {
       }),
     });
 
-    const modelSelector = options.configOptionSelectors.find(
-      (selector) => selector.category === 'model'
-    );
-    expect(modelSelector).toMatchObject({ configId: 'model' });
-    expect(modelSelector?.options.map((option) => option.value)).toEqual([
+    expect(options.modelOptions.map((option) => option.value)).toEqual([
       'grok-4.5',
       'grok-code-fast-1',
     ]);
+    expect(
+      options.configOptionSelectors.some((selector) => selector.category === 'model')
+    ).toBe(false);
   });
 
   it('keeps registry model selectors when config options omit category but publish id=model', () => {
@@ -123,11 +122,11 @@ describe('buildAcpSelectorOptions', () => {
       }),
     });
 
-    const modelSelector = options.configOptionSelectors.find(
-      (selector) => selector.configId === 'model'
-    );
-    expect(modelSelector).toMatchObject({ category: 'model', configId: 'model' });
-    expect(modelSelector?.options.map((option) => option.value)).toEqual(['composer', 'gpt-5']);
+    expect(options.modelOptions.map((option) => option.value)).toEqual(['composer', 'gpt-5']);
+    expect(options.defaultModelId).toBe('composer');
+    expect(
+      options.configOptionSelectors.some((selector) => selector.configId === 'model')
+    ).toBe(false);
   });
 
   it('merges the legacy models list when Cursor/Antigravity publish other config options', () => {
@@ -161,14 +160,13 @@ describe('buildAcpSelectorOptions', () => {
       }),
     });
 
-    const modelSelector = options.configOptionSelectors.find(
-      (selector) => selector.category === 'model'
-    );
-    expect(modelSelector).toMatchObject({ configId: 'model' });
-    expect(modelSelector?.options.map((option) => option.value)).toEqual([
+    expect(options.modelOptions.map((option) => option.value)).toEqual([
       'gemini-3-pro',
       'claude-sonnet-4-6',
     ]);
+    expect(
+      options.configOptionSelectors.some((selector) => selector.category === 'model')
+    ).toBe(false);
   });
 
   it('does not inject Lody-owned registry mode config selectors', () => {

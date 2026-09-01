@@ -527,8 +527,10 @@ const resolveDefaultModeId = (
 export const buildAcpSelectorOptions = (target?: AcpSelectorTarget): AcpSelectorOptions => {
   const { authority: capabilityAuthority, configOptions } = resolveConfigOptions(target);
   // Custom providers are arbitrary ACP agents just like registry agents: their
-  // modes/models come from the capability probe (configOptions), not the
-  // builtin tables.
+  // modes come from the capability probe (configOptions), not the builtin
+  // tables. Models still fill dedicated `modelOptions` — landing / session
+  // create / recent-run-config all key off that array, not the generic
+  // selector list.
   const isAcpProbed = target?.cliType === 'registry' || target?.cliType === 'custom';
   const modeConfigOption = configOptions?.find(
     (opt) => opt.category === 'mode' && opt.type === 'select' && opt.id !== 'interaction_mode'
@@ -538,9 +540,7 @@ export const buildAcpSelectorOptions = (target?: AcpSelectorTarget): AcpSelector
   const modeOptions = shouldUseDedicatedModeOptions
     ? buildModeOptions(configOptions, target, capabilityAuthority)
     : [];
-  const modelOptions = isAcpProbed
-    ? []
-    : buildModelOptions(configOptions, target, capabilityAuthority);
+  const modelOptions = buildModelOptions(configOptions, target, capabilityAuthority);
   const modelConfigOption = configOptions?.find(isSelectModelConfigOption);
 
   const allSelectors = normalizeCodexReasoningEffortSelectors(
@@ -559,6 +559,12 @@ export const buildAcpSelectorOptions = (target?: AcpSelectorTarget): AcpSelector
       return true;
     }
     if (category === 'mode' && modeOptions.length > 0) {
+      return false;
+    }
+    if (
+      modelOptions.length > 0 &&
+      isAcpModelConfigOption({ id: selector.configId, category: selector.category })
+    ) {
       return false;
     }
     return isAcpProbed || !dedicatedCategories.has(category);
