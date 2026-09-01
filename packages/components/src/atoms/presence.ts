@@ -8,6 +8,7 @@ import {
   type MachineId,
   type SessionId,
 } from '@lody/shared';
+import { localMachineIdAtom } from '@/atoms/local-probe';
 import type { RoomSyncState } from '@/lib/room-sync-state';
 
 export const lodyPresenceStatesAtom = atom<LodyPresenceStateMap>({});
@@ -69,7 +70,9 @@ export type MachineOnlineStatus = 'online' | 'offline' | 'unknown';
 
 /**
  * Three-state machine liveness:
- * - 'online': fresh presence heartbeat seen.
+ * - 'online': fresh presence heartbeat seen, or this is the Electron-probed
+ *   local CLI. Landing already treats that id as reachable; a missing
+ *   heartbeat must not paint "this Mac is offline" while you are on it.
  * - 'offline': presence transport is healthy and no fresh heartbeat exists.
  * - 'unknown': presence transport is not synced — do not claim the machine is
  *   offline in UI copy; we simply cannot see it.
@@ -79,7 +82,7 @@ export const machineOnlineStatusAtomFamily = atomFamily((machineId?: MachineId) 
     if (!machineId) {
       return 'unknown';
     }
-    if (get(onlineMachineIdsAtom).has(machineId)) {
+    if (get(onlineMachineIdsAtom).has(machineId) || get(localMachineIdAtom) === machineId) {
       return 'online';
     }
     return get(lodyPresenceSyncStateAtom) === 'synced' ? 'offline' : 'unknown';

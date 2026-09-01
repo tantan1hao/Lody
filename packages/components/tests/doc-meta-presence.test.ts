@@ -25,6 +25,7 @@ import {
   sessionMetaAtomFamily,
   sessionMetaCacheAtom,
 } from '../src/atoms/doc-meta';
+import { localProbeResultAtom } from '../src/atoms/local-probe';
 import {
   lodyPresenceStatesAtom,
   lodyPresenceSyncStateAtom,
@@ -124,6 +125,19 @@ describe('doc meta presence overlay', () => {
     expect(store.get(childSessionsAtomFamily(sessionId))[0]?.status?.type).toBe('idle');
     expect(store.get(sessionLiveStatusAtomFamily(sessionId))?.type).toBe('running');
     expect(store.get(sessionLiveStatusAtomFamily(childSessionId))?.type).toBe('initializing');
+  });
+
+  it('treats the probed local Electron machine as online without a heartbeat', () => {
+    const store = createStore();
+    const localMachineId = 'machine-local' as MachineId;
+    store.set(localProbeResultAtom, { ok: true, machineId: localMachineId });
+    store.set(lodyPresenceSyncStateAtom, 'synced');
+    store.set(lodyPresenceStatesAtom, {});
+
+    expect(store.get(machineOnlineStatusAtomFamily(localMachineId))).toBe('online');
+    expect(store.get(machineOnlineStatusAtomFamily('machine-remote' as MachineId))).toBe(
+      'offline'
+    );
   });
 
   it('preserves session references when only sibling presence changes', () => {

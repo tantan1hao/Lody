@@ -683,7 +683,8 @@ labelClassName`) so the stage diffstat never clips. Wired from
   BOTH platforms via `useSessionStatusPresentation` (the standalone
   `SessionStatusStrip` component no longer renders in production — story
   coverage only). Machine liveness is presence-based
-  (`useMachineOnlineStatus`, three-state — 'unknown' must not claim offline).
+  (`useMachineOnlineStatus`, three-state — 'unknown' must not claim offline;
+  the probed local Electron machine is never claimed offline).
   `isMachineRemoved` (meta gone, blocks send; gated on `docMetaCacheReadyAtom`)
   is distinct from machine-offline (informational only: sends are written
   durably and run on reconnect — do not block them; neutral tone, not warning).

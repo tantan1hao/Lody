@@ -19,7 +19,8 @@ import type { MachineOnlineStatus } from '@/atoms/presence';
  *
  * "Machine offline" is only claimed when this client's presence subscription
  * is healthy ('offline', not 'unknown') — if we can't see presence we say
- * nothing rather than guess. Doc-stream degradation is deliberately NOT a
+ * nothing rather than guess. The Electron-probed local machine is never
+ * offline: `useMachineOnlineStatus` already treats that id as online. Doc-stream degradation is deliberately NOT a
  * status here: the reconnect loop owns recovery and browser-offline already
  * covers the common cause, so surfacing it would mostly be noise.
  *
