@@ -4,14 +4,18 @@
 nginx cookie-gates /push/*. This process only binds loopback. It stores
 browser PushSubscriptions and forwards messages published to the local
 ntfy topic so Safari / iOS Home Screen apps can wake without OneSignal.
+
+Uses stdlib + the operator host's cryptography (no pywebpush / pip).
 """
 
 from __future__ import annotations
 
 import base64
 import hashlib
+import hmac
 import json
 import os
+import sys
 import threading
 import time
 import urllib.error
@@ -21,9 +25,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
-from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
-from pywebpush import WebPushException, webpush
+from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature, encode_dss_signature
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.hkdf import HKDFExpand
 
 LISTEN_HOST = os.environ.get("LODY_WEB_PUSH_HOST", "127.0.0.1")
 LISTEN_PORT = int(os.environ.get("LODY_WEB_PUSH_PORT", "8096"))
@@ -33,9 +39,22 @@ STORE_PATH = Path(os.environ.get("LODY_WEB_PUSH_STORE", "/var/lib/lody-oss/web-p
 NTFY_BASE = os.environ.get("LODY_NTFY_BASE", "http://127.0.0.1:8094").rstrip("/")
 VAPID_MAIL = os.environ.get("LODY_WEB_PUSH_MAILTO", "mailto:lody-oss@localhost")
 
+_VAPID: dict[str, str] | None = None
+
+
+class WebPushGone(Exception):
+    def __init__(self, status: int) -> None:
+        super().__init__(f"subscription gone ({status})")
+        self.status = status
+
 
 def b64url(raw: bytes) -> str:
     return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
+
+
+def b64url_decode(value: str) -> bytes:
+    padded = value + ("=" * ((4 - len(value) % 4) % 4))
+    return base64.urlsafe_b64decode(padded.encode("ascii"))
 
 
 def load_json(path: Path, fallback: Any) -> Any:
@@ -52,6 +71,17 @@ def write_json(path: Path, value: Any) -> None:
     tmp.replace(path)
 
 
+def uncompressed_point(public_key: ec.EllipticCurvePublicKey) -> bytes:
+    numbers = public_key.public_numbers()
+    return b"\x04" + numbers.x.to_bytes(32, "big") + numbers.y.to_bytes(32, "big")
+
+
+def public_from_uncompressed(raw: bytes) -> ec.EllipticCurvePublicKey:
+    if len(raw) != 65 or raw[0] != 4:
+        raise ValueError("invalid p256dh")
+    return ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), raw)
+
+
 def generate_vapid() -> dict[str, str]:
     key = ec.generate_private_key(ec.SECP256R1())
     private_pem = key.private_bytes(
@@ -59,11 +89,7 @@ def generate_vapid() -> dict[str, str]:
         serialization.PrivateFormat.PKCS8,
         serialization.NoEncryption(),
     ).decode("ascii")
-    public_numbers = key.public_key().public_numbers()
-    x = public_numbers.x.to_bytes(32, "big")
-    y = public_numbers.y.to_bytes(32, "big")
-    public_key = b64url(b"\x04" + x + y)
-    return {"publicKey": public_key, "privatePem": private_pem}
+    return {"publicKey": b64url(uncompressed_point(key.public_key())), "privatePem": private_pem}
 
 
 def ensure_vapid() -> dict[str, str]:
@@ -77,6 +103,13 @@ def ensure_vapid() -> dict[str, str]:
     generated = generate_vapid()
     write_json(VAPID_PATH, generated)
     return generated
+
+
+def vapid() -> dict[str, str]:
+    global _VAPID
+    if _VAPID is None:
+        _VAPID = ensure_vapid()
+    return _VAPID
 
 
 def ntfy_topic() -> str:
@@ -128,21 +161,103 @@ class Store:
             write_json(self.path, [item for item in items if item.get("endpoint") != endpoint])
 
 
-VAPID = ensure_vapid()
 STORE = Store(STORE_PATH)
 
 
-def send_web_push(subscription: dict[str, Any], payload: dict[str, str]) -> None:
-    webpush(
-        subscription_info={
-            "endpoint": subscription["endpoint"],
-            "keys": subscription["keys"],
-        },
-        data=json.dumps(payload, ensure_ascii=False),
-        vapid_private_key=VAPID["privatePem"],
-        vapid_claims={"sub": VAPID_MAIL},
-        ttl=300,
+def hkdf_extract(salt: bytes, ikm: bytes) -> bytes:
+    return hmac.new(salt, ikm, hashlib.sha256).digest()
+
+
+def hkdf_expand(prk: bytes, info: bytes, length: int) -> bytes:
+    return HKDFExpand(algorithm=hashes.SHA256(), length=length, info=info).derive(prk)
+
+
+# RFC 8291 §3.4 / RFC 8188 info strings. Do not reuse the older aesgcm
+# "Content-Encoding: aesgcm" / "P-256" labels — those are a different coding.
+WEB_PUSH_INFO = b"WebPush: info\x00"
+CEK_INFO = b"Content-Encoding: aes128gcm\x00"
+NONCE_INFO = b"Content-Encoding: nonce\x00"
+RECORD_SIZE = 4096
+
+
+def encrypt_aes128gcm(
+    plaintext: bytes,
+    ua_public_raw: bytes,
+    auth_secret: bytes,
+    *,
+    salt: bytes | None = None,
+    as_private: ec.EllipticCurvePrivateKey | None = None,
+) -> bytes:
+    if as_private is None:
+        as_private = ec.generate_private_key(ec.SECP256R1())
+    as_public_raw = uncompressed_point(as_private.public_key())
+    ecdh_secret = as_private.exchange(ec.ECDH(), public_from_uncompressed(ua_public_raw))
+    # HKDF-Extract(salt=auth_secret, IKM=ecdh_secret)
+    # HKDF-Expand(..., info="WebPush: info" || 0x00 || ua_public || as_public, 32)
+    ikm = hkdf_expand(hkdf_extract(auth_secret, ecdh_secret), WEB_PUSH_INFO + ua_public_raw + as_public_raw, 32)
+    if salt is None:
+        salt = os.urandom(16)
+    # RFC 8188: HKDF-Extract(salt, IKM) then Expand for CEK / nonce.
+    prk = hkdf_extract(salt, ikm)
+    cek = hkdf_expand(prk, CEK_INFO, 16)
+    nonce = hkdf_expand(prk, NONCE_INFO, 12)
+    ciphertext = AESGCM(cek).encrypt(nonce, plaintext + b"\x02", b"")
+    return salt + RECORD_SIZE.to_bytes(4, "big") + bytes([len(as_public_raw)]) + as_public_raw + ciphertext
+
+
+def load_vapid_private_key(pem: str | None = None) -> ec.EllipticCurvePrivateKey:
+    key = serialization.load_pem_private_key((pem or vapid()["privatePem"]).encode("ascii"), password=None)
+    if not isinstance(key, ec.EllipticCurvePrivateKey):
+        raise ValueError("VAPID key must be ECDSA P-256")
+    return key
+
+
+def vapid_jwt(endpoint: str, private_key: ec.EllipticCurvePrivateKey | None = None) -> str:
+    parsed = urllib.parse.urlparse(endpoint)
+    audience = f"{parsed.scheme}://{parsed.netloc}"
+    header = b64url(json.dumps({"typ": "JWT", "alg": "ES256"}, separators=(",", ":")).encode("utf-8"))
+    payload = b64url(
+        json.dumps(
+            {"aud": audience, "exp": int(time.time()) + 12 * 3600, "sub": VAPID_MAIL},
+            separators=(",", ":"),
+        ).encode("utf-8")
     )
+    signing_input = f"{header}.{payload}".encode("ascii")
+    key = private_key or load_vapid_private_key()
+    r, s = decode_dss_signature(key.sign(signing_input, ec.ECDSA(hashes.SHA256())))
+    return f"{header}.{payload}.{b64url(r.to_bytes(32, 'big') + s.to_bytes(32, 'big'))}"
+
+
+def send_web_push(subscription: dict[str, Any], payload: dict[str, str]) -> None:
+    endpoint = str(subscription["endpoint"])
+    keys = subscription["keys"]
+    body = encrypt_aes128gcm(
+        json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        b64url_decode(str(keys["p256dh"])),
+        b64url_decode(str(keys["auth"])),
+    )
+    request = urllib.request.Request(
+        endpoint,
+        data=body,
+        method="POST",
+        headers={
+            "Authorization": f"vapid t={vapid_jwt(endpoint)},k={vapid()['publicKey']}",
+            "Content-Encoding": "aes128gcm",
+            "Content-Type": "application/octet-stream",
+            "TTL": "300",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            response.read()
+    except urllib.error.HTTPError as error:
+        try:
+            error.read()
+        except Exception:
+            pass
+        if error.code in {404, 410}:
+            raise WebPushGone(error.code) from error
+        raise
 
 
 def dispatch_ntfy_message(message: dict[str, Any]) -> None:
@@ -160,10 +275,10 @@ def dispatch_ntfy_message(message: dict[str, Any]) -> None:
     for subscription in STORE.all():
         try:
             send_web_push(subscription, payload)
-        except WebPushException as error:
-            status = getattr(getattr(error, "response", None), "status_code", None)
-            if status in {404, 410}:
-                stale.append(str(subscription.get("endpoint") or ""))
+        except WebPushGone:
+            stale.append(str(subscription.get("endpoint") or ""))
+        except Exception:
+            continue
     for endpoint in stale:
         if endpoint:
             STORE.remove(endpoint)
@@ -217,7 +332,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         if self.path.split("?", 1)[0] == "/vapid-public-key":
-            self._send(200, {"publicKey": VAPID["publicKey"]})
+            self._send(200, {"publicKey": vapid()["publicKey"]})
             return
         self._send(404, {"error": "not_found"})
 
@@ -230,7 +345,7 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError as error:
             self._send(400, {"error": str(error)})
             return
-            self._send(204, None)
+        self._send(204, None)
 
     def do_DELETE(self) -> None:
         if self.path.split("?", 1)[0] != "/subscription":
@@ -248,11 +363,57 @@ class Handler(BaseHTTPRequestHandler):
         self._send(204, None)
 
 
+def rfc8291_selftest() -> None:
+    """Deterministic RFC 8291 §5 / Appendix A vector. No network."""
+    plaintext = b"When I grow up, I want to be a watermelon"
+    ua_public = b64url_decode("BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4")
+    auth_secret = b64url_decode("BTBZMqHH6r4Tts7J_aSIgg")
+    salt = b64url_decode("DGv6ra1nlYgDCS1FRnbzlw")
+    as_private = ec.derive_private_key(
+        int.from_bytes(b64url_decode("yfWPiYE-n46HLnH0KqZOF1fJJU3MYrct3AELtAQ-oRw"), "big"),
+        ec.SECP256R1(),
+    )
+    as_public = uncompressed_point(as_private.public_key())
+    expected_as_public = b64url_decode(
+        "BP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A8"
+    )
+    if as_public != expected_as_public:
+        raise SystemExit("VAPID/ECE selftest: application-server public key mismatch")
+    body = encrypt_aes128gcm(plaintext, ua_public, auth_secret, salt=salt, as_private=as_private)
+    expected = b64url_decode(
+        "DGv6ra1nlYgDCS1FRnbzlwAAEABBBP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27ml"
+        "mlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A_yl95bQpu6cVPT"
+        "pK4Mqgkf1CXztLVBSt2Ks3oZwbuwXPXLWyouBWLVWGNWQexSgSxsj_Qulcy4a-fN"
+    )
+    if body != expected:
+        raise SystemExit("VAPID/ECE selftest: RFC 8291 aes128gcm ciphertext mismatch")
+    jwt_key = generate_vapid()
+    private_key = load_vapid_private_key(jwt_key["privatePem"])
+    token = vapid_jwt("https://push.example.net/push/JzLQ3raZJfFBR0aqvOMsLrt54w4rJUsV", private_key)
+    header_b64, payload_b64, sig_b64 = token.split(".")
+    claims = json.loads(b64url_decode(payload_b64))
+    if claims.get("aud") != "https://push.example.net" or claims.get("sub") != VAPID_MAIL:
+        raise SystemExit("VAPID/ECE selftest: JWT claims")
+    sig = b64url_decode(sig_b64)
+    private_key.public_key().verify(
+        encode_dss_signature(int.from_bytes(sig[:32], "big"), int.from_bytes(sig[32:], "big")),
+        f"{header_b64}.{payload_b64}".encode("ascii"),
+        ec.ECDSA(hashes.SHA256()),
+    )
+    if b64url(uncompressed_point(private_key.public_key())) != jwt_key["publicKey"]:
+        raise SystemExit("VAPID/ECE selftest: publicKey encoding")
+    print("rfc8291_selftest: ok")
+
+
 def main() -> None:
+    vapid()
     threading.Thread(target=ntfy_loop, name="ntfy-web-push", daemon=True).start()
     server = ThreadingHTTPServer((LISTEN_HOST, LISTEN_PORT), Handler)
     server.serve_forever()
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) > 1 and sys.argv[1] == "--selftest":
+        rfc8291_selftest()
+    else:
+        main()

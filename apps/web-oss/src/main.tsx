@@ -5,11 +5,12 @@ import { createRouter } from '@lody/components/router';
 import '@lody/components/tailwind/index.css';
 import { createLodyAuthClient, jotaiStore } from '@lody/components/lib';
 import { installResizeObserverLoopErrorHandler } from '@lody/components/lib/resize-observer';
+import { registerWebPushServiceWorker } from '@lody/components/lib/web-push-client';
 
 installResizeObserverLoopErrorHandler();
 
 if ('serviceWorker' in navigator) {
-  void navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch((error: unknown) => {
+  void registerWebPushServiceWorker().catch((error: unknown) => {
     console.warn('Failed to register web push service worker', error);
   });
 }

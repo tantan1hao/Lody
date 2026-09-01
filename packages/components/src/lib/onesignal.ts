@@ -1,3 +1,4 @@
+import { isSelfHostedAppPlatform } from './app-platform';
 import { deferredPostHog } from './deferred-posthog';
 import { isNativeAppShell, isNativeIOSAppShell } from './native-platform';
 import { capturePostHogEvent } from './posthog-analytics';
@@ -363,6 +364,11 @@ function waitForNativeCordovaReady(): Promise<void> {
 
 export function isOneSignalSupported(): boolean {
   if (typeof window === 'undefined' || window.__LODY_ELECTRON__ === true) {
+    return false;
+  }
+
+  // OSS / self-hosted uses same-origin Web Push. Never load OneSignal.
+  if (isSelfHostedAppPlatform()) {
     return false;
   }
 

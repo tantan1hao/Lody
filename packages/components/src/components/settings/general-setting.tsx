@@ -150,7 +150,8 @@ export function GeneralSettingsComponent() {
   const [autoLaunchEnabled, setAutoLaunchEnabled] = useState(false);
   const [autoLaunchSupported, setAutoLaunchSupported] = useState(false);
   const [autoLaunchLoading, setAutoLaunchLoading] = useState(false);
-  const pushServiceReady = oneSignalReady || webPushReady;
+  const useSameOriginWebPush = !isElectron && !isNative && isSelfHostedAppPlatform();
+  const pushServiceReady = useSameOriginWebPush ? webPushReady : oneSignalReady || webPushReady;
   const isSwitchDisabled = isElectron
     ? !notificationSupported || isProcessing
     : !notificationSupported || !pushServiceReady || isProcessing;
@@ -299,25 +300,21 @@ export function GeneralSettingsComponent() {
 
     const currentPermission = Notification.permission;
     setPermissionStatus(currentPermission);
+    if (isSelfHostedAppPlatform()) {
+      const state = await getWebPushState();
+      setWebPushReady(state.ready);
+      setNotificationsEnabled(state.subscribed);
+      return;
+    }
+
     if (currentPermission !== 'granted') {
       setNotificationsEnabled(false);
-      if (isSelfHostedAppPlatform()) {
-        const state = await getWebPushState();
-        setWebPushReady(state.ready);
-      }
       return;
     }
 
     const webPushSubscriptionEnabled = await readOneSignalPushSubscriptionEnabled();
     if (typeof webPushSubscriptionEnabled === 'boolean') {
       setNotificationsEnabled(webPushSubscriptionEnabled);
-      return;
-    }
-
-    if (isSelfHostedAppPlatform()) {
-      const state = await getWebPushState();
-      setWebPushReady(state.ready);
-      setNotificationsEnabled(state.subscribed);
       return;
     }
 
@@ -386,21 +383,6 @@ export function GeneralSettingsComponent() {
     }
 
     let active = true;
-    void initOneSignal()
-      .then((oneSignal) => {
-        if (!active || !oneSignal?.Notifications) {
-          return;
-        }
-        setOneSignalReady(true);
-      })
-      .catch((error: unknown) => {
-        if (!active) {
-          return;
-        }
-        setOneSignalReady(false);
-        console.error('OneSignal init failed', error);
-      });
-
     if (isSelfHostedAppPlatform()) {
       void getWebPushState()
         .then((state) => {
@@ -414,6 +396,21 @@ export function GeneralSettingsComponent() {
           if (active) {
             setWebPushReady(false);
           }
+        });
+    } else {
+      void initOneSignal()
+        .then((oneSignal) => {
+          if (!active || !oneSignal?.Notifications) {
+            return;
+          }
+          setOneSignalReady(true);
+        })
+        .catch((error: unknown) => {
+          if (!active) {
+            return;
+          }
+          setOneSignalReady(false);
+          console.error('OneSignal init failed', error);
         });
     }
 
@@ -457,6 +454,9 @@ export function GeneralSettingsComponent() {
   useElectronEnabledSetting(isElectron, 'getCliAutoStartEnabled', setCliAutoStartEnabled);
 
   const permissionLabel = useMemo(() => {
+    if (needsHomeScreen) {
+      return t('settings.notifications.reason.needHomeScreen');
+    }
     if (isElectron && !notificationsEnabled) {
       return t('settings.notifications.disabledDesktop');
     }
@@ -474,11 +474,11 @@ export function GeneralSettingsComponent() {
       default:
         return t('settings.notifications.permissionDefault');
     }
-  }, [isElectron, isNative, notificationsEnabled, permissionStatus, t]);
+  }, [isElectron, isNative, needsHomeScreen, notificationsEnabled, permissionStatus, t]);
 
   const disableReason = useMemo(() => {
     if (needsHomeScreen) {
-      return t('settings.notifications.reason.needHomeScreen');
+      return undefined;
     }
     if (!notificationSupported) {
       return t('settings.notifications.reason.notSupported');
@@ -584,7 +584,7 @@ export function GeneralSettingsComponent() {
         return;
       }
 
-      if (isSelfHostedAppPlatform() && !oneSignalReady) {
+      if (isSelfHostedAppPlatform()) {
         if (needsHomeScreen) {
           toast.error(t('settings.notifications.reason.needHomeScreen'), {
             description: t('settings.notifications.web.iosHomeScreenHint'),

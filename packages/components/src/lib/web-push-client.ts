@@ -20,15 +20,26 @@ export type WebPushState = {
   needsHomeScreen: boolean;
 };
 
-const VAPID_PUBLIC_KEY_PATH = '/push/vapid-public-key';
-const SUBSCRIPTION_PATH = '/push/subscription';
+export const WEB_PUSH_VAPID_PUBLIC_KEY_PATH = '/push/vapid-public-key';
+export const WEB_PUSH_SUBSCRIPTION_PATH = '/push/subscription';
+export const WEB_PUSH_SERVICE_WORKER_URL = '/sw.js';
+export const WEB_PUSH_SERVICE_WORKER_SCOPE = '/';
+
+const IOS_WEB_PUSH_MIN_MAJOR = 16;
+const IOS_WEB_PUSH_MIN_MINOR = 4;
 
 type NavigatorLike = {
   userAgent?: string;
   platform?: string;
   maxTouchPoints?: number;
   standalone?: boolean;
-  serviceWorker?: unknown;
+  serviceWorker?: {
+    register: (
+      scriptURL: string,
+      options?: { scope: string }
+    ) => Promise<PushSubscriptionRegistrationLike>;
+    ready: Promise<PushSubscriptionRegistrationLike>;
+  };
 };
 
 type WindowLike = {
@@ -36,6 +47,13 @@ type WindowLike = {
   matchMedia?: (query: string) => { matches: boolean };
   Notification?: unknown;
   PushManager?: unknown;
+};
+
+type PushSubscriptionRegistrationLike = {
+  pushManager: {
+    getSubscription: () => Promise<PushSubscription | null>;
+    subscribe: (options: PushSubscriptionOptionsInit) => Promise<PushSubscription>;
+  };
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -51,6 +69,27 @@ export const urlBase64ToUint8Array = (value: string): Uint8Array => {
   return bytes;
 };
 
+const parseIosVersion = (userAgent: string): { major: number; minor: number } | null => {
+  const match = /(?:iPhone[ _]OS|CPU(?: iPhone)? OS) (\d+)[._](\d+)/u.exec(userAgent);
+  if (!match) {
+    return null;
+  }
+  return { major: Number(match[1]), minor: Number(match[2]) };
+};
+
+const isIosWebPushVersionSupported = (userAgent: string): boolean => {
+  const version = parseIosVersion(userAgent);
+  if (!version) {
+    // iPadOS desktop-mode UA has no iOS version. Home Screen apps keep the
+    // mobile UA, so an unparseable string must not block Mac Safari.
+    return true;
+  }
+  return (
+    version.major > IOS_WEB_PUSH_MIN_MAJOR ||
+    (version.major === IOS_WEB_PUSH_MIN_MAJOR && version.minor >= IOS_WEB_PUSH_MIN_MINOR)
+  );
+};
+
 const isIosNavigator = (navigator: NavigatorLike | undefined): boolean => {
   if (!navigator) {
     return false;
@@ -59,24 +98,40 @@ const isIosNavigator = (navigator: NavigatorLike | undefined): boolean => {
   if (/iPad|iPhone|iPod/u.test(userAgent)) {
     return true;
   }
-  // iPadOS 13+ reports itself as Macintosh.
-  return navigator.platform === 'MacIntel' && (navigator.maxTouchPoints ?? 0) > 1;
+  // iPadOS 13+ reports itself as Macintosh. Touch points distinguish a real Mac.
+  const macLike = navigator.platform === 'MacIntel' || /Macintosh/u.test(userAgent);
+  return macLike && (navigator.maxTouchPoints ?? 0) > 1;
 };
+
+const isStandaloneDisplay = (host: WindowLike, navigator: NavigatorLike | undefined): boolean => {
+  if (navigator?.standalone === true) {
+    return true;
+  }
+  if (host.matchMedia?.('(display-mode: standalone)').matches === true) {
+    return true;
+  }
+  // Some Home Screen apps report fullscreen rather than standalone.
+  return host.matchMedia?.('(display-mode: fullscreen)').matches === true;
+};
+
+const hasPushApis = (host: WindowLike, navigator: NavigatorLike | undefined): boolean =>
+  typeof host.Notification === 'function' &&
+  Boolean(navigator?.serviceWorker) &&
+  typeof host.PushManager === 'function';
 
 export const inspectWebPushEnvironment = (host: WindowLike = window): WebPushEnvironment => {
   const navigator = host.navigator;
-  const standalone =
-    host.matchMedia?.('(display-mode: standalone)').matches === true || navigator?.standalone === true;
+  const standalone = isStandaloneDisplay(host, navigator);
   const ios = isIosNavigator(navigator);
-  const apiAvailable =
-    typeof host.Notification === 'function' &&
-    Boolean(navigator?.serviceWorker) &&
-    typeof host.PushManager === 'function';
+  const iosVersionSupported = !ios || isIosWebPushVersionSupported(navigator?.userAgent ?? '');
+  const needsHomeScreen = ios && iosVersionSupported && !standalone;
   return {
     standalone,
     ios,
-    needsHomeScreen: ios && !standalone,
-    apiAvailable,
+    needsHomeScreen,
+    // iOS Safari tabs may expose constructor objects; they cannot request
+    // permission until the page is opened from the Home Screen icon.
+    apiAvailable: hasPushApis(host, navigator) && iosVersionSupported && !needsHomeScreen,
   };
 };
 
@@ -96,7 +151,7 @@ const toSubscriptionJson = (subscription: PushSubscription): WebPushSubscription
 };
 
 const readVapidPublicKey = async (): Promise<string> => {
-  const response = await fetch(VAPID_PUBLIC_KEY_PATH, {
+  const response = await fetch(WEB_PUSH_VAPID_PUBLIC_KEY_PATH, {
     method: 'GET',
     credentials: 'same-origin',
     headers: { Accept: 'application/json' },
@@ -113,7 +168,7 @@ const readVapidPublicKey = async (): Promise<string> => {
 };
 
 const putSubscription = async (subscription: WebPushSubscriptionJson): Promise<void> => {
-  const response = await fetch(SUBSCRIPTION_PATH, {
+  const response = await fetch(WEB_PUSH_SUBSCRIPTION_PATH, {
     method: 'PUT',
     credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -125,7 +180,7 @@ const putSubscription = async (subscription: WebPushSubscriptionJson): Promise<v
 };
 
 const deleteSubscription = async (endpoint: string): Promise<void> => {
-  const response = await fetch(SUBSCRIPTION_PATH, {
+  const response = await fetch(WEB_PUSH_SUBSCRIPTION_PATH, {
     method: 'DELETE',
     credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -134,6 +189,22 @@ const deleteSubscription = async (endpoint: string): Promise<void> => {
   if (!response.ok && response.status !== 404) {
     throw new Error(`Push subscription delete failed (${response.status})`);
   }
+};
+
+const getServiceWorkerContainer = (): NavigatorLike['serviceWorker'] | undefined => {
+  if (typeof navigator === 'undefined') {
+    return undefined;
+  }
+  return navigator.serviceWorker;
+};
+
+export const registerWebPushServiceWorker = async (): Promise<PushSubscriptionRegistrationLike> => {
+  const container = getServiceWorkerContainer();
+  if (!container) {
+    throw new Error('web_push_unsupported');
+  }
+  await container.register(WEB_PUSH_SERVICE_WORKER_URL, { scope: WEB_PUSH_SERVICE_WORKER_SCOPE });
+  return container.ready;
 };
 
 export const getWebPushState = async (): Promise<WebPushState> => {
@@ -145,8 +216,7 @@ export const getWebPushState = async (): Promise<WebPushState> => {
     return { ready: false, subscribed: false, needsHomeScreen: false };
   }
   try {
-    await readVapidPublicKey();
-    const registration = await navigator.serviceWorker.ready;
+    const registration = await registerWebPushServiceWorker();
     const subscription = await registration.pushManager.getSubscription();
     return {
       ready: true,
@@ -173,7 +243,7 @@ export const subscribeWebPush = async (): Promise<void> => {
   }
 
   const publicKey = await readVapidPublicKey();
-  const registration = await navigator.serviceWorker.ready;
+  const registration = await registerWebPushServiceWorker();
   const existing = await registration.pushManager.getSubscription();
   const subscription =
     existing ??
@@ -188,7 +258,7 @@ export const unsubscribeWebPush = async (): Promise<void> => {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
     return;
   }
-  const registration = await navigator.serviceWorker.ready;
+  const registration = await registerWebPushServiceWorker();
   const subscription = await registration.pushManager.getSubscription();
   if (!subscription) {
     return;
