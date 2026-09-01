@@ -1564,6 +1564,13 @@ export async function createWorkspaceRuntime(deps: RuntimeDeps): Promise<Workspa
           streamsBaseUrl,
           getStreamsShardHostSuffixForProvider(provider)
         ),
+        // `reconnectConfig` on the workspace adapter only covers SSE. Machine
+        // dispatch is a separate StreamsClient POST (`json.append`); keep the
+        // same 120s connect budget so a full HTTP/1.1 slot wait can finish
+        // instead of dying at the client's 10s default.
+        timeout: isSelfHostedAppPlatform()
+          ? { connectTimeoutMs: SELF_HOSTED_STREAMS_CONNECT_TIMEOUT_MS }
+          : undefined,
       });
       // Pre-warm the shared RPC response dispatcher (create/join of the
       // response stream) so the first machine RPC of the session doesn't pay
