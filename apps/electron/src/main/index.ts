@@ -294,10 +294,12 @@ if (hasSingleInstanceLock) {
       // fire-and-forget would let the app exit while the CLI is still shutting
       // down, orphaning it holding the local ports + terminal socket and breaking
       // the next launch. shutdownForQuit() SIGTERMs, waits briefly, then SIGKILLs.
+      // Do not await restic: a self-hosted SFTP snapshot of loro-repo can take
+      // more than a minute and makes Command+Q look wedged.
       event.preventDefault()
-      const shutdownAndBackup = cliService
-        .shutdownForQuit()
-        .then(async () => await deviceBackupService.backupAfterCliShutdown())
+      const shutdownAndBackup = cliService.shutdownForQuit().then(() => {
+        deviceBackupService.startDetachedBackupAfterCliShutdown()
+      })
       void Promise.allSettled([shutdownAndBackup, flushElectronMainErrorReporting()]).finally(
         () => {
           cliShutdownComplete = true

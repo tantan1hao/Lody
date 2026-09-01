@@ -58,6 +58,8 @@ Root `AGENTS.md` also applies.
 - OSS local and self-hosted modes must not create a PostHog client, write an analytics
   install id, or upload source maps, even when unrelated analytics variables exist in
   the shell.
+- Command+Q may wait only for embedded CLI exit. Self-hosted restic backup is detached
+  and must not sit on the `before-quit` barrier.
 
 ## Renderer and window integration
 

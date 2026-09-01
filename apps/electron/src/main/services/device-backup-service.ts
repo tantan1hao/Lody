@@ -10,9 +10,10 @@ import {
   parseDeviceBackupConfig,
   type DeviceBackupConfig
 } from './device-backup-core'
+import { spawnDetachedBackupProcess, waitForBackupProcess } from './device-backup-process'
 
 const BACKUP_TIMEOUT_MS = 90_000
-const MAX_COMMAND_OUTPUT = 16 * 1024
+const NTFY_NOTIFY_TIMEOUT_MS = 2_000
 const BACKUP_CONFIG_PATH = join(getLodyDataDir(mainPlatformKind), 'backup-config.json')
 const BACKUP_STATE_ITEMS = [
   'workspace-catalog.json',
@@ -27,12 +28,16 @@ const BACKUP_STATE_ITEMS = [
 
 export type DeviceBackupResult =
   | { status: 'skipped'; reason: 'disabled' | 'not_configured' | 'no_state' }
+  | { status: 'started' }
   | { status: 'completed' }
   | { status: 'failed'; error: string }
 
-function appendBounded(current: string, chunk: Buffer): string {
-  const next = `${current}${chunk.toString('utf8')}`
-  return next.length <= MAX_COMMAND_OUTPUT ? next : next.slice(-MAX_COMMAND_OUTPUT)
+type PreparedBackup = {
+  config: DeviceBackupConfig
+  command: string
+  args: string[]
+  machineId: string
+  itemCount: number
 }
 
 export class DeviceBackupService {
@@ -42,7 +47,50 @@ export class DeviceBackupService {
     this.options = options
   }
 
+  /**
+   * Start the post-CLI snapshot without waiting. Quit must not sit behind
+   * restic/SFTP of a large `loro-repo`.
+   */
+  startDetachedBackupAfterCliShutdown(): DeviceBackupResult {
+    const prepared = this.prepare()
+    if (!('command' in prepared)) return prepared
+    try {
+      spawnDetachedBackupProcess(prepared.command, prepared.args)
+      console.info('[DeviceBackup] Detached restic backup started', {
+        machineId: prepared.machineId,
+        itemCount: prepared.itemCount
+      })
+      return { status: 'started' }
+    } catch (error) {
+      console.error('[DeviceBackup] Failed to start detached backup', formatUnknownError(error))
+      return { status: 'failed', error: formatUnknownError(error) }
+    }
+  }
+
   async backupAfterCliShutdown(): Promise<DeviceBackupResult> {
+    const prepared = this.prepare()
+    if (!('command' in prepared)) {
+      if (prepared.status === 'failed') return await this.fail(null, prepared.error)
+      return prepared
+    }
+
+    try {
+      const child = spawn(prepared.command, prepared.args, {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true
+      })
+      await waitForBackupProcess(child, this.options.timeoutMs ?? BACKUP_TIMEOUT_MS)
+      console.info('[DeviceBackup] Restic backup completed', {
+        machineId: prepared.machineId,
+        itemCount: prepared.itemCount
+      })
+      return { status: 'completed' }
+    } catch (error) {
+      return await this.fail(prepared.config, formatUnknownError(error))
+    }
+  }
+
+  private prepare(): PreparedBackup | DeviceBackupResult {
     if (!this.options.enabled) return { status: 'skipped', reason: 'disabled' }
     if (!existsSync(BACKUP_CONFIG_PATH)) return { status: 'skipped', reason: 'not_configured' }
 
@@ -50,7 +98,7 @@ export class DeviceBackupService {
     try {
       config = parseDeviceBackupConfig(JSON.parse(readFileSync(BACKUP_CONFIG_PATH, 'utf8')))
     } catch (error) {
-      return await this.fail(null, `Invalid backup config: ${formatUnknownError(error)}`)
+      return { status: 'failed', error: `Invalid backup config: ${formatUnknownError(error)}` }
     }
 
     const dataDir = getLodyDataDir(mainPlatformKind)
@@ -62,53 +110,18 @@ export class DeviceBackupService {
     const machineId = existsSync(machineIdPath)
       ? readFileSync(machineIdPath, 'utf8').trim()
       : 'unknown-machine'
-    const args = buildResticBackupArgs({
+    return {
       config,
+      command: config.resticPath,
+      args: buildResticBackupArgs({
+        config,
+        machineId: machineId || 'unknown-machine',
+        host: hostname(),
+        statePaths
+      }),
       machineId: machineId || 'unknown-machine',
-      host: hostname(),
-      statePaths
-    })
-
-    try {
-      await this.run(config.resticPath, args)
-      console.info('[DeviceBackup] Restic backup completed', {
-        machineId,
-        itemCount: statePaths.length
-      })
-      return { status: 'completed' }
-    } catch (error) {
-      return await this.fail(config, formatUnknownError(error))
+      itemCount: statePaths.length
     }
-  }
-
-  private async run(command: string, args: string[]): Promise<void> {
-    await new Promise<void>((resolve, reject) => {
-      const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
-      let output = ''
-      const timer = setTimeout(() => {
-        child.kill('SIGTERM')
-        reject(
-          new Error(
-            `Restic backup timed out after ${this.options.timeoutMs ?? BACKUP_TIMEOUT_MS}ms`
-          )
-        )
-      }, this.options.timeoutMs ?? BACKUP_TIMEOUT_MS)
-      child.stdout?.on('data', (chunk: Buffer) => {
-        output = appendBounded(output, chunk)
-      })
-      child.stderr?.on('data', (chunk: Buffer) => {
-        output = appendBounded(output, chunk)
-      })
-      child.once('error', (error) => {
-        clearTimeout(timer)
-        reject(error)
-      })
-      child.once('close', (code) => {
-        clearTimeout(timer)
-        if (code === 0) resolve()
-        else reject(new Error(`Restic exited with code ${code ?? 'unknown'}: ${output.trim()}`))
-      })
-    })
   }
 
   private async fail(
@@ -121,7 +134,8 @@ export class DeviceBackupService {
         await fetch(config.ntfyUrl, {
           method: 'POST',
           headers: { Title: 'Lody OSS', Tags: 'warning' },
-          body: `${hostname()} · backup failed`
+          body: `${hostname()} · backup failed`,
+          signal: AbortSignal.timeout(NTFY_NOTIFY_TIMEOUT_MS)
         })
       } catch {
         // The original backup error remains the actionable failure.
