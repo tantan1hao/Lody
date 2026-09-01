@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Quote } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -10,7 +10,8 @@ import { readConversationQuoteSelection } from './conversation-selection';
 
 export type ConversationSelectionToolbarProps = {
   addCommentReference: (reference: CommentReferencePayload) => boolean;
-  containerRef?: RefObject<HTMLElement | null>;
+  /** Conversation stream viewport. Composer and file viewers sit outside it. */
+  container?: HTMLElement | null;
 };
 
 type ToolbarState = {
@@ -39,7 +40,7 @@ function positionFromRect(rect: DOMRect): { top: number; left: number } {
  */
 export function ConversationSelectionToolbar({
   addCommentReference,
-  containerRef,
+  container,
 }: ConversationSelectionToolbarProps) {
   const { t } = useTranslation();
   const [state, setState] = useState<ToolbarState | null>(null);
@@ -47,7 +48,7 @@ export function ConversationSelectionToolbar({
   const syncFromSelection = useCallback(() => {
     const quote = readConversationQuoteSelection(
       typeof window === 'undefined' ? null : window.getSelection(),
-      containerRef?.current ?? null
+      container ?? null
     );
     if (!quote) {
       setState(null);
@@ -59,22 +60,21 @@ export function ConversationSelectionToolbar({
       top: position.top,
       left: position.left,
     });
-  }, [containerRef]);
+  }, [container]);
 
   useEffect(() => {
     const onSelectionChange = () => {
       syncFromSelection();
     };
     document.addEventListener('selectionchange', onSelectionChange);
-    const container = containerRef?.current;
-    container?.addEventListener('scroll', onSelectionChange, true);
+    container?.addEventListener('scroll', onSelectionChange);
     window.addEventListener('resize', onSelectionChange);
     return () => {
       document.removeEventListener('selectionchange', onSelectionChange);
-      container?.removeEventListener('scroll', onSelectionChange, true);
+      container?.removeEventListener('scroll', onSelectionChange);
       window.removeEventListener('resize', onSelectionChange);
     };
-  }, [containerRef, syncFromSelection]);
+  }, [container, syncFromSelection]);
 
   const handleAdd = useCallback(() => {
     if (!state) return;

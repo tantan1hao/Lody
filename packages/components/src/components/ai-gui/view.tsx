@@ -1769,7 +1769,7 @@ export const SessionChatStreamView = forwardRef<
             {addCommentReference ? (
               <ConversationSelectionToolbar
                 addCommentReference={addCommentReference}
-                containerRef={scrollContainerRef}
+                container={scrollViewportElement}
               />
             ) : null}
             <ImagePreviewDialog
