@@ -734,6 +734,59 @@ describe('session-input helpers', () => {
     }
   });
 
+  it('persists session_text quote references through the session doc schema', () => {
+    const sessionQuote: CommentReferencePayload = {
+      source: 'session_text',
+      commentBody: 'Retry should keep the original turn id.',
+      authorName: 'Ada',
+      turnId: 'turn-user-3',
+      role: 'user',
+    };
+    const doc = new Loro();
+    const mirror = new Mirror({
+      doc,
+      schema: sessionDocSchema,
+      initialState: {
+        session: { id: 'session-1' as SessionId },
+        history: [],
+        mq: [],
+      } satisfies Partial<SessionDoc>,
+      throwOnValidationError: true,
+    });
+    const entry: SessionHistoryInput = {
+      id: 'h-quote',
+      role: 'user',
+      items: [
+        {
+          type: 'comment_reference',
+          ...sessionQuote,
+        } satisfies MessageContent,
+      ],
+      timestamp: '2026-04-13T00:00:00.000Z',
+      status: 'pending',
+      read: false,
+      userId: 'user-1',
+      fileDiff: [],
+      finished: true,
+    };
+
+    try {
+      expect(() => {
+        mirror.setState((prev) => ({
+          ...prev,
+          history: [entry],
+        }));
+      }).not.toThrow();
+      expect(mirror.getState().history[0]?.items?.[0]).toMatchObject({
+        type: 'comment_reference',
+        source: 'session_text',
+        commentBody: sessionQuote.commentBody,
+      });
+    } finally {
+      mirror.dispose();
+    }
+  });
+
   it('persists visual annotation reference user history entries through the session doc schema', () => {
     const doc = new Loro();
     const mirror = new Mirror({

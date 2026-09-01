@@ -41,6 +41,18 @@ describe('isMessageContent', () => {
     ).toBe(false);
   });
 
+  it('keeps session_text quotes when parsing session history items', () => {
+    expect(
+      isMessageContent({
+        type: 'comment_reference',
+        source: 'session_text',
+        commentBody: 'Retry should keep the original turn id.',
+        turnId: 'turn-user-3',
+        role: 'user',
+      })
+    ).toBe(true);
+  });
+
   it('keeps current sparse Codex goal content when parsing session history items', () => {
     expect(
       isMessageContent({

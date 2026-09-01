@@ -5696,6 +5696,9 @@ export const SessionChatInterface = memo(
                           onFileDiffClick={onFileDiffClick}
                           onFilePathClick={onFilePathClick ? handleFilePathClick : undefined}
                           onOpenHtmlFile={handleOpenHtmlAttachment}
+                          addCommentReference={(reference) =>
+                            inputAreaRef.current?.addCommentReference(reference) ?? false
+                          }
                           messageFileDiffEntriesByTurn={messageFileDiffEntriesByTurn}
                           assistantActions={assistantQuickActions}
                           assistantActionsMessageId={latestCompletedProposedPlan?.entryId}

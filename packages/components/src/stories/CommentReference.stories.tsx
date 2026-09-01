@@ -44,6 +44,14 @@ const mockShortReference: CommentReferencePayload = {
   authorName: 'dave',
 };
 
+const mockSessionTextReference: CommentReferencePayload = {
+  source: 'session_text',
+  commentBody: 'The retry should keep the original user turn id.',
+  authorName: 'Ada',
+  turnId: 'turn-user-3',
+  role: 'user',
+};
+
 // -- CommentReferenceChip stories --
 
 const chipMeta: Meta<typeof CommentReferenceChip> = {
@@ -80,6 +88,13 @@ export const GitHubSource: ChipStory = {
 export const ShortComment: ChipStory = {
   args: {
     item: { localId: '3', reference: mockShortReference },
+    onRemove: (id: string) => alert(`Remove: ${id}`),
+  },
+};
+
+export const SessionTextQuote: ChipStory = {
+  args: {
+    item: { localId: '4', reference: mockSessionTextReference },
     onRemove: (id: string) => alert(`Remove: ${id}`),
   },
 };
@@ -134,6 +149,15 @@ export const CardNoClick: StoryObj<typeof CommentReferenceCard> = {
   render: () => (
     <div className="max-w-md">
       <CommentReferenceCard reference={mockShortReference} />
+    </div>
+  ),
+};
+
+export const CardSessionTextQuote: StoryObj<typeof CommentReferenceCard> = {
+  name: 'Card / Session text quote',
+  render: () => (
+    <div className="max-w-md">
+      <CommentReferenceCard reference={mockSessionTextReference} />
     </div>
   ),
 };
