@@ -77,7 +77,8 @@
   Desktop only — touch has no HTML5 drag, so the mobile branch passes the handle
   but installs no drop target.
 - `comment-reference-*` and `visual-annotation-reference-*` own attachment chip
-  state and rendering for references attached to outgoing messages.
+  state and rendering for references attached to outgoing messages. Conversation
+  quotes use `source: 'session_text'` on that same chip path.
 - Landing attachment uploads use two sibling hooks in `hooks/`:
   `use-chat-landing-image-draft.ts` (images) and `use-chat-landing-file-draft.ts`
   (non-image files; cloud upload + Electron local-transport fast path, mirroring
