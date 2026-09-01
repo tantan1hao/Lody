@@ -511,7 +511,6 @@ export class SessionDispatchWatcher {
     for (const sessionId of Array.from(this.accessFibers.keys())) {
       this.interruptAccessRetry(sessionId);
     }
-    this.enqueueBootstrap(`access-recheck:${reason}`);
     for (const sessionId of sessionIds) {
       void this.enqueueSessionCheck(sessionId);
     }
@@ -954,6 +953,7 @@ export class SessionDispatchWatcher {
         const scanReason =
           reasons.length === 1 ? (reasons[0] ?? 'unknown') : `coalesced:${reasons.join(',')}`;
         await this.bootstrapOwnedSessions(scanReason, lifecycleGeneration);
+        this.discardFollowUpBootstrapReasons();
         if (
           reasons.includes('startup') &&
           this.started &&
@@ -1034,6 +1034,31 @@ export class SessionDispatchWatcher {
         `[dispatch] Owned-session bootstrap completed with ${failedCount}/${sessionRoomIds.length} session reconcile failure(s) (reason=${reason})`
       );
     }
+  }
+
+  /**
+   * Startup, remote-bridge online, and the first meta-room join often land in the
+   * same few hundred milliseconds. A second catalog walk of the rooms we just
+   * read does not find new work — the live metadata watch is the activation
+   * path. Fresh `meta-room-synced:*` events after this drain finishes still
+   * enqueue; do not turn this into a time-based throttle.
+   */
+  private discardFollowUpBootstrapReasons(): void {
+    if (this.pendingBootstrapReasons.size === 0) {
+      return;
+    }
+    const leftover = [...this.pendingBootstrapReasons];
+    if (
+      !leftover.every(
+        (reason) => reason.startsWith('access-recheck:') || reason.startsWith('meta-room-synced:')
+      )
+    ) {
+      return;
+    }
+    this.pendingBootstrapReasons.clear();
+    this.deps.logger.debug(
+      `[dispatch] Discarding follow-up owned-session scan (reason=${leftover.join(',')})`
+    );
   }
 
   /**

@@ -706,7 +706,7 @@ export class LoroDocumentManager {
    * (session fork) keep calling `persistPendingChanges` directly.
    */
   private readonly remoteSyncPersist = new PersistCoalescer<LoroRepoPersistReason>({
-    debounceMs: readTimeoutEnv('LODY_LORO_REMOTE_PERSIST_DEBOUNCE_MS', 200),
+    debounceMs: readTimeoutEnv('LODY_LORO_REMOTE_PERSIST_DEBOUNCE_MS', 2_000),
     flush: async (reasons) => {
       const single = reasons.length === 1 ? reasons[0] : undefined;
       if (!single) {

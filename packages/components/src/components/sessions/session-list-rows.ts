@@ -9,6 +9,7 @@ import type {
 } from '@lody/shared';
 import {
   deriveSessionPullRequestReadiness,
+  displaySessionTitle,
   getSessionPullRequestLegacyFields,
   parseGitHubPrNumber,
   resolveProjectGitHubRepo,
@@ -275,7 +276,7 @@ export function mapSessionMetaToSessionListRow(
    */
   resolveOpenerRowId?: (openerSessionId: string | null | undefined) => string | null
 ): SessionListRow {
-  const title = normalizeString(session.title) || defaultTitle;
+  const title = displaySessionTitle(session.title, defaultTitle);
   // Align with the info bar (`getSessionGitHubState`): the GitHub repo identity
   // lives on `session.project` for current writes; the legacy top-level
   // `repoFullName` is only a fallback. Reading just the legacy field

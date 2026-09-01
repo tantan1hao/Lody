@@ -4,8 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { allActiveSessionsAtom } from '@/atoms/doc-meta';
 import { iosLiveActivitiesEnabledAtom, userAtom } from '@/atoms';
 import { getAllAgentConfigAtom } from '@/atoms/agents';
-import { lodyPresenceNowMsAtom, lodyPresenceStatesAtom } from '@/atoms/presence';
 import { isNativeIOSAppShell } from '@/lib/native-platform';
+import { useLiveSessionStatuses } from '@/hooks/use-live-session-statuses';
 import { useStableNow } from '@/hooks/use-stable-now';
 import { useResolvedWorkspaceScope } from '@/hooks/use-resolved-workspace-scope';
 import { usePlatformCapability } from '@lody/platform/react';
@@ -14,13 +14,11 @@ import {
   buildLiveActivityConversationItems,
   countLiveActivityConversationCandidates,
   countLiveActivityConversationStatuses,
-  findFreshSessionPresenceState,
   findLiveActivityPermissionAlertCandidate,
   LODY_CONVERSATIONS_LIVE_ACTIVITY_SCHEMA_VERSION,
   type LiveActivityConversationItem,
   type LiveActivityPermissionAlert,
   type LiveActivityStatusCounts,
-  type SessionStatus,
 } from '@lody/shared';
 
 export type LodyLiveActivitySyncPayload = {
@@ -104,8 +102,7 @@ function normalizeLiveActivitySyncPayload(
 export function useLodyLiveActivity({ workspaceName }: { workspaceName: string }): void {
   const notificationsAvailable = usePlatformCapability('notifications');
   const sessions = useAtomValue(allActiveSessionsAtom);
-  const presenceStates = useAtomValue(lodyPresenceStatesAtom);
-  const presenceNowMs = useAtomValue(lodyPresenceNowMsAtom);
+  const liveSessionStatuses = useLiveSessionStatuses(sessions);
   const agentConfigs = useAtomValue(getAllAgentConfigAtom);
   const user = useAtomValue(userAtom);
   const { workspaceId: currentWorkspaceId } = useResolvedWorkspaceScope();
@@ -121,17 +118,6 @@ export function useLodyLiveActivity({ workspaceName }: { workspaceName: string }
     if (!notificationsAvailable) return null;
     if (!currentWorkspaceId || !userId) return null;
     const nowMs = now.getTime();
-    const liveSessionStatuses = new Map<string, SessionStatus>();
-    for (const session of sessions) {
-      const status = findFreshSessionPresenceState(
-        presenceStates,
-        session.id,
-        presenceNowMs
-      )?.status;
-      if (status) {
-        liveSessionStatuses.set(session.id, status);
-      }
-    }
     const defaultTitle = t('sessions.newSession.title', 'New Task');
     const items = buildLiveActivityConversationItems({
       sessions,
@@ -187,10 +173,9 @@ export function useLodyLiveActivity({ workspaceName }: { workspaceName: string }
     agentConfigs,
     currentWorkspaceId,
     i18n.language,
+    liveSessionStatuses,
     now,
     notificationsAvailable,
-    presenceNowMs,
-    presenceStates,
     sessions,
     t,
     userId,

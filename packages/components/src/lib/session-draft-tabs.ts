@@ -4,7 +4,11 @@ import type {
   AgentConfigId,
   SessionId,
 } from '@lody/shared';
-import { isValidSessionImagePathSegment, SessionIdSchema } from '@lody/shared';
+import {
+  extractDraftSessionTitle,
+  isValidSessionImagePathSegment,
+  SessionIdSchema,
+} from '@lody/shared';
 import { z } from 'zod';
 
 const DRAFT_TAB_PREFIX = 'draft:';
@@ -161,14 +165,7 @@ export const createDraftSessionTab = (options: {
 export const getDraftTabLabel = (
   draft: Pick<DraftSessionTab, 'prompt'>,
   fallback = 'New Tab'
-): string => {
-  const firstLine = draft.prompt
-    .split('\n')
-    .map((line) => line.trim())
-    .find((line) => line.length > 0);
-
-  return firstLine ?? fallback;
-};
+): string => extractDraftSessionTitle(draft.prompt) ?? fallback;
 
 export const readPersistedDraftTabs = (parentSessionId: SessionId): DraftSessionTab[] => {
   if (typeof window === 'undefined') {

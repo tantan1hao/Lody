@@ -5,7 +5,7 @@ import { SidebarKeyboardHighlight } from '@/components/sidebar-keyboard-highligh
 import { useLocation, useRouter } from '@tanstack/react-router';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import {
-  findFreshSessionPresenceState,
+  displaySessionTitle,
   machineSupportsLocalProjectRemovalProtocol,
   resolveProjectGitHubRepo,
   type LocalProjectId,
@@ -64,7 +64,7 @@ import { lodyConnectionUiStateAtom } from '@/atoms/control-connection';
 import { localMachineIdAtom } from '@/atoms/local-probe';
 import { selectAndWriteLocalProject } from '@/lib/local-project-import';
 import { importSidebarLocalProject } from '@/components/sidebar-local-project-import';
-import { lodyPresenceNowMsAtom, lodyPresenceStatesAtom } from '@/atoms/presence';
+import { useLiveSessionStatuses } from '@/hooks/use-live-session-statuses';
 import {
   chatScopeAtom,
   chatsCollapsedAtom,
@@ -590,7 +590,7 @@ const LocalProjectSessionItem = memo(function LocalProjectSessionItem({
 }: LocalProjectSessionItemProps) {
   const { t } = useTranslation();
   const moreActionsLabel = t('sessions.moreActions', 'More actions');
-  const title = (session.title ?? '').trim() || defaultSessionTitle;
+  const title = displaySessionTitle(session.title, defaultSessionTitle);
   // Self-ticking on the shared sidebar timer: a tick re-renders only this row's
   // time label, not every row in the project section.
   const now = useStableNow(SIDEBAR_RELATIVE_TIME_REFRESH_MS);
@@ -1397,8 +1397,11 @@ export function LoroAppSidebar({ className }: LoroAppSidebarProps) {
   const { archiveSession, setSessionPinned, updateSessionTitle } = useSessionActions();
   const { removeLocalProject, preflightLocalProjectRemoval, getRemoveLocalProjectImpact } =
     useRemoveLocalProject();
-  const presenceStates = useAtomValue(lodyPresenceStatesAtom);
-  const presenceNowMs = useAtomValue(lodyPresenceNowMsAtom);
+  const liveSessionStatusSessions = useMemo(
+    () => [...allActiveSessions, ...sessions],
+    [allActiveSessions, sessions]
+  );
+  const liveSessionStatuses = useLiveSessionStatuses(liveSessionStatusSessions);
 
   const handleArchiveSession = useCallback(
     (sessionId: string) => {
@@ -1540,23 +1543,6 @@ export function LoroAppSidebar({ className }: LoroAppSidebarProps) {
   const [pendingLocalProjectRemoval, setPendingLocalProjectRemoval] =
     useState<PendingLocalProjectRemoval | null>(null);
   const [isRemovingLocalProject, setIsRemovingLocalProject] = useState(false);
-  const liveSessionStatuses = useMemo(() => {
-    const next = new Map<string, SessionStatus>();
-    const seen = new Set<string>();
-    for (const session of [...allActiveSessions, ...sessions]) {
-      if (seen.has(session.id)) continue;
-      seen.add(session.id);
-      const status = findFreshSessionPresenceState(
-        presenceStates,
-        session.id,
-        presenceNowMs
-      )?.status;
-      if (status) {
-        next.set(session.id, status);
-      }
-    }
-    return next;
-  }, [allActiveSessions, presenceNowMs, presenceStates, sessions]);
   // `allActiveSessions` is the only view that still contains child Tabs, so it
   // is the only place an opener→sidebar-row mapping can be resolved. Shared by
   // every list plus the keyboard nav model so they agree on where a Session
@@ -1985,7 +1971,7 @@ export function LoroAppSidebar({ className }: LoroAppSidebarProps) {
         const sessionsForProject = localProjectSessionsByKey.get(projectKey) ?? [];
         const sectionLabel = `${localSectionLabel} · ${project.name}`;
         for (const session of sessionsForProject) {
-          const title = (session.title ?? '').trim() || defaultSessionTitle;
+          const title = displaySessionTitle(session.title, defaultSessionTitle);
           const activity = getEffectiveSessionActivitySummary(
             session,
             childSessionsByParent,

@@ -2524,15 +2524,11 @@ describe('SessionDispatchWatcher', () => {
     try {
       const firstScanStarted = createDeferred();
       const releaseFirstScan = createDeferred();
-      const secondScanStarted = createDeferred();
       let metaRoomSyncedListener: ((reason: string) => void) | undefined;
       const scan = vi.fn(async () => {
-        const callCount = scan.mock.calls.length;
-        if (callCount === 1) {
+        if (scan.mock.calls.length === 1) {
           firstScanStarted.resolve();
           await releaseFirstScan.promise;
-        } else if (callCount === 2) {
-          secondScanStarted.resolve();
         }
         return [];
       });
@@ -2577,12 +2573,60 @@ describe('SessionDispatchWatcher', () => {
       expect(scan).toHaveBeenCalledTimes(1);
 
       releaseFirstScan.resolve();
-      await secondScanStarted.promise;
-      await flushMicrotasks();
+      await flushMicrotasks(30);
 
-      expect(scan).toHaveBeenCalledTimes(2);
+      expect(scan).toHaveBeenCalledTimes(1);
       expect(scan).toHaveBeenNthCalledWith(1, { prefix: ['e'], includeRaw: false });
-      expect(scan).toHaveBeenNthCalledWith(2, { prefix: ['e'], includeRaw: false });
+
+      metaRoomSyncedListener?.('transport-connected');
+      await flushMicrotasks(30);
+      expect(scan).toHaveBeenCalledTimes(2);
+      watcher.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not rescan the catalog when pending access is rechecked', async () => {
+    vi.useFakeTimers();
+    try {
+      const scan = vi.fn(async () => []);
+      const workspaceDocument = {
+        repo: {
+          getMeta: () => ({ scan }),
+          getDocMeta: vi.fn(),
+          watch: vi.fn(() => ({ unsubscribe: vi.fn() })),
+        },
+        getOrCreateSessionDoc: vi.fn(),
+        onMetaRoomSynced: vi.fn(() => vi.fn()),
+      } as unknown as LoroDocumentManager;
+      const watcher = createWatcher({
+        logger: createSilentLogger(),
+        machineId: 'machine-1',
+        workspaceId: 'workspace-1' as WorkspaceId,
+        workspaceDocument,
+        executionService: {
+          getExecutionSnapshot: vi.fn(() => ({
+            hasActiveTurn: false,
+            hasBlockingPendingCreate: false,
+            hasReusableSession: false,
+          })),
+          continueSession: vi.fn(async () => {}),
+          startSession: vi.fn(async () => {}),
+          cancelSession: vi.fn(async () => ({ success: true })),
+        } as unknown as SessionExecutionService,
+        canUseMachine: createAllowMachineAccess(),
+      });
+
+      await watcher.start();
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.waitFor(() => {
+        expect(scan).toHaveBeenCalledTimes(1);
+      });
+
+      watcher.recheckPendingAccess('remote-bridge-online');
+      await flushMicrotasks(20);
+      expect(scan).toHaveBeenCalledTimes(1);
       watcher.stop();
     } finally {
       vi.useRealTimers();

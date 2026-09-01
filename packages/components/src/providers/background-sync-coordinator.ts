@@ -16,8 +16,9 @@ import { getSessionRoomId, type SessionId, type SessionStatus } from '@lody/shar
  * - Sync is always ONE-SHOT catch-up: the prefetcher opens the store, holds a
  *   sync lease until caught up, then releases. We never hold a long-lived live
  *   join for a session the user is not viewing.
- * - Candidate scope depends on the surface: native/electron can eventually
- *   warm all candidates, while web stays bounded to the highest-priority set.
+ * - Candidate scope is bounded on every surface. Desktop/mobile may warm more
+ *   than web, but never the whole catalog — remote session docs travel over
+ *   Streams and an unbounded prefetch starves the session the user is watching.
  *   All surfaces use bounded concurrency plus batch cooldowns.
  */
 
@@ -108,7 +109,8 @@ export interface EagerSyncPolicy {
 export type EagerSyncSurface = 'web' | 'desktop' | 'mobile';
 
 export const WEB_EAGER_SYNC_CANDIDATE_WINDOW = 20;
-export const FULL_EAGER_SYNC_CANDIDATE_WINDOW = Number.POSITIVE_INFINITY;
+/** Desktop/mobile cap: unbounded prefetch of remote session docs saturates Streams. */
+export const FULL_EAGER_SYNC_CANDIDATE_WINDOW = 24;
 
 export const WEB_EAGER_SYNC_POLICY: EagerSyncPolicy = {
   concurrency: 2,

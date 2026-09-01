@@ -17,8 +17,8 @@ import {
   buildSessionPreparationRunConfig,
   buildSessionTurnInputConfig,
   evaluateSessionCreateQuota,
+  extractDraftSessionTitle,
   extractPromptPreviewFromInputBlocks,
-  findFreshSessionPresenceState,
   FREE_SESSION_LIMIT_PER_WORKSPACE,
   getServerNow,
   hashAnalyticsId,
@@ -35,7 +35,6 @@ import {
   type MachineViewMeta,
   type ProjectRef,
   type SessionId,
-  type SessionStatus,
   type WorktreeSetupScriptConfig,
   type WorktreeCleanupScriptConfig,
   type WorkspaceId,
@@ -78,7 +77,7 @@ import {
 } from '@/atoms';
 import { docMetaCacheReadyAtom, sessionMetaCountAtom } from '@/atoms/doc-meta';
 import { localProbeAttemptedAtom, localProbeResultAtom } from '@/atoms/local-probe';
-import { lodyPresenceNowMsAtom, lodyPresenceStatesAtom } from '@/atoms/presence';
+import { useLiveSessionStatuses } from '@/hooks/use-live-session-statuses';
 import { buildAgentPrompt } from '@/lib';
 import { isImeComposingKeyboardEvent } from '@/lib/ime';
 import { useNavigate } from '@tanstack/react-router';
@@ -703,28 +702,13 @@ function WorkspaceChatLanding({
     },
     [setLocalProjectSharedWithTeam, workspaceId]
   );
-  const presenceStates = useAtomValue(lodyPresenceStatesAtom);
-  const presenceNowMs = useAtomValue(lodyPresenceNowMsAtom);
   /* Default cross-feature `visibleSessions` reference stays mapped to
      the *active* list — that's what every existing consumer (desktop
      sidebar, project pickers, analytics, etc.) wants. The mobile
      archive toggle picks the archived list explicitly when needed
      (see `mobileHomeChats` / `mobileProjectConversations`). */
   const visibleSessions = visibleActiveSessions;
-  const liveSessionStatuses = useMemo(() => {
-    const next = new Map<string, SessionStatus>();
-    for (const session of visibleAllActiveSessions) {
-      const status = findFreshSessionPresenceState(
-        presenceStates,
-        session.id,
-        presenceNowMs
-      )?.status;
-      if (status) {
-        next.set(session.id, status);
-      }
-    }
-    return next;
-  }, [presenceNowMs, presenceStates, visibleAllActiveSessions]);
+  const liveSessionStatuses = useLiveSessionStatuses(visibleAllActiveSessions);
   // Best-effort count of sessions this user has already created (active +
   // archived), used to derive `session_number`/`is_first_session_ever` for the
   // activation anchor (spec §3.1). Client-side CRDT visibility is not an
@@ -3099,11 +3083,7 @@ function WorkspaceChatLanding({
         repoFullNameForMentions = selectedRepo;
       }
 
-      const draftTitle = promptText
-        .split('\n')
-        .map((line) => line.trim())
-        .find((line) => line.length > 0)
-        ?.slice(0, 50);
+      const draftTitle = extractDraftSessionTitle(promptText) ?? undefined;
       /* Agent config prompt, then the Role's instruction, then the task — the
          Role speaks for how this agent is being used, so it sits between the
          two. A Role only reaches here while it is still what will run. */

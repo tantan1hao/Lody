@@ -217,4 +217,9 @@ arrive: context/message-flow.md "Upstream".
   branch-name work reuses one in-flight result. The shared
   `usesAcpProvidedSessionTitle()` predicate hides obsolete provider title
   settings only for Claude. Other providers use `title-generator.ts` /
-  `response-utils.ts` for session titles.
+  `response-utils.ts` for session titles. Isolated generation reconstructs from
+  `extractTitleSourceText` and must not persist the raw task prompt, XML, paths,
+  or role prefixes as a generated title; draft UI labels use
+  `extractDraftSessionTitle`. Sidebar/tab display always runs
+  `displaySessionTitle`: strip stored `〈接力〉xx:` / leading `#`/`：`, hide
+  placeholders such as `User greeting`, and never show the raw dump.

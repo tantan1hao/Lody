@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   LODY_PRESENCE_TTL_MS,
+  collectLiveSessionStatuses,
   collectOnlineMachineIdsFromPresence,
   findFreshMachinePresenceState,
   findFreshSessionPresenceState,
@@ -146,5 +147,23 @@ describe('presence helpers', () => {
     // Session presence alone must not mark a machine online; machine liveness
     // is only asserted by machine heartbeats.
     expect(online.size).toBe(1);
+  });
+
+  it('reuses the previous live-status map when only the presence clock advanced', () => {
+    const now = 1_000;
+    const states: LodyPresenceStateMap = {
+      [getLodySessionPresenceKey(sessionId, instanceId)]: {
+        kind: 'session',
+        sessionId,
+        machineId,
+        instanceId,
+        status: { type: 'running' },
+        updatedAt: now,
+      },
+    };
+    const first = collectLiveSessionStatuses([sessionId], states, now);
+    const second = collectLiveSessionStatuses([sessionId], states, now + 30_000, first);
+    expect(second).toBe(first);
+    expect(second.get(sessionId)).toEqual({ type: 'running' });
   });
 });

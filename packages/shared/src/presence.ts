@@ -242,3 +242,57 @@ export const collectOnlineMachineIdsFromPresence = (
   }
   return online;
 };
+
+const sessionStatusesEqual = (left: SessionStatus, right: SessionStatus): boolean => {
+  if (left === right) return true;
+  if (left.type !== right.type) return false;
+  return JSON.stringify(left) === JSON.stringify(right);
+};
+
+export const liveSessionStatusMapsEqual = (
+  left: ReadonlyMap<string, SessionStatus>,
+  right: ReadonlyMap<string, SessionStatus>
+): boolean => {
+  if (left === right) return true;
+  if (left.size !== right.size) return false;
+  for (const [sessionId, status] of right) {
+    const previous = left.get(sessionId);
+    if (!previous || !sessionStatusesEqual(previous, status)) {
+      return false;
+    }
+  }
+  return true;
+};
+
+/**
+ * Working/waiting statuses for a session list. Reuses `previous` when the
+ * visible status set is unchanged so a 30s presence tick does not rebuild
+ * sidebar rows.
+ */
+export const collectLiveSessionStatuses = (
+  sessionIds: Iterable<string>,
+  states: LodyPresenceStateMap,
+  nowMs: number,
+  previous?: ReadonlyMap<string, SessionStatus>,
+  ttlMs: number = LODY_PRESENCE_TTL_MS
+): ReadonlyMap<string, SessionStatus> => {
+  const next = new Map<string, SessionStatus>();
+  const seen = new Set<string>();
+  for (const sessionId of sessionIds) {
+    if (seen.has(sessionId)) continue;
+    seen.add(sessionId);
+    const status = findFreshSessionPresenceState(
+      states,
+      sessionId as SessionId,
+      nowMs,
+      ttlMs
+    )?.status;
+    if (status) {
+      next.set(sessionId, status);
+    }
+  }
+  if (previous && liveSessionStatusMapsEqual(previous, next)) {
+    return previous;
+  }
+  return next;
+};

@@ -214,6 +214,15 @@ describe('session draft tabs', () => {
     expect(getDraftTabLabel({ prompt: '   ' }, 'Fallback')).toBe('Fallback');
   });
 
+  it('does not use XML or role dumps as the draft tab label', () => {
+    expect(
+      getDraftTabLabel(
+        { prompt: '<task_description>You are a coding agent</task_description>' },
+        'New Tab'
+      )
+    ).toBe('New Tab');
+  });
+
   it('replaces a draft tab id with a session id while preserving order', () => {
     expect(replaceTabOrderId(['a', 'draft:1', 'c'], 'draft:1', 'session-2')).toEqual([
       'a',

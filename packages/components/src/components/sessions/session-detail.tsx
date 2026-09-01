@@ -28,6 +28,8 @@ import { useRouter } from '@tanstack/react-router';
 import { usePostHog } from '@posthog/react';
 import {
   buildPendingUserHistoryEntry,
+  displaySessionTitle,
+  extractDraftSessionTitle,
   getAcpCapabilityCacheKey,
   getProjectRefBranch,
   getServerNow,
@@ -4105,8 +4107,8 @@ const SessionDetail = ({
       return {
         id: tabId,
         title:
-          meta?.title ||
-          draft?.prompt?.split('\n')[0]?.trim() ||
+          displaySessionTitle(meta?.title, '') ||
+          extractDraftSessionTitle(draft?.prompt ?? '') ||
           t('sessions.tabs.newTab', 'New Tab'),
         active: conversationTabActive && tabId === activeTabSessionId,
         main: tabId === sessionId,

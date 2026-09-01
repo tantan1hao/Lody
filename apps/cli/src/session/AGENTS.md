@@ -68,7 +68,9 @@ delegation proofs or a shared-machine gate without a new product and security de
   idempotent and costs
   seconds of main-thread work, so `enqueueBootstrap` folds concurrent requests into a
   single queued drain (`pendingBootstrapReasons` + `bootstrapChain`) — none are dropped.
-  Do not restore a per-trigger scan: `onMetaRoomSynced` fires on Streams recovery, so a
+  `recheckPendingAccess` only wakes watched or access-retry sessions — never a catalog
+  scan. Follow-up `meta-room-synced:*` reasons that arrive during a scan are discarded
+  after it; later events still enqueue. Do not restore a per-trigger scan: `onMetaRoomSynced` fires on Streams recovery, so a
   misread transport edge turns into an O(rooms) scan every few seconds. Coalescing bounds
   the work per trigger, not the trigger rate — keeping that rate sane is the connection
   recovery boundary's job, and it now does: `onMetaRoomSynced` is rate-limited in

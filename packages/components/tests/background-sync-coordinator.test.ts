@@ -243,7 +243,7 @@ describe('createBackgroundSyncCoordinator', () => {
       concurrency: 3,
       batchSize: 8,
       batchCooldownMs: 750,
-      candidateWindow: Number.POSITIVE_INFINITY,
+      candidateWindow: 24,
       maxWarmDocs: 96,
     });
     expect(resolveEagerSyncPolicy('mobile')).toBe(resolveEagerSyncPolicy('desktop'));

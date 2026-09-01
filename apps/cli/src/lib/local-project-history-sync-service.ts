@@ -26,6 +26,7 @@ import {
   isSessionDocRoomId,
   isActiveSessionStatus,
   isSessionHistoryPendingForDispatch,
+  extractDraftSessionTitle,
   sanitizeLodyInternalInstructions,
   SessionStatusFactory,
   type MessageContent,
@@ -445,10 +446,14 @@ const MAX_IMPORTED_SESSION_TITLE_CHARS = 80;
 
 function resolveSessionTitle(info: SessionInfo, provider: LocalProjectHistoryProvider): string {
   // Provider titles are usually derived from the first recorded user message,
-  // which can carry Lody-appended instruction tails.
+  // which can carry Lody-appended instruction tails and other dump text.
   const cleaned = info.title?.trim() ? sanitizeLodyInternalInstructions(info.title) : '';
+  const reconstructed = extractDraftSessionTitle(cleaned, MAX_IMPORTED_SESSION_TITLE_CHARS);
+  if (reconstructed) {
+    return reconstructed;
+  }
   const title = cleaned.replace(/\s+/g, ' ').trim().slice(0, MAX_IMPORTED_SESSION_TITLE_CHARS);
-  return title || `${getProviderLabel(provider)} session`;
+  return title && !title.includes('<') ? title : `${getProviderLabel(provider)} session`;
 }
 
 function parseUpdatedAtMs(updatedAt: string | undefined): number {

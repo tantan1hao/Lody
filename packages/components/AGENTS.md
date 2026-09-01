@@ -189,6 +189,13 @@ mobile surfaces.
   Desktop Workspace mode is machine-first: each machine section owns its local
   projects, GitHub groups, and chats; the same repository on two machines stays
   in two sections. Updated mode remains the explicit flat recency view.
+  Live working/waiting dots come from `useLiveSessionStatuses`: the Map keeps
+  identity when only the 30s presence clock advanced, so sidebar rows must not
+  rebuild from `presenceNowMs` alone.
+  Every visible session label — chat/GitHub rows, local-project rows, pinned,
+  and Updated — goes through `displaySessionTitle`. Do not render
+  `session.title` raw; imported `〈接力〉cu:` prefixes and placeholders stay in
+  storage but must not appear in the list.
   EVERY desktop session row is a drag source for a session mention
   (`lib/session-mention-drag.ts`, dropped on the conversation page or the
   landing) — a new row renderer that omits it makes the gesture work in some

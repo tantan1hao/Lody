@@ -79,6 +79,12 @@ describe('sanitizeGeneratedTitle', () => {
       )
     ).toBe(null);
   });
+
+  it('rejects raw prompt dumps that leaked through as titles', () => {
+    expect(sanitizeGeneratedTitle('<task_description>Fix login')).toBe(null);
+    expect(sanitizeGeneratedTitle('You are a helpful assistant. Follow the rules.')).toBe(null);
+    expect(sanitizeGeneratedTitle('/Users/mac/proj/apps/cli/src/index.ts')).toBe(null);
+  });
 });
 
 describe('applyTitleConfigOptions', () => {

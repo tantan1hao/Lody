@@ -1,7 +1,12 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Loader2, X, History, Undo2, Pin, FileDiff } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { getSessionLaunchConfigLegacyFields, type SessionId, type SessionMeta } from '@lody/shared';
+import {
+  displaySessionTitle,
+  getSessionLaunchConfigLegacyFields,
+  type SessionId,
+  type SessionMeta,
+} from '@lody/shared';
 import { useTranslation } from 'react-i18next';
 import { useAtomValue } from 'jotai';
 import { focusLayerAtom } from '@/atoms/focus-layer';
@@ -142,7 +147,8 @@ function getTabLabel(
   defaultTitle: string,
   t?: (key: string, fallback: string) => string
 ): string {
-  if (session.title?.trim()) return session.title.trim();
+  const title = displaySessionTitle(session.title, '');
+  if (title) return title;
   if (isParent) return defaultTitle;
   return t?.('sessions.tabs.newTab', 'New Tab') ?? 'New Tab';
 }
@@ -874,7 +880,8 @@ function ArchivedTabsPopover({
         <ScrollArea className="max-h-60">
           <div className="py-1">
             {sorted.map((session) => {
-              const label = session.title?.trim() || t('sessions.tabs.newTab', 'New Tab');
+              const label =
+                displaySessionTitle(session.title, '') || t('sessions.tabs.newTab', 'New Tab');
               const time = formatRelativeTime(session.lastMessageAt ?? session.createdAt, t);
               return (
                 <div

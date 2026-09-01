@@ -15,6 +15,10 @@ import {
   type CustomAcpLaunchSpec,
   type TitleGenerationConfig,
   computeTitleGenerationDefaults,
+  extractDraftSessionTitle,
+  extractTitleSourceText,
+  isNoisySessionTitle,
+  stripSessionTitleDecorations,
   sanitizeLodyInternalInstructions,
 } from '@lody/shared';
 import type { Logger } from '@/utils/logger';
@@ -183,8 +187,9 @@ export const sanitizeTitle = (candidate?: string | null): string | null => {
     .replace(/^__(.+)__$/, '$1')
     .trim();
 
-  if (!withoutMarkdown) return null;
-  return withoutMarkdown.slice(0, 80);
+  const stripped = stripSessionTitleDecorations(withoutMarkdown);
+  if (!stripped || isNoisySessionTitle(stripped)) return null;
+  return stripped.slice(0, 80);
 };
 
 const looksLikeProviderControlPayload = (candidate: string): boolean => {
@@ -292,7 +297,11 @@ export type GenerateTitleOptions = {
 export const generateTitleIsolated = async (
   options: GenerateTitleOptions
 ): Promise<string | null> => {
-  const fallbackTitle = sanitizeGeneratedTitle(options.taskPrompt);
+  const titleSource = extractTitleSourceText(options.taskPrompt);
+  const fallbackTitle = extractDraftSessionTitle(titleSource || options.taskPrompt, 80);
+  if (!titleSource) {
+    return fallbackTitle;
+  }
   const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'lody-title-agent-'));
 
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -332,7 +341,7 @@ export const generateTitleIsolated = async (
     );
 
     try {
-      const prompt = buildTitlePrompt(options.taskPrompt);
+      const prompt = buildTitlePrompt(titleSource);
 
       const configuredValues = options.titleConfig?.configOptionValues;
       const configOptionValues =
