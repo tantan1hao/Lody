@@ -6,6 +6,7 @@ import {
   getSessionPullRequestLegacyFields,
   githubReplyPRReviewComment,
   lodyAnchorToGitHubParams,
+  isFileCommentReference,
   type CommentReferencePayload,
   type CommentUser,
   type DiffViewerCommentCallbacks,
@@ -545,11 +546,13 @@ function SessionConversationDiffPanelImpl({
         return false;
       }
       const accepted = onSendToChat(reference) !== false;
-      captureDiffCommentSentToChat(postHog, diffCommentAnalyticsBase, {
-        source: reference.source,
-        accepted,
-        replyCount: reference.replies?.length ?? 0,
-      });
+      if (isFileCommentReference(reference)) {
+        captureDiffCommentSentToChat(postHog, diffCommentAnalyticsBase, {
+          source: reference.source,
+          accepted,
+          replyCount: reference.replies?.length ?? 0,
+        });
+      }
       return accepted;
     },
     [diffCommentAnalyticsBase, onSendToChat, postHog]
