@@ -98,7 +98,7 @@ after changing package scope or cloud/local composition.
 - `apps/cli`: agent execution, local persistence, Machine RPC, Code Collab
 - `apps/electron`: desktop shell and bundled CLI lifecycle
 - `apps/web-oss`: single-user self-hosted Web composition over the shared router/runtime
-- `ops/lody-oss`: secret-free nginx, systemd, ntfy, release, and backup templates
+- `ops/lody-oss`: secret-free nginx, systemd, ntfy, same-origin Web Push relay, release, and backup templates
 - `packages/components`: shared React product/workspace UI
 - `packages/platform`: provider and capability contracts plus local defaults
 - `packages/cloud-api`: public optional-cloud client contract

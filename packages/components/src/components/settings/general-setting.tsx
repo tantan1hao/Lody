@@ -39,8 +39,14 @@ import { MobileGeneralSettings } from '@/components/mobile/mobile-general-settin
 import { PathLaunchersSettings } from './path-launchers-setting';
 import { QueuedMessageBehaviorControl } from './queued-message-behavior-control';
 import { CliDaemonSetting } from './cli-daemon-setting';
-import { useAppCapability } from '@/lib/app-platform';
+import { isSelfHostedAppPlatform, useAppCapability } from '@/lib/app-platform';
 import { getIpcServices } from '@/lib/electron-ipc-client';
+import {
+  getWebPushState,
+  inspectWebPushEnvironment,
+  subscribeWebPush,
+  unsubscribeWebPush,
+} from '@/lib/web-push-client';
 
 type ElectronPlatform = 'darwin' | 'win32' | 'linux' | 'unknown';
 
@@ -138,13 +144,16 @@ export function GeneralSettingsComponent() {
   const [permissionStatus, setPermissionStatus] = useState<NotificationPermission>('default');
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [oneSignalReady, setOneSignalReady] = useState(false);
+  const [webPushReady, setWebPushReady] = useState(false);
+  const [needsHomeScreen, setNeedsHomeScreen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [autoLaunchEnabled, setAutoLaunchEnabled] = useState(false);
   const [autoLaunchSupported, setAutoLaunchSupported] = useState(false);
   const [autoLaunchLoading, setAutoLaunchLoading] = useState(false);
+  const pushServiceReady = oneSignalReady || webPushReady;
   const isSwitchDisabled = isElectron
     ? !notificationSupported || isProcessing
-    : !notificationSupported || !oneSignalReady || isProcessing;
+    : !notificationSupported || !pushServiceReady || isProcessing;
   const autoLaunchSwitchDisabled = !autoLaunchSupported || autoLaunchLoading;
 
   const readElectronNotificationPermission =
@@ -270,7 +279,17 @@ export function GeneralSettingsComponent() {
       return;
     }
 
-    const supported = 'Notification' in window && typeof Notification === 'function';
+    const environment = inspectWebPushEnvironment();
+    setNeedsHomeScreen(environment.needsHomeScreen);
+    if (environment.needsHomeScreen) {
+      setNotificationSupported(false);
+      setPermissionStatus('default');
+      setNotificationsEnabled(false);
+      setWebPushReady(false);
+      return;
+    }
+
+    const supported = environment.apiAvailable;
     setNotificationSupported(supported);
     if (!supported) {
       setPermissionStatus('default');
@@ -282,6 +301,10 @@ export function GeneralSettingsComponent() {
     setPermissionStatus(currentPermission);
     if (currentPermission !== 'granted') {
       setNotificationsEnabled(false);
+      if (isSelfHostedAppPlatform()) {
+        const state = await getWebPushState();
+        setWebPushReady(state.ready);
+      }
       return;
     }
 
@@ -291,8 +314,15 @@ export function GeneralSettingsComponent() {
       return;
     }
 
+    if (isSelfHostedAppPlatform()) {
+      const state = await getWebPushState();
+      setWebPushReady(state.ready);
+      setNotificationsEnabled(state.subscribed);
+      return;
+    }
+
     if (!oneSignalReady) {
-      // Web push status is managed by OneSignal subscription state, not browser permission only.
+      // Official web push status is managed by OneSignal subscription state.
       setNotificationsEnabled(false);
       return;
     }
@@ -343,12 +373,12 @@ export function GeneralSettingsComponent() {
   }, [electronCompletionNotificationsEnabled, isElectron, syncNotificationPermission]);
 
   useEffect(() => {
-    if (isElectron || !oneSignalReady) {
+    if (isElectron || !pushServiceReady) {
       return undefined;
     }
     void syncNotificationPermission();
     return undefined;
-  }, [isElectron, oneSignalReady, syncNotificationPermission]);
+  }, [isElectron, pushServiceReady, syncNotificationPermission]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || window.__LODY_ELECTRON__ === true) {
@@ -370,6 +400,22 @@ export function GeneralSettingsComponent() {
         setOneSignalReady(false);
         console.error('OneSignal init failed', error);
       });
+
+    if (isSelfHostedAppPlatform()) {
+      void getWebPushState()
+        .then((state) => {
+          if (!active) {
+            return;
+          }
+          setNeedsHomeScreen(state.needsHomeScreen);
+          setWebPushReady(state.ready);
+        })
+        .catch(() => {
+          if (active) {
+            setWebPushReady(false);
+          }
+        });
+    }
 
     return () => {
       active = false;
@@ -431,14 +477,17 @@ export function GeneralSettingsComponent() {
   }, [isElectron, isNative, notificationsEnabled, permissionStatus, t]);
 
   const disableReason = useMemo(() => {
+    if (needsHomeScreen) {
+      return t('settings.notifications.reason.needHomeScreen');
+    }
     if (!notificationSupported) {
       return t('settings.notifications.reason.notSupported');
     }
-    if (!isElectron && !oneSignalReady) {
+    if (!isElectron && !pushServiceReady) {
       return t('settings.notifications.reason.notReady');
     }
     return undefined;
-  }, [isElectron, notificationSupported, oneSignalReady, t]);
+  }, [isElectron, needsHomeScreen, notificationSupported, pushServiceReady, t]);
 
   const desktopHint = useMemo(() => {
     return t(getDesktopNotificationHintKey(electronPlatform));
@@ -532,6 +581,29 @@ export function GeneralSettingsComponent() {
 
         setElectronCompletionNotificationsEnabled(true);
         setNotificationsEnabled(true);
+        return;
+      }
+
+      if (isSelfHostedAppPlatform() && !oneSignalReady) {
+        if (needsHomeScreen) {
+          toast.error(t('settings.notifications.reason.needHomeScreen'), {
+            description: t('settings.notifications.web.iosHomeScreenHint'),
+          });
+          setNotificationsEnabled(false);
+          return;
+        }
+        if (!webPushReady) {
+          toast.error(t('settings.notifications.notReady'));
+          return;
+        }
+        if (checked) {
+          await subscribeWebPush();
+          setPermissionStatus('granted');
+          setNotificationsEnabled(true);
+        } else {
+          await unsubscribeWebPush();
+          setNotificationsEnabled(false);
+        }
         return;
       }
 
@@ -744,8 +816,14 @@ export function GeneralSettingsComponent() {
               <span className="flex flex-col gap-0.5">
                 <span>{permissionLabel}</span>
                 {disableReason && !isProcessing ? <span>{disableReason}</span> : null}
+                {needsHomeScreen ? (
+                  <span>{t('settings.notifications.web.iosHomeScreenHint')}</span>
+                ) : null}
+                {!isElectron && !isNative && !needsHomeScreen && notificationSupported ? (
+                  <span>{t('settings.notifications.web.safariHint')}</span>
+                ) : null}
                 {isElectron && permissionStatus !== 'granted' ? <span>{desktopHint}</span> : null}
-                {!notificationSupported ? (
+                {!notificationSupported && !needsHomeScreen ? (
                   <span className="text-destructive">
                     {isElectron
                       ? t('settings.notifications.unsupportedDesktop')

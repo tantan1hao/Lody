@@ -8,6 +8,12 @@ import { installResizeObserverLoopErrorHandler } from '@lody/components/lib/resi
 
 installResizeObserverLoopErrorHandler();
 
+if ('serviceWorker' in navigator) {
+  void navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch((error: unknown) => {
+    console.warn('Failed to register web push service worker', error);
+  });
+}
+
 const rootElement = document.getElementById('root');
 if (!rootElement) throw new Error('Missing #root element.');
 

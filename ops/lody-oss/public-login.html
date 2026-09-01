@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content"
+    />
+    <meta name="color-scheme" content="light dark" />
+    <title>Lody OSS 登录</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        font:
+          16px/1.45 system-ui,
+          -apple-system,
+          sans-serif;
+        background: #101010;
+        color: #f4f4f5;
+      }
+      form {
+        width: min(22rem, calc(100vw - 2rem));
+        padding: 1.5rem;
+        border: 1px solid #2a2a2a;
+        border-radius: 1rem;
+        background: #161616;
+      }
+      h1 {
+        margin: 0 0 0.35rem;
+        font-size: 1.15rem;
+      }
+      p {
+        margin: 0 0 1.1rem;
+        color: #a1a1aa;
+        font-size: 0.9rem;
+      }
+      label {
+        display: block;
+        margin: 0.7rem 0 0.3rem;
+        font-size: 0.85rem;
+        color: #d4d4d8;
+      }
+      input {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 0.7rem 0.75rem;
+        border: 1px solid #3f3f46;
+        border-radius: 0.6rem;
+        background: #0b0b0b;
+        color: inherit;
+        font: inherit;
+        font-size: 16px;
+        touch-action: manipulation;
+      }
+      button {
+        width: 100%;
+        margin-top: 1.15rem;
+        padding: 0.75rem;
+        border: 0;
+        border-radius: 0.6rem;
+        background: #e4e4e7;
+        color: #111;
+        font: inherit;
+        font-weight: 600;
+      }
+      button[disabled] {
+        opacity: 0.6;
+      }
+      .err {
+        min-height: 1.2rem;
+        margin-top: 0.75rem;
+        color: #fca5a5;
+        font-size: 0.85rem;
+      }
+    </style>
+  </head>
+  <body>
+    <form id="login" autocomplete="on">
+      <h1>Lody OSS</h1>
+      <p>登录一次后，这台设备会记住一年。</p>
+      <label for="user">用户名</label>
+      <input
+        id="user"
+        name="username"
+        autocomplete="username"
+        autocapitalize="off"
+        spellcheck="false"
+        required
+      />
+      <label for="pass">密码</label>
+      <input id="pass" name="password" type="password" autocomplete="current-password" required />
+      <button type="submit">登录</button>
+      <div class="err" id="err"></div>
+    </form>
+    <script>
+      const form = document.getElementById('login');
+      const err = document.getElementById('err');
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        err.textContent = '';
+        const button = form.querySelector('button');
+        button.disabled = true;
+        const user = form.username.value;
+        const password = form.password.value;
+        try {
+          const response = await fetch('/session', {
+            method: 'GET',
+            credentials: 'same-origin',
+            headers: { Authorization: 'Basic ' + btoa(user + ':' + password) },
+          });
+          if (!response.ok) {
+            err.textContent = '用户名或密码不对';
+            return;
+          }
+          location.replace('/');
+        } catch (error) {
+          err.textContent = '连不上服务器';
+        } finally {
+          button.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>

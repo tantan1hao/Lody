@@ -1,0 +1,16 @@
+[Unit]
+Description=Lody OSS same-origin Web Push relay
+After=network-online.target ntfy.service nginx.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart=/opt/lody-oss-webpush/bin/python /usr/local/lib/lody-oss/web-push-relay.py
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

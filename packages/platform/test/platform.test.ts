@@ -56,7 +56,7 @@ describe('capabilities', () => {
   });
 
   it('self-hosted exposes remote dispatch without official enrollment', () => {
-    expect(SELF_HOSTED_PLATFORM_CAPABILITIES.list()).toEqual(['remoteMachines']);
+    expect(SELF_HOSTED_PLATFORM_CAPABILITIES.list()).toEqual(['remoteMachines', 'notifications']);
     expect(SELF_HOSTED_PLATFORM_CAPABILITIES.has('managedMachineEnrollment')).toBe(false);
   });
 
@@ -308,7 +308,7 @@ describe('self-hosted adapters', () => {
       createSelfHostedStreamsConfig(selfHostedConfig.controlOrigin)
     );
     expect(provider.sync.selfHostedStreams?.baseUrl).toBe(selfHostedConfig.controlOrigin);
-    expect(provider.capabilities.list()).toEqual(['remoteMachines']);
+    expect(provider.capabilities.list()).toEqual(['remoteMachines', 'notifications']);
     expect(provider.cloudApi).toBeNull();
   });
 

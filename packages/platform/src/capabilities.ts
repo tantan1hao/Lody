@@ -59,6 +59,8 @@ export const LOCAL_PLATFORM_CAPABILITIES: PlatformCapabilities = createCapabilit
 /** Self-hosted single-user UI: remote dispatch is backed directly by machine Flocks. */
 export const SELF_HOSTED_PLATFORM_CAPABILITIES: PlatformCapabilities = createCapabilitySet([
   'remoteMachines',
+  // Same-origin Web Push plus the operator ntfy topic. Not OneSignal / product cloud.
+  'notifications',
 ]);
 
 /** The cloud platform baseline: every capability (entitlement gating happens elsewhere). */
