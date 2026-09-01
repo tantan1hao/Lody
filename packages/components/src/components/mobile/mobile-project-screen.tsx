@@ -122,8 +122,12 @@ export type MobileConversationItem = {
   isOffline?: boolean;
   hasUnreadMessages?: boolean;
   isPinned?: boolean;
-  /** Machine id the conversation lives on. Powers the machine filter. */
+  /** Machine id the conversation lives on. Powers the machine filter
+     and the "Group: Machine" bucket key. */
   machineId?: string | null;
+  /** Display name for the machine bucket heading. Only needed when
+     `groupLabels` does not already map `machineId`. */
+  machineName?: string | null;
   /** PRECISE Session that created this one — `lody session create` with a
      session in scope, which is how the `lody_session_create` MCP tool spawns
      independent work. Presentation-only provenance; deliberately NOT

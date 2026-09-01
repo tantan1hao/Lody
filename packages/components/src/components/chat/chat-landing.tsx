@@ -265,6 +265,7 @@ import {
   DATE_BUCKET_TODAY,
   DATE_BUCKET_UNKNOWN,
   DATE_BUCKET_YESTERDAY,
+  NO_MACHINE_BUCKET_ID,
   NO_PROJECT_BUCKET_ID,
   PINNED_BUCKET_ID,
 } from '@/components/mobile/mobile-chat-list';
@@ -344,6 +345,7 @@ import {
   mobileHomeChatExcludedReposAtom,
   mobileHomeChatExcludedRunningAtom,
   mobileHomeChatViewModeAtom,
+  resolveMobileChatViewMode,
   mobileHomeProjectsSubTabAtom,
   useMobileHomeExcludedSetAtom,
 } from '@/atoms/mobile-home-state';
@@ -4657,10 +4659,10 @@ function WorkspaceChatLanding({
      desktop carries to mobile and vice versa. */
   const [chatScope, setChatScope] = useAtom(chatScopeAtom);
   const [storedChatViewMode, setChatViewMode] = useAtom(mobileHomeChatViewModeAtom);
-  /* Coerce stored value into Project | Date. Older builds stored
+  /* Coerce stored value into Project | Machine | Date. Older builds stored
      'none' / 'type' / 'pr-status' / 'running-status'; anything other
-     than 'date' becomes 'project' (No Group is no longer offered). */
-  const chatViewMode: MobileChatGroupBy = storedChatViewMode === 'date' ? 'date' : 'project';
+     than 'date' / 'machine' becomes 'project' (No Group is no longer offered). */
+  const chatViewMode: MobileChatGroupBy = resolveMobileChatViewMode(storedChatViewMode);
   /* Drives the mobile home's connection-status banner. Mirrors the
      desktop sidebar's `ConnectionPill` data source so users see the
      same reconnecting state regardless of platform. */
@@ -4858,6 +4860,7 @@ function WorkspaceChatLanding({
           hasUnreadMessages: activity.hasUnreadMessages,
           isPinned: Boolean(session.isPinned),
           machineId: session.machineId,
+          machineName: machines.get(session.machineId)?.name?.trim() || null,
           /* Provenance for the list's opened-by tree. TWO fields, never
              merged: the precise opener drives navigation, the row id drives
              nesting. See `lib/session-opened-by-tree.ts`. */
@@ -4916,6 +4919,7 @@ function WorkspaceChatLanding({
     mobileChildSessionsByParent,
     mobileOpenerRowResolver,
     liveSessionStatuses,
+    machines,
     mobileHomeShowArchived,
     onlineMachineIds,
     showProjectSharing,
@@ -5110,10 +5114,11 @@ function WorkspaceChatLanding({
         fallbackLabel: t('chat.mobileHome.filters.view.byProject', 'Group: Project'),
         options: [
           { id: 'project', label: t('chat.mobileHome.filters.view.byProject', 'Group: Project') },
+          { id: 'machine', label: t('chat.mobileHome.filters.view.byMachine', 'Group: Machine') },
           { id: 'date', label: t('chat.mobileHome.filters.view.byDate', 'Group: Date') },
         ],
         selectedId: chatViewMode,
-        onSelect: (id) => setChatViewMode(id === 'date' ? 'date' : 'project'),
+        onSelect: (id) => setChatViewMode(resolveMobileChatViewMode(id)),
       },
       {
         kind: 'aggregate',
@@ -5767,6 +5772,7 @@ function WorkspaceChatLanding({
           hasUnreadMessages: activity.hasUnreadMessages,
           isPinned: Boolean(session.isPinned),
           machineId: session.machineId,
+          machineName: machines.get(session.machineId)?.name?.trim() || null,
           /* See the home Chat-tab builder: precise opener for navigation, row
              id for nesting. An opener outside this project simply leaves the
              created Session as a top-level row (the tree's orphan fallback). */
@@ -5791,6 +5797,7 @@ function WorkspaceChatLanding({
     mobileChildSessionsByParent,
     mobileOpenerRowResolver,
     liveSessionStatuses,
+    machines,
     mobileProjectContext,
     mobileProjectShowArchived,
     onlineMachineIds,
@@ -5897,7 +5904,7 @@ function WorkspaceChatLanding({
       });
     }
 
-    /* The project page has no Group pill: home uses Project | Date,
+    /* The project page has no Group pill: home uses Project | Machine | Date,
        and both are meaningless inside a single project (one project
        bucket / date still useful? — date could apply, but the
        in-project list stays flat for now). */
@@ -6429,16 +6436,24 @@ function WorkspaceChatLanding({
               confirmDelete: t('chat.mobileHome.archiveSelection.confirmDelete', '彻底删除'),
             },
             /* Project mode: only the no-project catch-all needs a
-               label (others use `projectLabel`). Date mode: named
-               buckets; older months format via Intl in the list. */
+               label (others use `projectLabel`). Machine mode: names
+               from the machine list plus an unknown catch-all. Date
+               mode: named buckets; older months format via Intl. */
             chatGroupLabels: {
               [PINNED_BUCKET_ID]: t('chat.mobileHome.groupLabels.pinned', 'Pinned'),
               [NO_PROJECT_BUCKET_ID]: t('chat.mobileHome.groupLabels.chat', '对话'),
+              [NO_MACHINE_BUCKET_ID]: t(
+                'chat.mobileHome.groupLabels.unknownMachine',
+                'Unknown machine'
+              ),
               [DATE_BUCKET_TODAY]: t('chat.mobileHome.groupLabels.today', 'Today'),
               [DATE_BUCKET_YESTERDAY]: t('chat.mobileHome.groupLabels.yesterday', 'Yesterday'),
               [DATE_BUCKET_THIS_WEEK]: t('chat.mobileHome.groupLabels.thisWeek', 'This Week'),
               [DATE_BUCKET_THIS_MONTH]: t('chat.mobileHome.groupLabels.thisMonth', 'This Month'),
               [DATE_BUCKET_UNKNOWN]: t('chat.mobileHome.groupLabels.older', 'Older'),
+              ...Object.fromEntries(
+                mobileHomeMachines.map((machine) => [machine.id, machine.name])
+              ),
             },
             emptyLocalProjects: t(
               'chat.mobileHome.emptyLocalProjectsAllMachines',

@@ -70,13 +70,18 @@ const ROW_EXIT_TRANSITION = {
 /* Grouping modes for the chat list.
    - `none`: flat list (in-project page; home no longer offers this)
    - `project`: bucket by `projectKey` (+ no-project catch-all)
+   - `machine`: bucket by `machineId` (+ no-machine catch-all)
    - `date`: Today / Yesterday / This Week / This Month / older months
    Callers supply heading labels via `groupLabels` for i18n. */
-export type MobileChatGroupBy = 'none' | 'project' | 'date';
+export type MobileChatGroupBy = 'none' | 'project' | 'machine' | 'date';
 
 /* Bucket id used for chats that have no associated project (kind
    = 'chat'). Exported so callers can map it in `groupLabels`. */
 export const NO_PROJECT_BUCKET_ID = '__no-project__';
+
+/* Bucket id used when `groupBy` is `machine` and the row has no
+   `machineId`. Exported so callers can map it in `groupLabels`. */
+export const NO_MACHINE_BUCKET_ID = '__no-machine__';
 
 /* Synthetic top bucket for pinned sessions. Always rendered first
    (when non-empty), ahead of project / date / flat unpinned groups. */
@@ -561,7 +566,7 @@ export function MobileChatListCard({
  * top group (when any exist), regardless of `groupBy`. Unpinned rows
  * then follow:
  * - `none`: one unlabeled flat tail
- * - `project` / `date`: normal buckets
+ * - `project` / `machine` / `date`: normal buckets
  *
  * Item order inside each bucket matches the input order.
  * `nowMs` is injectable for tests.
@@ -607,9 +612,10 @@ export function groupChats(
     return ordered;
   }
 
-  /* Project mode: sort by freshest item in each bucket. Input is
+  /* Project / machine: sort by freshest item in each bucket. Input is
      already recency-sorted within the unpinned slice, so the FIRST
      item in each bucket is its freshest. */
+  const catchAllId = groupBy === 'machine' ? NO_MACHINE_BUCKET_ID : NO_PROJECT_BUCKET_ID;
   const bucketRecency = new Map<string, number>();
   for (const [id, items] of buckets) {
     const head = items[0];
@@ -617,9 +623,9 @@ export function groupChats(
     bucketRecency.set(id, ts);
   }
   const ids = [...buckets.keys()].sort((a, b) => {
-    /* No-project bucket sinks to the end regardless of recency. */
-    if (a === NO_PROJECT_BUCKET_ID && b !== NO_PROJECT_BUCKET_ID) return 1;
-    if (b === NO_PROJECT_BUCKET_ID && a !== NO_PROJECT_BUCKET_ID) return -1;
+    /* Catch-all bucket sinks to the end regardless of recency. */
+    if (a === catchAllId && b !== catchAllId) return 1;
+    if (b === catchAllId && a !== catchAllId) return -1;
     return (bucketRecency.get(b) ?? 0) - (bucketRecency.get(a) ?? 0);
   });
   for (const id of ids) {
@@ -636,6 +642,9 @@ function bucketIdFor(
 ): string {
   if (groupBy === 'project') {
     return chat.projectKey ?? NO_PROJECT_BUCKET_ID;
+  }
+  if (groupBy === 'machine') {
+    return chat.machineId ?? NO_MACHINE_BUCKET_ID;
   }
   if (groupBy === 'date') {
     return dateBucketIdFor(chat.latestMessageAt, nowMs);
@@ -999,7 +1008,7 @@ export function MobileChatList({
      can override via `rowSecondaryField` — project sub-pages do that
      to keep their original branch-name look regardless of groupBy. */
   const resolvedSecondaryField: 'branch' | 'project' =
-    rowSecondaryField ?? (groupBy === 'none' ? 'project' : 'branch');
+    rowSecondaryField ?? (groupBy === 'none' || groupBy === 'machine' ? 'project' : 'branch');
 
   /* `firstGroupTrailing` only mounts on the first *visible* group
      heading while multi-select is off — selection toolbar already owns
@@ -1012,7 +1021,7 @@ export function MobileChatList({
     flatHeading != null && groupBy === 'none' && !selectionToolbarActive;
 
   /* Always go through `groupChats` so pinned rows lift into a top
-     "Pinned" section in every mode (project / date / flat). */
+     "Pinned" section in every mode (project / machine / date / flat). */
   const cards = (
     <>
       {groupChats(chats, groupBy).map(({ id, items }, index) => {
@@ -1057,17 +1066,23 @@ export function MobileChatList({
           );
         }
 
-        /* Pinned + date buckets: quiet collapsible text label.
+        /* Pinned + date + machine buckets: quiet collapsible text label.
            Project buckets: identity mark (folder / avatar / chat). */
         const labeledItem =
           groupBy === 'project' && id !== PINNED_BUCKET_ID
             ? items.find((it) => it.projectLabel != null)
             : undefined;
         const projectLabel = labeledItem?.projectLabel ?? null;
+        const machineLabel =
+          groupLabels[id] ??
+          items.find((it) => it.machineName != null)?.machineName ??
+          null;
         const heading =
           id === PINNED_BUCKET_ID || groupBy === 'date'
             ? resolveDateBucketLabel(id, groupLabels)
-            : (projectLabel ?? groupLabels[id] ?? id);
+            : groupBy === 'machine'
+              ? (machineLabel ?? id)
+              : (projectLabel ?? groupLabels[id] ?? id);
 
         const isLocalBucket =
           labeledItem != null &&
@@ -1075,7 +1090,12 @@ export function MobileChatList({
             (labeledItem.kind !== 'github' && !labeledItem.projectAvatarUrl));
 
         let groupedHeadingNode: ReactNode;
-        if (id === PINNED_BUCKET_ID || groupBy === 'date' || groupBy === 'none') {
+        if (
+          id === PINNED_BUCKET_ID ||
+          groupBy === 'date' ||
+          groupBy === 'machine' ||
+          groupBy === 'none'
+        ) {
           groupedHeadingNode = (
             <CollapsibleSectionHeading
               expanded={expanded}

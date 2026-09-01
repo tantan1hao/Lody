@@ -91,7 +91,7 @@ embedded` lazy-imported from `../tasks/tasks-workspace.tsx` (`embedded`
   absolutely centered on the h-9 chrome row. The Chat/project list
   filter chip lives on the first group heading's trailing edge
   (`MobileChatList firstGroupTrailing`); the pill bar expands above the
-  scroll region.
+  scroll region. Home Chat grouping is Project, Machine, or Date.
 - Default mobile home tab: owned by `../chat/chat-landing.tsx`
   (`selectedMobileHomeTab` init); `mobile-workspace-stack.tsx` only keeps the
   `/chat` search/base context mounted under session drawers.

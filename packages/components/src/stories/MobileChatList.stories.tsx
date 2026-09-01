@@ -286,6 +286,8 @@ function StoryShell({
             waiting: 'Waiting permission',
             idle: 'Idle',
             offline: 'Offline',
+            'zx-macbook': 'ZX MacBook',
+            'lab-m2': 'Lab M2',
           }}
           selectedConversationId={selectedId}
           onSelect={(id) => {
@@ -325,6 +327,10 @@ export const Flat: Story = {
 
 export const GroupByProject: Story = {
   args: { groupBy: 'project' },
+};
+
+export const GroupByMachine: Story = {
+  args: { groupBy: 'machine' },
 };
 
 /* Sessions opened by another Session indent one level under their opener with
