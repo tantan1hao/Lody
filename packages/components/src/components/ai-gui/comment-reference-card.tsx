@@ -1,7 +1,8 @@
 'use client';
 
-import type { CommentReferencePayload } from '@lody/shared';
-import { truncateCommentBody } from '@lody/shared';
+import { Quote } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { isFileCommentReference, truncateCommentBody, type CommentReferencePayload } from '@lody/shared';
 import { cn } from '@/lib/utils';
 import { FileIcon } from '@/components/icons/file-icons';
 
@@ -18,31 +19,37 @@ function getFileNameFromPath(filePath: string): string {
 
 /**
  * Compact card shown in user chat bubbles for comment references.
- * Displays file path, line number, and a truncated comment preview.
- * Clicking navigates to the corresponding diff position.
+ * File comments show path:line; conversation quotes show the selected snippet.
+ * Clicking a file comment navigates to the corresponding diff position.
  */
 export function CommentReferenceCard({ reference, onClick, className }: CommentReferenceCardProps) {
-  const fileName = getFileNameFromPath(reference.path);
+  const { t } = useTranslation();
+  const isFileComment = isFileCommentReference(reference);
   const preview = truncateCommentBody(reference.commentBody, 60);
+  const title = isFileComment
+    ? `${getFileNameFromPath(reference.path)}:${reference.lineNumber}`
+    : (reference.authorName ?? t('sessions.quoteSelection.quoteLabel', 'Quote'));
 
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={isFileComment ? onClick : undefined}
       className={cn(
         'flex w-full max-w-sm flex-col gap-0.5 rounded-lg border px-3 py-2 text-left text-xs',
         'bg-muted/40 transition-colors hover:bg-muted/70',
-        onClick && 'cursor-pointer',
-        !onClick && 'cursor-default',
+        isFileComment && onClick && 'cursor-pointer',
+        (!isFileComment || !onClick) && 'cursor-default',
         className
       )}
       title={reference.commentBody}
     >
       <div className="flex items-center gap-1.5 font-medium text-muted-foreground">
-        <FileIcon filePath={reference.path} className="h-3 w-3 shrink-0" />
-        <span className="truncate">
-          {fileName}:{reference.lineNumber}
-        </span>
+        {isFileComment ? (
+          <FileIcon filePath={reference.path} className="h-3 w-3 shrink-0" />
+        ) : (
+          <Quote className="h-3 w-3 shrink-0" />
+        )}
+        <span className="truncate">{title}</span>
       </div>
       <div className="truncate text-foreground/70">&ldquo;{preview}&rdquo;</div>
     </button>

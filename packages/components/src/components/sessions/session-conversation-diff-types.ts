@@ -1,4 +1,4 @@
-import type { CommentReferencePayload } from '@lody/shared';
+import { isFileCommentReference, type CommentReferencePayload } from '@lody/shared';
 import type { FileDiffMetadata } from '@pierre/diffs';
 import type { DiffTextChunkSource } from '@/lib/diff-text-chunk-source';
 
@@ -61,24 +61,29 @@ export const arePathsEquivalent = (left: string, right: string): boolean =>
   normalizePathForMatch(left) === normalizePathForMatch(right);
 
 export type DiffCommentFocusTarget = {
-  source: CommentReferencePayload['source'];
+  source: 'lody' | 'github';
   path: string;
   lineNumber: number;
-  side: CommentReferencePayload['side'];
+  side: 'additions' | 'deletions';
   threadId?: string;
   githubThreadId?: number;
 };
 
 export const getDiffCommentFocusTargetFromReference = (
   reference: CommentReferencePayload
-): DiffCommentFocusTarget => ({
-  source: reference.source,
-  path: reference.path,
-  lineNumber: reference.lineNumber,
-  side: reference.side,
-  threadId: reference.threadId,
-  githubThreadId: reference.githubThreadId,
-});
+): DiffCommentFocusTarget | null => {
+  if (!isFileCommentReference(reference)) {
+    return null;
+  }
+  return {
+    source: reference.source,
+    path: reference.path,
+    lineNumber: reference.lineNumber,
+    side: reference.side,
+    threadId: reference.threadId,
+    githubThreadId: reference.githubThreadId,
+  };
+};
 
 export const areDiffCommentFocusTargetsEqual = (
   left?: DiffCommentFocusTarget | null,

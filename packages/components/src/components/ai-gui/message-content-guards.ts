@@ -161,6 +161,9 @@ export const isMessageContent = (value: unknown): value is MessageContent => {
         value.steps.every(isWorktreeScriptStep)
       );
     case 'comment_reference':
+      if (value.source === 'session_text') {
+        return typeof value.commentBody === 'string';
+      }
       return (
         (value.source === 'lody' || value.source === 'github') &&
         typeof value.path === 'string' &&

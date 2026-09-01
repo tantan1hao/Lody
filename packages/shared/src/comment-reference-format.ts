@@ -1,4 +1,8 @@
-import type { CommentReferencePayload, VisualAnnotationReferencePayload } from './ai';
+import {
+  isFileCommentReference,
+  type CommentReferencePayload,
+  type VisualAnnotationReferencePayload,
+} from './ai';
 
 const escapeAttribute = (value: string): string =>
   value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -18,6 +22,20 @@ const escapeAttribute = (value: string): string =>
  * ```
  */
 export function formatCommentReferenceForPrompt(ref: CommentReferencePayload): string {
+  if (!isFileCommentReference(ref)) {
+    const attrs = ['source="session_text"'];
+    if (ref.role) attrs.push(`role="${ref.role}"`);
+    if (ref.turnId) attrs.push(`turn="${escapeAttribute(ref.turnId)}"`);
+    const lines: string[] = [];
+    lines.push(`<comment-reference ${attrs.join(' ')}>`);
+    if (ref.authorName) {
+      lines.push(`@${ref.authorName}:`);
+    }
+    lines.push(ref.commentBody);
+    lines.push('</comment-reference>');
+    return lines.join('\n');
+  }
+
   const lines: string[] = [];
   lines.push(`<comment-reference path="${ref.path}" line="${ref.lineNumber}" side="${ref.side}">`);
   lines.push(`@${ref.authorName}:`);

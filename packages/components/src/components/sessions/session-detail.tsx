@@ -38,6 +38,7 @@ import {
   getAcpCapabilityCacheEntryAuthority,
   resolveProjectGitHubRepo,
   SessionForkOperationSchema,
+  isFileCommentReference,
   type CommentReferencePayload,
   type LocalProjectHistoryProvider,
   type LocalProjectId,
@@ -2693,6 +2694,7 @@ const SessionDetail = ({
   );
   const handleNavigateToCommentMobile = useCallback(
     (reference: CommentReferencePayload) => {
+      if (!isFileCommentReference(reference)) return;
       setFileProviderRequestedByInteraction(true);
       const mode = reference.mode ?? (reference.turnId ? 'conversation' : 'base');
       const turnId = mode === 'base' ? 'all-changes' : (reference.turnId ?? null);
@@ -2727,6 +2729,7 @@ const SessionDetail = ({
 
   const handleNavigateToComment = useCallback(
     (reference: CommentReferencePayload) => {
+      if (!isFileCommentReference(reference)) return;
       setFileProviderRequestedByInteraction(true);
       const mode = reference.mode ?? (reference.turnId ? 'conversation' : 'base');
       const turnId = mode === 'base' ? 'all-changes' : (reference.turnId ?? null);

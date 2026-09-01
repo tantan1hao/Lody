@@ -66,6 +66,7 @@ import {
 import { AskUserQuestionCard } from '@/components/sessions/ask-user-question-card';
 import { PermissionRequestCard } from '@/components/sessions/floating-permission-request';
 import { CommentReferenceCard } from './comment-reference-card';
+import { ConversationSelectionToolbar } from './conversation-selection-toolbar';
 import { VisualAnnotationReferenceCard } from './visual-annotation-reference-card';
 import { currentWorkspaceIdAtom } from '@/atoms';
 import { getAgentMetaByIdAtomFamily } from '@/atoms/agents';
@@ -403,6 +404,8 @@ export interface SessionChatStreamViewProps {
   onFilePathClick?: (filePath: string) => void;
   /** Returns true when an HTML attachment click was routed to a richer surface. */
   onOpenHtmlFile?: (file: SessionFilePayload) => boolean;
+  /** Attach a conversation quote or file comment to the session composer. */
+  addCommentReference?: (reference: CommentReferencePayload) => boolean;
   lastAssistantMessageId?: string | null;
   lastCompletedAssistantMessageId?: string | null;
   messageFileDiffEntriesByTurn?: MessageFileDiffEntriesByTurn;
@@ -429,6 +432,7 @@ export interface SessionChatStreamViewProps {
 const SessionChatActionContext = createContext<{
   sendMessage?: (message: ClientToServer) => void;
   openHtmlFile?: (file: SessionFilePayload) => boolean;
+  addCommentReference?: (reference: CommentReferencePayload) => boolean;
 }>({});
 const SessionImagePreviewContext = createContext<{
   openImagePreview: (imageKey: string) => void;
@@ -1152,6 +1156,7 @@ export const SessionChatStreamView = forwardRef<
       onFileDiffClick,
       onFilePathClick,
       onOpenHtmlFile,
+      addCommentReference,
       lastAssistantMessageId = null,
       lastCompletedAssistantMessageId = null,
       messageFileDiffEntriesByTurn,
@@ -1600,8 +1605,9 @@ export const SessionChatStreamView = forwardRef<
       () => ({
         ...(sendMessage ? { sendMessage } : {}),
         ...(onOpenHtmlFile ? { openHtmlFile: onOpenHtmlFile } : {}),
+        ...(addCommentReference ? { addCommentReference } : {}),
       }),
-      [onOpenHtmlFile, sendMessage]
+      [addCommentReference, onOpenHtmlFile, sendMessage]
     );
     const hasOnlyEmptyItem = items.length === 1 && items[0]?.type === 'empty';
 
@@ -1633,6 +1639,7 @@ export const SessionChatStreamView = forwardRef<
           >
             <div
               ref={scrollContainerRef}
+              data-session-conversation=""
               // Keep x overflow explicit: overflow-y:auto otherwise computes
               // the untouched x axis to auto too, letting any wide row pan the
               // entire conversation instead of its own nested scroller.
@@ -1759,6 +1766,12 @@ export const SessionChatStreamView = forwardRef<
                 </ConversationColumn>
               </div>
             )}
+            {addCommentReference ? (
+              <ConversationSelectionToolbar
+                addCommentReference={addCommentReference}
+                containerRef={scrollContainerRef}
+              />
+            ) : null}
             <ImagePreviewDialog
               open={findSessionImageGalleryEntryIndex(activeGalleryEntries, activeImageKey) !== -1}
               onOpenChange={(open) => {
@@ -2748,6 +2761,9 @@ const UserMessageRowView = ({
                   'sm:max-w-[800px]'
                 )}
                 data-native-selection-allow
+                data-session-turn-id={message.id}
+                data-session-turn-role="user"
+                data-session-turn-author={user?.name ?? undefined}
               >
                 {isEditing ? (
                   <div className="flex min-w-0 max-w-full flex-col items-end gap-2">
@@ -3916,6 +3932,8 @@ const AssistantChatItem = memo(function AssistantChatItem({
           )}
           style={conversationTextFontSizeStyle(conversationFontSize)}
           data-native-selection-allow
+          data-session-turn-id={message.id}
+          data-session-turn-role="assistant"
         >
           {rowBody}
         </div>

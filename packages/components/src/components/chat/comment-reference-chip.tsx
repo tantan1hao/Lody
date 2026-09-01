@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { X } from 'lucide-react';
-import type { CommentReferencePayload } from '@lody/shared';
-import { truncateCommentBody } from '@lody/shared';
+import { Quote, X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { isFileCommentReference, truncateCommentBody, type CommentReferencePayload } from '@lody/shared';
 import { cn } from '@/lib/utils';
 import { FileIcon } from '@/components/icons/file-icons';
 
@@ -34,11 +34,16 @@ export function CommentReferenceChip({
   revealRemoveOnClick = false,
   className,
 }: CommentReferenceChipProps) {
+  const { t } = useTranslation();
   const { reference } = item;
-  const fileName = getFileNameFromPath(reference.path);
+  const isFileComment = isFileCommentReference(reference);
+  const title = isFileComment
+    ? `${getFileNameFromPath(reference.path)}:${reference.lineNumber}`
+    : (reference.authorName ?? t('sessions.quoteSelection.quoteLabel', 'Quote'));
   const preview = truncateCommentBody(reference.commentBody, 40);
   const [removeVisible, setRemoveVisible] = useState(false);
-  const isInteractive = Boolean(onClick || (revealRemoveOnClick && onRemove));
+  const navigateOnClick = isFileComment ? onClick : undefined;
+  const isInteractive = Boolean(navigateOnClick || (revealRemoveOnClick && onRemove));
 
   const handleChipClick = () => {
     if (revealRemoveOnClick && onRemove && !removeVisible) {
@@ -46,7 +51,7 @@ export function CommentReferenceChip({
       return;
     }
     setRemoveVisible(false);
-    onClick?.(reference);
+    navigateOnClick?.(reference);
   };
 
   return (
@@ -61,10 +66,12 @@ export function CommentReferenceChip({
       onClick={isInteractive ? handleChipClick : undefined}
     >
       <div className="flex items-center gap-1.5 text-muted-foreground">
-        <FileIcon filePath={reference.path} className="h-3 w-3 shrink-0" />
-        <span className="truncate font-medium">
-          {fileName}:{reference.lineNumber}
-        </span>
+        {isFileComment ? (
+          <FileIcon filePath={reference.path} className="h-3 w-3 shrink-0" />
+        ) : (
+          <Quote className="h-3 w-3 shrink-0" />
+        )}
+        <span className="truncate font-medium">{title}</span>
         {onRemove && (
           <button
             type="button"

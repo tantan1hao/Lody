@@ -251,17 +251,28 @@ const isFileHistoryItem = (
 const isCommentReferenceHistoryItem = (
   item: unknown
 ): item is { type: 'comment_reference' } & CommentReferencePayload => {
+  if (
+    typeof item !== 'object' ||
+    item === null ||
+    !('type' in item) ||
+    item.type !== 'comment_reference' ||
+    !('commentBody' in item) ||
+    typeof item.commentBody !== 'string' ||
+    !('source' in item)
+  ) {
+    return false;
+  }
+  if (item.source === 'session_text') {
+    return true;
+  }
   return (
-    typeof item === 'object' &&
-    item !== null &&
-    'type' in item &&
-    item.type === 'comment_reference' &&
+    (item.source === 'lody' || item.source === 'github') &&
     'path' in item &&
     typeof item.path === 'string' &&
     'lineNumber' in item &&
     typeof item.lineNumber === 'number' &&
-    'commentBody' in item &&
-    typeof item.commentBody === 'string'
+    'side' in item &&
+    (item.side === 'additions' || item.side === 'deletions')
   );
 };
 
@@ -287,20 +298,31 @@ const isVisualAnnotationReferenceHistoryItem = (
 
 const toCommentReferencePayload = (
   block: Extract<SessionInputBlock, { type: 'comment_reference' }>
-): CommentReferencePayload => ({
-  source: block.source,
-  path: block.path,
-  lineNumber: block.lineNumber,
-  side: block.side,
-  commentBody: block.commentBody,
-  authorName: block.authorName,
-  authorImage: block.authorImage,
-  replies: block.replies,
-  turnId: block.turnId,
-  mode: block.mode,
-  threadId: block.threadId,
-  githubThreadId: block.githubThreadId,
-});
+): CommentReferencePayload => {
+  if (block.source === 'session_text') {
+    return {
+      source: 'session_text',
+      commentBody: block.commentBody,
+      authorName: block.authorName,
+      turnId: block.turnId,
+      role: block.role,
+    };
+  }
+  return {
+    source: block.source,
+    path: block.path,
+    lineNumber: block.lineNumber,
+    side: block.side,
+    commentBody: block.commentBody,
+    authorName: block.authorName,
+    authorImage: block.authorImage,
+    replies: block.replies,
+    turnId: block.turnId,
+    mode: block.mode,
+    threadId: block.threadId,
+    githubThreadId: block.githubThreadId,
+  };
+};
 
 const toVisualAnnotationReferencePayload = (
   block: Extract<SessionInputBlock, { type: 'visual_annotation_reference' }>
@@ -448,21 +470,9 @@ export const historyItemsToInputBlocks = (
     }
 
     if (isCommentReferenceHistoryItem(item)) {
-      const ref = item as { type: 'comment_reference' } & CommentReferencePayload;
       blocks.push({
         type: 'comment_reference',
-        source: ref.source,
-        path: ref.path,
-        lineNumber: ref.lineNumber,
-        side: ref.side,
-        commentBody: ref.commentBody,
-        authorName: ref.authorName,
-        authorImage: ref.authorImage,
-        replies: ref.replies,
-        turnId: ref.turnId,
-        mode: ref.mode,
-        threadId: ref.threadId,
-        githubThreadId: ref.githubThreadId,
+        ...toCommentReferencePayload(item),
       });
       continue;
     }

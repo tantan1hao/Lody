@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import type {
+  CommentReferencePayload,
   SessionDoc,
   SessionFilePayload,
   SessionHistory,
@@ -87,6 +88,8 @@ export interface SessionChatStreamProps {
   onFilePathClick?: (filePath: string) => void;
   /** Routes HTML attachment clicks to a live file or Browser surface. */
   onOpenHtmlFile?: (file: SessionFilePayload) => boolean;
+  /** Attach a conversation quote or file comment to the session composer. */
+  addCommentReference?: (reference: CommentReferencePayload) => boolean;
   messageFileDiffEntriesByTurn?: MessageFileDiffEntriesByTurn;
   assistantActions?: AssistantMessageAction[];
   assistantActionsMessageId?: string | null;
@@ -164,6 +167,7 @@ const SessionChatStreamImpl = forwardRef<SessionChatStreamHandle, SessionChatStr
       onFileDiffClick,
       onFilePathClick,
       onOpenHtmlFile,
+      addCommentReference,
       messageFileDiffEntriesByTurn,
       assistantActions,
       assistantActionsMessageId,
@@ -269,6 +273,7 @@ const SessionChatStreamImpl = forwardRef<SessionChatStreamHandle, SessionChatStr
         onFileDiffClick={hasFileDiffClick ? stableOnFileDiffClick : undefined}
         onFilePathClick={hasFilePathClick ? stableOnFilePathClick : undefined}
         onOpenHtmlFile={onOpenHtmlFile}
+        addCommentReference={addCommentReference}
         lastAssistantMessageId={lastAssistantMessageId}
         lastCompletedAssistantMessageId={lastCompletedAssistantMessageId}
         messageFileDiffEntriesByTurn={messageFileDiffEntriesByTurn}

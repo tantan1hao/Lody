@@ -1330,7 +1330,7 @@ export type CommentReferenceReply = {
   body: string;
 };
 
-export type CommentReferencePayload = {
+export type FileCommentReferencePayload = {
   /** Source: Lody internal comment or GitHub review comment */
   source: 'lody' | 'github';
   /** Relative file path */
@@ -1356,6 +1356,35 @@ export type CommentReferencePayload = {
   /** GitHub thread ID (for navigation) */
   githubThreadId?: number;
 };
+
+export type SessionTextCommentReferencePayload = {
+  /** Quoted conversation text, not a file comment */
+  source: 'session_text';
+  /** Selected text */
+  commentBody: string;
+  /** Display name of the quoted turn's author, when known */
+  authorName?: string;
+  /** Quoted turn / message id */
+  turnId?: string;
+  /** Quoted turn role */
+  role?: 'user' | 'assistant';
+};
+
+export type CommentReferencePayload =
+  | FileCommentReferencePayload
+  | SessionTextCommentReferencePayload;
+
+export function isFileCommentReference(
+  reference: CommentReferencePayload
+): reference is FileCommentReferencePayload {
+  return reference.source === 'lody' || reference.source === 'github';
+}
+
+export function isSessionTextCommentReference(
+  reference: CommentReferencePayload
+): reference is SessionTextCommentReferencePayload {
+  return reference.source === 'session_text';
+}
 
 export type VisualAnnotationReferencePayload = {
   source: 'visual_annotation';

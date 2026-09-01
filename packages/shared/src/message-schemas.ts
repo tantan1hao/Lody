@@ -192,8 +192,7 @@ const CommentReferenceReplySchema = z.object({
   body: z.string(),
 });
 
-const CommentReferencePayloadSchema = z.object({
-  source: z.enum(['lody', 'github']),
+const fileCommentReferenceFields = {
   path: z.string(),
   lineNumber: z.number().int(),
   side: z.enum(['additions', 'deletions']),
@@ -205,11 +204,34 @@ const CommentReferencePayloadSchema = z.object({
   mode: z.enum(['conversation', 'base']).optional(),
   threadId: z.string().optional(),
   githubThreadId: z.number().int().optional(),
+};
+
+const FileCommentReferencePayloadSchema = z.object({
+  source: z.enum(['lody', 'github']),
+  ...fileCommentReferenceFields,
 });
 
-const SessionCommentReferenceInputBlockSchema = CommentReferencePayloadSchema.extend({
-  type: z.literal('comment_reference'),
+export const SessionTextCommentReferencePayloadSchema = z.object({
+  source: z.literal('session_text'),
+  commentBody: z.string(),
+  authorName: z.string().optional(),
+  turnId: z.string().optional(),
+  role: z.enum(['user', 'assistant']).optional(),
 });
+
+export const CommentReferencePayloadSchema = z.union([
+  FileCommentReferencePayloadSchema,
+  SessionTextCommentReferencePayloadSchema,
+]);
+
+const SessionCommentReferenceInputBlockSchema = z.union([
+  FileCommentReferencePayloadSchema.extend({
+    type: z.literal('comment_reference'),
+  }),
+  SessionTextCommentReferencePayloadSchema.extend({
+    type: z.literal('comment_reference'),
+  }),
+]);
 
 const VisualAnnotationViewportSchema = z
   .object({
@@ -306,7 +328,7 @@ const SessionVisualAnnotationReferenceInputBlockSchema =
     type: z.literal('visual_annotation_reference'),
   }).strict();
 
-export const SessionInputBlockSchema = z.discriminatedUnion('type', [
+export const SessionInputBlockSchema = z.union([
   SessionTextInputBlockSchema,
   SessionImageInputBlockSchema,
   SessionFileBlockObjectSchema,

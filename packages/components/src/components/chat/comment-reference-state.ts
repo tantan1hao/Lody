@@ -1,12 +1,20 @@
 'use client';
 
 import { useState, useCallback, useMemo } from 'react';
-import type { CommentReferencePayload } from '@lody/shared';
+import { isFileCommentReference, type CommentReferencePayload } from '@lody/shared';
 import type { CommentReferenceChipItem } from './comment-reference-chip';
 
 export const EMPTY_COMMENT_REFERENCE_KEYS: readonly string[] = [];
 
 export function getCommentReferenceKey(reference: CommentReferencePayload): string {
+  if (!isFileCommentReference(reference)) {
+    return JSON.stringify([
+      reference.source,
+      reference.commentBody,
+      reference.turnId ?? null,
+      reference.role ?? null,
+    ]);
+  }
   return JSON.stringify([
     reference.source,
     reference.path,

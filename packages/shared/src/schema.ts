@@ -298,6 +298,11 @@ const historyMessageItemSchema = schema
               ? true
               : 'Missing worktree script metadata';
           case 'comment_reference':
+            if (v.source === 'session_text') {
+              return typeof v.commentBody === 'string'
+                ? true
+                : 'Missing comment reference metadata';
+            }
             return typeof v.source === 'string' &&
               typeof v.path === 'string' &&
               typeof v.lineNumber === 'number' &&
