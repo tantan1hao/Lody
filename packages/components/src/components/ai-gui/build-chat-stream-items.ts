@@ -89,9 +89,46 @@ function createCachedMessageItem(
 }
 
 /**
+ * Assistants whose `userTurnId` points at a user entry that appears later were
+ * inserted concurrently (CLI reply vs client-authored user turn) and can sit
+ * permanently above that prompt. Hold them on first sight and emit them
+ * immediately after the matching user. Already-following assistants and those
+ * without `userTurnId` stay in place.
+ */
+function collectDeferredAssistants(history: readonly SessionHistory[]): {
+  deferredIds: Set<string>;
+  deferredByUserTurnId: Map<string, SessionHistory[]>;
+} {
+  const firstUserIndexById = new Map<string, number>();
+  for (let index = 0; index < history.length; index++) {
+    const entry = history[index];
+    if (entry?.role === 'user' && !firstUserIndexById.has(entry.id)) {
+      firstUserIndexById.set(entry.id, index);
+    }
+  }
+
+  const deferredIds = new Set<string>();
+  const deferredByUserTurnId = new Map<string, SessionHistory[]>();
+  for (let index = 0; index < history.length; index++) {
+    const entry = history[index];
+    if (entry?.role !== 'assistant' || !entry.userTurnId) continue;
+    const userIndex = firstUserIndexById.get(entry.userTurnId);
+    if (userIndex === undefined || userIndex <= index) continue;
+    const existing = deferredByUserTurnId.get(entry.userTurnId);
+    if (existing) {
+      existing.push(entry);
+    } else {
+      deferredByUserTurnId.set(entry.userTurnId, [entry]);
+    }
+    deferredIds.add(entry.id);
+  }
+  return { deferredIds, deferredByUserTurnId };
+}
+
+/**
  * Build the Virtua VList item list from raw session history.
  *
- * Two defensive normalizations keep the virtual list robust against histories
+ * Three defensive normalizations keep the virtual list robust against histories
  * left in an unusual shape by interrupted / bad-network turns. Such shapes
  * corrupt Virtua's index-keyed size cache and make its absolutely-positioned
  * rows overlap ("explode") deterministically — a stable, per-conversation bug:
@@ -103,6 +140,10 @@ function createCachedMessageItem(
  *     produces duplicate React keys and desyncs Virtua's element↔index map. Ids
  *     are random UUIDs so collisions are improbable, but this is cheap insurance
  *     so a single corrupt doc cannot permanently break the layout.
+ *  3. If an assistant's `userTurnId` points at a user entry that appears later,
+ *     emit that assistant immediately after the user. Dual-author history can
+ *     persist that inversion; render repair must not reorder already-correct
+ *     pairs or assistants that have no `userTurnId`.
  *
  * `lastAssistantMessageId` is computed over the normalized list so context-window
  * usage / quick actions attach to the last *rendered* assistant message.
@@ -120,8 +161,9 @@ export function buildChatStreamItems(
   /** Config from the latest user turn — attached to the following assistant
    *  so the model meta row can show the full turn run-config on demand. */
   let lastUserInputConfig: SessionHistoryParsed['inputConfig'] | undefined;
+  const { deferredIds, deferredByUserTurnId } = collectDeferredAssistants(history);
 
-  for (const entry of history) {
+  const emitEntry = (entry: SessionHistory): void => {
     if (entry.role === 'user' && entry.inputConfig) {
       lastUserInputConfig = entry.inputConfig;
     }
@@ -135,7 +177,7 @@ export function buildChatStreamItems(
 
     const cached = previousCache?.get(entry.id);
     if (canReuseCachedMessageItem(cached, entry, sessionId, expectedInputConfig)) {
-      if (seenIds.has(entry.id)) continue;
+      if (seenIds.has(entry.id)) return;
       seenIds.add(entry.id);
       if (entry.role === 'assistant') {
         lastAssistantMessageId = entry.id;
@@ -145,7 +187,7 @@ export function buildChatStreamItems(
       }
       cache.set(entry.id, cached);
       items.push(cached.item);
-      continue;
+      return;
     }
 
     const message: SessionHistoryParsed = {
@@ -167,8 +209,8 @@ export function buildChatStreamItems(
       inputConfig: expectedInputConfig,
     };
 
-    if (isEmptyAssistantMessage(message)) continue;
-    if (seenIds.has(message.id)) continue;
+    if (isEmptyAssistantMessage(message)) return;
+    if (seenIds.has(message.id)) return;
     seenIds.add(message.id);
 
     const cachedMessageItem = createCachedMessageItem(entry, sessionId, message);
@@ -180,6 +222,20 @@ export function buildChatStreamItems(
       }
     }
     items.push(cachedMessageItem.item);
+  };
+
+  for (const entry of history) {
+    if (deferredIds.has(entry.id)) continue;
+    const alreadySeen = seenIds.has(entry.id);
+    emitEntry(entry);
+    if (entry.role === 'user' && !alreadySeen) {
+      const deferred = deferredByUserTurnId.get(entry.id);
+      if (deferred) {
+        for (const assistant of deferred) {
+          emitEntry(assistant);
+        }
+      }
+    }
   }
 
   if (!items.length) {

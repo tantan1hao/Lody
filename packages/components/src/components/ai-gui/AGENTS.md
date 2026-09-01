@@ -22,8 +22,9 @@
 - Keep Virtua `shift={false}`; stale cumulative heights otherwise overlap rows.
   `bufferSize` trades fast-scroll blanks against retaining resizing rows.
 - `buildChatStreamItems()` drops empty assistant entries (a `null` render cannot
-  be measured) and de-duplicates history ids (duplicate Virtua keys desync the
-  list). See `tests/build-chat-stream-items.test.ts`.
+  be measured), de-duplicates history ids (duplicate Virtua keys desync the
+  list), and re-places an assistant that appears before its `userTurnId` user
+  entry. See `tests/build-chat-stream-items.test.ts`.
 - `leadingContent` is a real first row. Include it in sticky counts and every
   scroll target; never overlay or persist it. A `session_create` completion
   renders one card per successful target and reads only that target's title.
@@ -118,6 +119,9 @@ work) and a hover preview.
   without per-file pills.
 - Update `message-content-guards.ts` with every shared `MessageContent` variant.
   `isMessageContent` gates rendering; a missing case silently drops the item.
+- Selecting visible user/assistant prose can attach a `source: 'session_text'`
+  comment reference through the existing `addCommentReference` chip path.
+  Do not invent a second quote/chip system.
 - A user entry marked by `SessionMeta.lastMissingHistoryUserMsgId` renders the
   terminal "Not delivered" label. That label is the only recovery entry: its
   dialog resends the same content as a new ordinary message, then marks the old

@@ -81,8 +81,9 @@ delegation proofs or a shared-machine gate without a new product and security de
 - `turn-history-gate.ts` — ordering barrier for RPC fast-path turns: the agent
   starts immediately, but turn-scoped history LIST writes (assistant entry, ACP
   flushes, finalization, failure notices) wait until the user turn entry has
-  synced into the CLI-local doc (bounded, 20s), otherwise concurrent Loro list
-  inserts can permanently order the reply before the user message. The gate
+  synced into the CLI-local doc. The 20s timer is diagnostic only and must not
+  open the gate or run `onBeforeOpen`: holding list writes is better than a
+  permanently inverted transcript. The gate
   itself creates the assistant entry when it opens; created in message-handler's
   `beginConversationTurn`, stored/disposed via `SessionTransientStore` turn state.
   Status/meta map writes are never gated (some sit on the prompt critical path).

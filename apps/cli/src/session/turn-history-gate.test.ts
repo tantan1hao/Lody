@@ -136,11 +136,12 @@ describe('TurnHistoryGate', () => {
     expect(doc.subscriberCount).toBe(0);
   });
 
-  it('opens on timeout when the entry never syncs (bounded degradation)', async () => {
+  it('stays closed on timeout and opens with user-turn-synced when the entry later appears', async () => {
+    const warn = vi.fn();
     const doc = createFakeDoc([]);
     const reasons: TurnHistoryGateOpenReason[] = [];
     const gate = TurnHistoryGate.waitForUserTurn({
-      logger,
+      logger: { ...logger, warn },
       sessionId,
       userTurnId,
       readHistory: doc.readHistory,
@@ -154,17 +155,23 @@ describe('TurnHistoryGate', () => {
 
     await vi.advanceTimersByTimeAsync(DEFAULT_TURN_HISTORY_GATE_TIMEOUT_MS);
     await flushMicrotasks();
+    expect(gate.isOpen).toBe(false);
+    expect(reasons).toEqual([]);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]?.[0])).toContain('holding turn history list writes');
+
+    doc.setHistory([userEntry(userTurnId)]);
+    await flushMicrotasks();
     expect(gate.isOpen).toBe(true);
-    // The assistant entry is still created on timeout so downstream writes
-    // have a target — only the ordering guarantee is degraded.
-    expect(reasons).toEqual(['timeout']);
+    expect(reasons).toEqual(['user-turn-synced']);
     await expect(gate.waitUntilOpen()).resolves.toBeUndefined();
   });
 
-  it('respects a custom timeout', async () => {
+  it('respects a custom timeout as a diagnostic only', async () => {
+    const warn = vi.fn();
     const doc = createFakeDoc([]);
     const gate = TurnHistoryGate.waitForUserTurn({
-      logger,
+      logger: { ...logger, warn },
       sessionId,
       userTurnId,
       readHistory: doc.readHistory,
@@ -173,9 +180,11 @@ describe('TurnHistoryGate', () => {
     });
     await vi.advanceTimersByTimeAsync(4_999);
     expect(gate.isOpen).toBe(false);
+    expect(warn).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     await flushMicrotasks();
-    expect(gate.isOpen).toBe(true);
+    expect(gate.isOpen).toBe(false);
+    expect(warn).toHaveBeenCalledTimes(1);
   });
 
   it('dispose releases waiters without running onBeforeOpen', async () => {
@@ -284,9 +293,10 @@ describe('TurnHistoryGate', () => {
     expect(gate.isOpen).toBe(true);
   });
 
-  it('relies on the timeout when no doc subscription is available', async () => {
+  it('keeps list writes held when no doc subscription is available', async () => {
+    const warn = vi.fn();
     const gate = TurnHistoryGate.waitForUserTurn({
-      logger,
+      logger: { ...logger, warn },
       sessionId,
       userTurnId,
       readHistory: () => Promise.resolve([]),
@@ -297,6 +307,7 @@ describe('TurnHistoryGate', () => {
     expect(gate.isOpen).toBe(false);
     await vi.advanceTimersByTimeAsync(1_000);
     await flushMicrotasks();
-    expect(gate.isOpen).toBe(true);
+    expect(gate.isOpen).toBe(false);
+    expect(warn).toHaveBeenCalledTimes(1);
   });
 });

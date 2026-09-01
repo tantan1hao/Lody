@@ -195,4 +195,67 @@ describe('buildChatStreamItems', () => {
     expect(renderedIds(second.items)).toEqual(['assistant-1', 'assistant-2']);
     expect(second.lastAssistantMessageId).toBe('assistant-2');
   });
+
+  it('renders an inverted assistant-before-user pair as user then assistant', () => {
+    const { items, lastAssistantMessageId } = buildChatStreamItems(
+      [
+        {
+          ...entry({ id: 'a1', role: 'assistant', items: [text('reply')] }),
+          userTurnId: 'u1',
+        },
+        entry({ id: 'u1', role: 'user', items: [text('prompt')] }),
+      ],
+      sessionId
+    );
+
+    expect(renderedIds(items)).toEqual(['u1', 'a1']);
+    expect(lastAssistantMessageId).toBe('a1');
+  });
+
+  it('keeps two inverted pairs paired and in user-turn order', () => {
+    const { items } = buildChatStreamItems(
+      [
+        {
+          ...entry({ id: 'a1', role: 'assistant', items: [text('first reply')] }),
+          userTurnId: 'u1',
+        },
+        {
+          ...entry({ id: 'a2', role: 'assistant', items: [text('second reply')] }),
+          userTurnId: 'u2',
+        },
+        entry({ id: 'u1', role: 'user', items: [text('first prompt')] }),
+        entry({ id: 'u2', role: 'user', items: [text('second prompt')] }),
+      ],
+      sessionId
+    );
+
+    expect(renderedIds(items)).toEqual(['u1', 'a1', 'u2', 'a2']);
+  });
+
+  it('leaves a correctly-ordered user/assistant pair unchanged', () => {
+    const { items } = buildChatStreamItems(
+      [
+        entry({ id: 'u1', role: 'user', items: [text('prompt')] }),
+        {
+          ...entry({ id: 'a1', role: 'assistant', items: [text('reply')] }),
+          userTurnId: 'u1',
+        },
+      ],
+      sessionId
+    );
+
+    expect(renderedIds(items)).toEqual(['u1', 'a1']);
+  });
+
+  it('leaves an assistant without userTurnId before a later user unchanged', () => {
+    const { items } = buildChatStreamItems(
+      [
+        entry({ id: 'a1', role: 'assistant', items: [text('orphan')] }),
+        entry({ id: 'u1', role: 'user', items: [text('prompt')] }),
+      ],
+      sessionId
+    );
+
+    expect(renderedIds(items)).toEqual(['a1', 'u1']);
+  });
 });

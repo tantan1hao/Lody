@@ -22,10 +22,12 @@ import { formatErrorMessage } from '@/utils/format-error';
  * - Turn-scoped history LIST writes (assistant entry creation, ACP update
  *   flushes, finalization, failure notices) wait until the user turn entry is
  *   visible in the CLI-local history doc, so they are causally ordered after it.
- * - The wait is bounded: after `timeoutMs` the gate opens anyway (degrades to
- *   the pre-gate behavior — possible misorder — instead of holding output
- *   hostage to a broken uplink). A timeout implies the web→CLI doc sync is
- *   stalled, in which case that client cannot see our output either way.
+ * - `timeoutMs` is a diagnostic, not a write-release: the gate stays closed and
+ *   `onBeforeOpen` does not run. The "client cannot see our output if sync is
+ *   stalled" assumption is false for mobile — the user entry is already local
+ *   there, so a late CLI insert can permanently invert the transcript. Holding
+ *   list writes is better than a permanently inverted transcript. Dispose still
+ *   opens without `onBeforeOpen` (teardown).
  * - Metadata/status writes are NOT gated: they are map-keyed (no list-order
  *   race) and some sit on the prompt-start critical path.
  *
@@ -33,7 +35,7 @@ import { formatErrorMessage } from '@/utils/format-error';
  * need a gate — their user entry is already local by construction.
  */
 
-export type TurnHistoryGateOpenReason = 'user-turn-synced' | 'timeout' | 'disposed';
+export type TurnHistoryGateOpenReason = 'user-turn-synced' | 'disposed';
 
 export type TurnHistoryGateArgs = {
   logger: Logger;
@@ -54,10 +56,10 @@ export type TurnHistoryGateArgs = {
 };
 
 /**
- * Bounded wait for the user turn entry to sync. Doc sync and Machine RPC both
- * ride Loro Streams, so "RPC delivered but the entry never syncs" implies a
- * degraded transport; 20s covers slow room join + catch-up without making a
- * genuinely broken uplink freeze turn output forever.
+ * Diagnostic deadline for a stalled user-turn sync. The timer only logs; it
+ * never opens the gate. List writes stay held until `user-turn-synced` or
+ * dispose, because a concurrent insert after this deadline can permanently
+ * invert the transcript on devices that already have the user entry.
  */
 export const DEFAULT_TURN_HISTORY_GATE_TIMEOUT_MS = 20_000;
 
@@ -83,13 +85,13 @@ export class TurnHistoryGate {
     const timeoutMs = args.timeoutMs ?? DEFAULT_TURN_HISTORY_GATE_TIMEOUT_MS;
     this.timer = setTimeout(() => {
       this.timer = null;
-      void this.openGate('timeout');
+      this.warnHeldAfterTimeout();
     }, timeoutMs);
     this.timer.unref?.();
     this.unsubscribe = args.subscribeHistory(() => this.scheduleCheck());
     if (!this.unsubscribe) {
       args.logger.debug(
-        `[${args.sessionId}] Turn history gate has no doc subscription; relying on timeout`
+        `[${args.sessionId}] Turn history gate has no doc subscription; list writes stay held until the user turn is local`
       );
     }
     this.scheduleCheck();
@@ -100,7 +102,7 @@ export class TurnHistoryGate {
     return new TurnHistoryGate(null);
   }
 
-  /** Gate that opens once the user turn entry is present locally (or on timeout). */
+  /** Gate that opens once the user turn entry is present locally (or on dispose). */
   static waitForUserTurn(args: TurnHistoryGateArgs): TurnHistoryGate {
     return new TurnHistoryGate(args);
   }
@@ -159,6 +161,17 @@ export class TurnHistoryGate {
     })();
   }
 
+  private warnHeldAfterTimeout(): void {
+    const args = this.args;
+    if (this.open || !args) {
+      return;
+    }
+    const waitedMs = Date.now() - this.createdAtMs;
+    args.logger.warn(
+      `[${args.sessionId}] User turn ${args.userTurnId} did not sync within ${waitedMs}ms; holding turn history list writes until the user entry is local (to avoid permanently ordering the reply before the user message)`
+    );
+  }
+
   private async openGate(reason: TurnHistoryGateOpenReason): Promise<void> {
     if (this.open) {
       return;
@@ -174,15 +187,9 @@ export class TurnHistoryGate {
     const args = this.args;
     if (args) {
       const waitedMs = Date.now() - this.createdAtMs;
-      if (reason === 'timeout') {
-        args.logger.warn(
-          `[${args.sessionId}] User turn ${args.userTurnId} did not sync within ${waitedMs}ms; releasing turn history writes (output may order before the user message)`
-        );
-      } else {
-        args.logger.debug(
-          `[${args.sessionId}] Turn history gate opened (${reason}) after ${waitedMs}ms`
-        );
-      }
+      args.logger.debug(
+        `[${args.sessionId}] Turn history gate opened (${reason}) after ${waitedMs}ms`
+      );
       if (reason !== 'disposed' && args.onBeforeOpen) {
         try {
           await args.onBeforeOpen(reason);
