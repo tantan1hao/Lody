@@ -252,6 +252,7 @@ describe('self-hosted config', () => {
 
   it('uses a validated cache only after the control request fails', async () => {
     const values = new Map<string, string>();
+    let requestInit: RequestInit | undefined;
     const storage = {
       getItem: (key: string) => values.get(key) ?? null,
       setItem: (key: string, value: string) => values.set(key, value),
@@ -259,9 +260,13 @@ describe('self-hosted config', () => {
     const first = await loadSelfHostedConfig({
       controlOrigin: selfHostedConfig.controlOrigin,
       storage,
-      fetchImpl: async () => new Response(JSON.stringify(selfHostedConfig), { status: 200 }),
+      fetchImpl: async (_input, init) => {
+        requestInit = init;
+        return new Response(JSON.stringify(selfHostedConfig), { status: 200 });
+      },
     });
     expect(first.source).toBe('network');
+    expect(requestInit?.credentials).toBe('same-origin');
 
     const cached = await loadSelfHostedConfig({
       controlOrigin: selfHostedConfig.controlOrigin,

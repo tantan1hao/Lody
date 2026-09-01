@@ -198,7 +198,7 @@ export async function loadSelfHostedConfig(options: {
   try {
     const response = await fetchImpl(getSelfHostedConfigUrl(controlOrigin), {
       cache: 'no-store',
-      credentials: 'omit',
+      credentials: 'same-origin',
       signal: AbortSignal.timeout(options.timeoutMs ?? 5_000),
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
