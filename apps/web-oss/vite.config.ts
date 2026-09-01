@@ -2,6 +2,7 @@ import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import tailwindcss from '@tailwindcss/vite';
+import { tanstackRouter } from '@tanstack/router-plugin/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 import wasm from 'vite-plugin-wasm';
@@ -82,6 +83,12 @@ export default defineConfig({
   plugins: [
     tailwindcss(),
     loroCrdtWasmUrlWorkaround(),
+    tanstackRouter({
+      target: 'react',
+      autoCodeSplitting: true,
+      routesDirectory: resolve(__dirname, '../../packages/components/src/routes'),
+      generatedRouteTree: resolve(__dirname, '../../packages/components/src/routeTree.gen.ts'),
+    }),
     react(),
     wasm(),
     emojibaseAssetsPlugin(),
