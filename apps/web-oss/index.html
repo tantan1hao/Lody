@@ -17,10 +17,19 @@
         overflow: hidden;
         margin: 0;
       }
+
+      #boot-status {
+        display: grid;
+        height: 100%;
+        place-items: center;
+        background: #111;
+        color: #aaa;
+        font: 14px system-ui, sans-serif;
+      }
     </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><div id="boot-status" role="status">正在加载 Lody OSS…</div></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
