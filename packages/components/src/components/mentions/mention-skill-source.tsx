@@ -37,7 +37,10 @@ import {
  * references expand to `use /<token> [Skill Path](...)` so the agent receives
  * the provider-filtered skill path while the composer stays compact.
  */
-export const SKILL_MENTION_TRIGGER = '$';
+// 和 slash 命令共用 `/`：技能本来就展开成 `use /<token> …`（见下面的
+// SKILL_MENTION_PROMPT_PREFIX），输入符和展开形式一致更好记。两个源共享一个
+// 触发符由 selectMentionMenuViewForTrigger 聚合，命令不会被挤掉。
+export const SKILL_MENTION_TRIGGER = '/';
 const SKILL_MENTION_PROMPT_PREFIX = '/';
 /** Label of the expanded `[Skill Path](...)` markdown link. The writer and the
    already-expanded detector both derive from this so they cannot drift. */

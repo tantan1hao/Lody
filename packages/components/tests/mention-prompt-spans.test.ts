@@ -8,6 +8,7 @@ import { buildPastedTextRewrites } from '../src/lib/pasted-text-draft';
 import type { SkillMentionItem } from '../src/components/mentions/mention-skill-source';
 import type { PastedTextDraft } from '../src/lib/pasted-text-draft';
 import type { Mention as MentionRange } from '../src/ui/mention/index';
+import { SKILL_MENTION_TRIGGER as T } from '../src/components/mentions/mention-skill-source';
 
 /**
  * The before-send rewrite, assembled the way the two send paths assemble it.
@@ -71,10 +72,10 @@ describe('before-send mention rewrite', () => {
   });
 
   it('ignores a range whose kind owns its own rewrite, so the two cannot collide', () => {
-    const text = 'run $review on it';
+    const text = `run ${T}review on it`;
     const result = expand({
       text,
-      // The composer records a `skill` range for `$review`; the skill builder
+      // The composer records a `skill` range for the trigger token; the skill builder
       // rewrites the same region. Only one of them may claim it.
       mentions: [{ value: 'review', start: 4, end: 11, kind: 'skill' }],
       skills: [skillItem('review', '.claude/skills/review/SKILL.md')],
@@ -83,12 +84,12 @@ describe('before-send mention rewrite', () => {
       'run use /review [Skill Path](.claude/skills/review/SKILL.md) on it'
     );
     expect(result.spans).toHaveLength(1);
-    expect(result.spans?.[0]).toMatchObject({ kind: 'skill', label: '$review' });
+    expect(result.spans?.[0]).toMatchObject({ kind: 'skill', label: `${T}review` });
     expectSpansAddressOutput(result);
   });
 
   it('keeps every span addressing the output when rewrites of different lengths mix', () => {
-    const text = 'see @src/a.ts and [Pasted] then $review for @my-run and #42';
+    const text = `see @src/a.ts and [Pasted] then ${T}review for @my-run and #42`;
     const drafts: PastedTextDraft[] = [
       {
         id: 'paste-1',
@@ -118,7 +119,7 @@ describe('before-send mention rewrite', () => {
     expect(result.spans?.map((span) => [span.kind, span.label])).toEqual([
       ['file', '@src/a.ts'],
       ['pasted_text', '[Pasted]'],
-      ['skill', '$review'],
+      ['skill', `${T}review`],
       ['session', 'my-run'],
       ['issue', '#42'],
     ]);
@@ -135,7 +136,7 @@ describe('before-send mention rewrite', () => {
   });
 
   it('does not depend on the order the contributors run in', () => {
-    const text = 'a [Pasted] b $review c';
+    const text = `a [Pasted] b ${T}review c`;
     const drafts: PastedTextDraft[] = [
       { id: 'p', text: PASTED_BLOB, displayText: '[Pasted]', start: 2, end: 10 },
     ];

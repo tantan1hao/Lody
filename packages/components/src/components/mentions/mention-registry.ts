@@ -284,13 +284,34 @@ export function selectMentionMenuViewForTrigger(
   if (trigger === MENTION_TRIGGER) {
     return selectMentionMenuView(categories, search, options);
   }
-  const direct = categories.find((entry) => entry.directTrigger === trigger);
-  if (!direct) return null;
+  // 多个源可以共用同一个触发符（`/` 同时开命令和技能）。原来用 find 只取第一个，
+  // 排在后面的源会被完全遮蔽——技能源 push 在命令源之前，所以那会是 slash 命令
+  // 整个消失，而不是少几条候选。
+  const direct = categories.filter((entry) => entry.directTrigger === trigger);
+  if (direct.length === 0) return null;
+  if (direct.length === 1) {
+    const only = direct[0];
+    return {
+      level: 'category',
+      category: only,
+      term: search,
+      candidates: only.getCandidates(search),
+    };
+  }
+
+  // 共用触发符时直接出聚合列表，包括空搜索。走 selectMentionMenuView 的话空搜索
+  // 会先给一层「命令 / 技能」的分类选择，等于在原来一步的操作前面插了一步。
+  const limit = options?.aggregateLimitPerCategory ?? AGGREGATE_LIMIT_PER_CATEGORY;
+  const groups: MentionCandidateGroup[] = [];
+  for (const category of direct) {
+    const candidates = category.getCandidates(search, limit).slice(0, limit);
+    if (candidates.length > 0) groups.push({ category, candidates });
+  }
   return {
-    level: 'category',
-    category: direct,
+    level: 'aggregate',
     term: search,
-    candidates: direct.getCandidates(search),
+    categories: direct.filter((category) => matchesCategoryName(category, search)),
+    groups,
   };
 }
 

@@ -39,7 +39,11 @@ function isStringArray(value: unknown): value is string[] {
 function isLocalProjectHistoryProvider(value: unknown): boolean {
   return (
     isObjectRecord(value) &&
-    (value.cliType === 'builtin' || value.cliType === 'registry') &&
+    // 'custom' 同样合法：AgentConfigCliType 有三种，Custom ACP agent
+    // 的启动命令由守护进程侧解析，不需要在这里被挡掉。
+    (value.cliType === 'builtin' ||
+      value.cliType === 'registry' ||
+      value.cliType === 'custom') &&
     typeof value.agentType === 'string' &&
     value.agentType.trim().length > 0
   );

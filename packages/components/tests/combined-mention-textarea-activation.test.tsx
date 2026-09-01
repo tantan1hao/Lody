@@ -50,6 +50,7 @@ vi.mock('../src/components/mentions/mention-agent-role-source', async (importOri
 import { CombinedMentionTextarea } from '../src/components/mentions/combined-mention-textarea';
 import { initI18n } from '../src/i18n';
 import { commands } from '../src/lib/commands';
+import { SKILL_MENTION_TRIGGER as T } from '../src/components/mentions/mention-skill-source';
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -329,17 +330,17 @@ describe('CombinedMentionTextarea mention enablement and activation', () => {
     expect(skillScanEnabled).toContain(true);
   });
 
-  it('retains $ as a direct skill-menu trigger', async () => {
+  it('retains the configured direct skill-menu trigger', async () => {
     await render({ value: '', skillAgent: { machineId: 'machine-1' } });
     expect(skillScanEnabled).not.toContain(true);
 
-    await typeInto('$');
+    await typeInto(T);
 
     expect(skillScanEnabled).toContain(true);
   });
 
-  it('still scans skills for a draft that already carries a $ token', async () => {
-    await render({ value: 'use $review', skillAgent: { machineId: 'machine-1' } });
+  it('still scans skills for a draft that already carries a trigger token', async () => {
+    await render({ value: `use ${T}review`, skillAgent: { machineId: 'machine-1' } });
 
     expect(skillScanEnabled).toContain(true);
   });

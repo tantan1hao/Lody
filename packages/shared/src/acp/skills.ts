@@ -5,6 +5,21 @@ export const DEFAULT_AGENTS_GLOBAL_SKILL_DIR = '~/.agents/skills';
 export const DEFAULT_GLOBAL_SKILL_DIR = '~/.config/agents/skills';
 const CLAUDE_PROJECT_SKILL_DIR = '.claude/skills';
 const CLAUDE_GLOBAL_SKILL_DIR = '~/.claude/skills';
+/**
+ * Claude Code 插件带的技能。市场名和插件名是安装时才知道的，所以用通配段，
+ * 由 `expandHomeSkillDirGlobs` 在扫描前落成真实目录。
+ *
+ * 两种形状（实测本机 35 个技能全部落在这两种里）：
+ *   ~/.claude/plugins/marketplaces/<市场>/skills/<技能>/SKILL.md
+ *   ~/.claude/plugins/marketplaces/<市场>/<plugins|external_plugins>/<插件>/skills/<技能>/SKILL.md
+ *
+ * 不加进来的话，`~/.claude/skills` 里那几个手写的之外，插件装的一个都不出现 ——
+ * 本机是 5 个可见、35 个隐形。
+ */
+const CLAUDE_PLUGIN_SKILL_DIRS = [
+  '~/.claude/plugins/marketplaces/*/skills',
+  '~/.claude/plugins/marketplaces/*/*/*/skills',
+];
 const FACTORY_COMPAT_PROJECT_SKILL_DIR = '.agent/skills';
 /** Codex ships its own built-in ("system") skills under this home-relative
    catalog dir, separate from the user-authored skills in the agent's global
@@ -52,7 +67,10 @@ export const ACP_SKILL_DIRS_BY_AGENT_TYPE: Record<string, SkillDirsByAgentType> 
     ['~/.autohand/skills']
   ),
   bob: skillDirs(['.bob/skills'], ['~/.bob/skills']),
-  claude: skillDirs([CLAUDE_PROJECT_SKILL_DIR], [CLAUDE_GLOBAL_SKILL_DIR]),
+  claude: skillDirs(
+    [CLAUDE_PROJECT_SKILL_DIR],
+    [CLAUDE_GLOBAL_SKILL_DIR, ...CLAUDE_PLUGIN_SKILL_DIRS]
+  ),
   'claude-acp': skillDirs([CLAUDE_PROJECT_SKILL_DIR], [CLAUDE_GLOBAL_SKILL_DIR]),
   'claude-code': skillDirs([CLAUDE_PROJECT_SKILL_DIR], [CLAUDE_GLOBAL_SKILL_DIR]),
   'claude-p': skillDirs([CLAUDE_PROJECT_SKILL_DIR], [CLAUDE_GLOBAL_SKILL_DIR]),

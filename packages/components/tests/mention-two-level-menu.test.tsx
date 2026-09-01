@@ -18,6 +18,7 @@ import {
   type MentionCandidateDetail,
   type MentionCategory,
 } from '../src/components/mentions/mention-registry';
+import { SKILL_MENTION_TRIGGER as T } from '../src/components/mentions/mention-skill-source';
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -447,7 +448,7 @@ describe('skill candidate detail', () => {
       labels
     );
 
-    expect(candidate.insertText).toBe('$code-collab-debug');
+    expect(candidate.insertText).toBe(`${T}code-collab-debug`);
     expect(candidate.detail?.title).toBe('Code Collab Debug');
     expect(candidate.detail?.badges).toEqual(['Project', 'v2', 'symlink']);
     expect(candidate.detail?.rows).toEqual([

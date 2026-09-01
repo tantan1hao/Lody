@@ -131,16 +131,60 @@ describe('selectMentionMenuView', () => {
     expect(getCategoryNavigateText({ namespace: 'issue' })).toBe('@issue:');
   });
 
-  it('opens skills directly from the retained $ trigger', () => {
+  it('opens a lone direct-trigger category straight into its own level', () => {
     const skill = makeCategory('skill', 'skill', 'Skills', ['review']);
-    skill.directTrigger = '$';
+    skill.directTrigger = '/';
 
-    const view = selectMentionMenuViewForTrigger([skill], '$', 'rev');
+    const view = selectMentionMenuViewForTrigger([skill], '/', 'rev');
 
     expect(view?.level).toBe('category');
     if (view?.level !== 'category') throw new Error('expected category');
     expect(view.category.id).toBe('skill');
     expect(view.candidates.map((entry) => entry.value)).toEqual(['review']);
+  });
+
+  it('shows every category sharing a trigger instead of only the first', () => {
+    // 技能和 slash 命令共用 `/`。这里的判据是「后面那个源没被吃掉」——
+    // 原来用 find 只取第一个，而技能源 push 在命令源之前，那会让 slash 命令
+    // 整个消失，不是少几条候选。
+    const skill = makeCategory('skill', 'skill', 'Skills', ['review-code']);
+    const command = makeCategory('command', 'cmd', 'Commands', ['review-pr']);
+    skill.directTrigger = '/';
+    command.directTrigger = '/';
+
+    const view = selectMentionMenuViewForTrigger([skill, command], '/', 'review');
+
+    expect(view?.level).toBe('aggregate');
+    if (view?.level !== 'aggregate') throw new Error('expected aggregate');
+    expect(view.groups.map((group) => group.category.id)).toEqual(['skill', 'command']);
+    expect(view.groups.flatMap((group) => group.candidates.map((c) => c.value))).toEqual([
+      'review-code',
+      'review-pr',
+    ]);
+  });
+
+  it('aggregates a shared trigger on an empty term too', () => {
+    // 空搜索若退回 selectMentionMenuView，会先出一层「命令 / 技能」的分类选择，
+    // 等于在原来一步的操作前面插了一步。刚按下 `/` 就该直接看到候选。
+    const skill = makeCategory('skill', 'skill', 'Skills', ['alpha']);
+    const command = makeCategory('command', 'cmd', 'Commands', ['beta']);
+    skill.directTrigger = '/';
+    command.directTrigger = '/';
+
+    const view = selectMentionMenuViewForTrigger([skill, command], '/', '');
+
+    expect(view?.level).toBe('aggregate');
+    if (view?.level !== 'aggregate') throw new Error('expected aggregate');
+    expect(view.groups.flatMap((group) => group.candidates.map((c) => c.value))).toEqual([
+      'alpha',
+      'beta',
+    ]);
+  });
+
+  it('still returns null for a trigger no category claims', () => {
+    const skill = makeCategory('skill', 'skill', 'Skills', ['review']);
+    skill.directTrigger = '/';
+    expect(selectMentionMenuViewForTrigger([skill], '$', 'rev')).toBeNull();
   });
 });
 

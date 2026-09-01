@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { applyTextRewrites, type ProjectSkill, type ProjectSkillGroup } from '@lody/shared';
 import {
+  SKILL_MENTION_TRIGGER as T,
   buildSkillMentionItems,
   buildSkillMentionRewrites,
   getSkillMentionToken,
@@ -198,14 +199,14 @@ describe('selectSkillMentionCandidates', () => {
 });
 
 describe('hydrateSkillMentionsFromText', () => {
-  it('rebuilds ranges for known $tokens only', () => {
+  it('rebuilds ranges for known trigger tokens only', () => {
     const known = new Set(['code-review', 'deep-research']);
-    const text = 'run $code-review then $unknown and $deep-research';
+    const text = `run ${T}code-review then ${T}unknown and ${T}deep-research`;
     const { mentions, values } = hydrateSkillMentionsFromText(text, known);
     expect(values.sort()).toEqual(['code-review', 'deep-research']);
     expect(mentions).toHaveLength(2);
     const first = mentions[0]!;
-    expect(text.slice(first.start, first.end)).toBe('$code-review');
+    expect(text.slice(first.start, first.end)).toBe(`${T}code-review`);
   });
 });
 
@@ -213,14 +214,14 @@ describe('buildSkillMentionRewrites', () => {
   const items = buildSkillMentionItems(GROUPS);
 
   it('expands project skill tokens to relative skill paths', () => {
-    expect(expandInText('run $deep-research', items, null)).toBe(
+    expect(expandInText(`run ${T}deep-research`, items, null)).toBe(
       'run use /deep-research [Skill Path](.agents/skills/deep-research/SKILL.md)'
     );
   });
 
   it('expands global skill tokens to absolute skill paths when present', () => {
     const result = expandInText(
-      'run $global-only',
+      `run ${T}global-only`,
       items,
       new Set(['~/.claude/skills'])
     );
@@ -232,7 +233,7 @@ describe('buildSkillMentionRewrites', () => {
 
   it('uses the selected provider directories before resolving duplicate tokens', () => {
     const result = expandInText(
-      'run $code-review',
+      `run ${T}code-review`,
       items,
       new Set(['.claude/skills'])
     );
@@ -241,7 +242,7 @@ describe('buildSkillMentionRewrites', () => {
   });
 
   it('does not expand an already annotated skill token again', () => {
-    const text = 'run $deep-research [Skill Path](.agents/skills/deep-research/SKILL.md)';
+    const text = `run ${T}deep-research [Skill Path](.agents/skills/deep-research/SKILL.md)`;
 
     expect(expandInText(text, items, null)).toBe(text);
   });
@@ -263,7 +264,7 @@ describe('system scope skills', () => {
 
   it('expands system skill tokens to their absolute SKILL.md path', () => {
     const items = buildSkillMentionItems([SYSTEM_GROUP]);
-    expect(expandInText('run $imagegen', items, null)).toBe(
+    expect(expandInText(`run ${T}imagegen`, items, null)).toBe(
       'run use /imagegen [Skill Path](/home/user/.codex/skills/.system/imagegen/SKILL.md)'
     );
   });

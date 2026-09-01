@@ -54,6 +54,7 @@ import {
   type PersistedMentionRange,
 } from '../src/components/mentions/mention-persistence';
 import { initI18n } from '../src/i18n';
+import { SKILL_MENTION_TRIGGER as T } from '../src/components/mentions/mention-skill-source';
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -147,7 +148,7 @@ describe('a draft with several kinds of mention keeps all of them', () => {
   });
 
   it('keeps a session mention beside a skill mention', async () => {
-    await roundTrip('see @fix-ci and $review', ['session', 'skill']);
+    await roundTrip(`see @fix-ci and ${T}review`, ['session', 'skill']);
   });
 
   it('keeps a session mention beside an issue mention', async () => {
@@ -155,10 +156,10 @@ describe('a draft with several kinds of mention keeps all of them', () => {
   });
 
   it('keeps all four kinds at once', async () => {
-    await roundTrip('see @fix-ci @src/app.ts $review #123', ['file', 'issue', 'session', 'skill']);
+    await roundTrip(`see @fix-ci @src/app.ts ${T}review #123`, ['file', 'issue', 'session', 'skill']);
   });
 
   it('keeps all four when the session mention comes last in the text', async () => {
-    await roundTrip('see @src/app.ts $review #123 @fix-ci', ['file', 'issue', 'session', 'skill']);
+    await roundTrip(`see @src/app.ts ${T}review #123 @fix-ci`, ['file', 'issue', 'session', 'skill']);
   });
 });

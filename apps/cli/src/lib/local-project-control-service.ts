@@ -1203,6 +1203,68 @@ function toHomeSkillGroup(
   };
 }
 
+/** 通配展开一次最多落多少个目录，防止一条模式把整个 home 走一遍。 */
+const HOME_SKILL_GLOB_MAX_MATCHES = 256;
+
+/**
+ * 把已知目录里带 `*` 的那些展开成实际存在的目录。
+ *
+ * 起因：Claude Code 的插件技能藏在
+ * `~/.claude/plugins/marketplaces/<市场>/skills/<技能>` 和
+ * `.../<市场>/<plugins|external_plugins>/<插件>/skills/<技能>` 下面，市场名和
+ * 插件名是安装时才知道的，写不进静态表。而 `scanProjectSkillGroup` 只认
+ * 「目录 + 一层嵌套」，够不到这个深度。
+ *
+ * 在这里把通配段落成真实目录，扫描逻辑本身一个字都不用改。
+ *
+ * 有意保守：只逐层 readdir，`*` 不跨层匹配、不递归、跳过点开头的目录，
+ * 并且总数封顶 —— 这个函数跑在 home 根上，写松一点就是一次全盘遍历。
+ * 目录不存在按「这条模式没命中」处理，不是错误：绝大多数用户没装插件。
+ */
+async function expandHomeSkillDirGlobs(
+  homeRealPath: string,
+  skillDirs: readonly string[]
+): Promise<string[]> {
+  const expanded: string[] = [];
+  for (const skillDir of skillDirs) {
+    if (!skillDir.includes('*')) {
+      expanded.push(skillDir);
+      continue;
+    }
+    const trimmed = skillDir.trim().replace(/\\/g, '/');
+    if (!trimmed.startsWith('~/')) continue;
+
+    let prefixes: string[] = [''];
+    for (const segment of trimmed.slice(2).split('/')) {
+      if (segment !== '*') {
+        prefixes = prefixes.map((prefix) => (prefix ? `${prefix}/${segment}` : segment));
+        continue;
+      }
+      const next: string[] = [];
+      for (const prefix of prefixes) {
+        if (next.length >= HOME_SKILL_GLOB_MAX_MATCHES) break;
+        let entries: import('node:fs').Dirent[];
+        try {
+          entries = await fs.promises.readdir(path.join(homeRealPath, prefix), {
+            withFileTypes: true,
+          });
+        } catch {
+          continue;
+        }
+        for (const entry of entries) {
+          if (next.length >= HOME_SKILL_GLOB_MAX_MATCHES) break;
+          if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+          next.push(prefix ? `${prefix}/${entry.name}` : entry.name);
+        }
+      }
+      prefixes = next;
+      if (prefixes.length === 0) break;
+    }
+    for (const prefix of prefixes) expanded.push(`~/${prefix}`);
+  }
+  return expanded;
+}
+
 async function scanHomeSkillDirs(
   homeRealPath: string,
   knownSkillDirs: readonly string[],
@@ -1211,7 +1273,7 @@ async function scanHomeSkillDirs(
 ): Promise<ProjectSkillGroup[]> {
   const uniqueSkillDirs = [
     ...new Map(
-      knownSkillDirs.map((skillDir) => {
+      (await expandHomeSkillDirGlobs(homeRealPath, knownSkillDirs)).map((skillDir) => {
         const normalized = normalizeKnownGlobalSkillScanDir(skillDir);
         return [normalized.displayDir, normalized] as const;
       })

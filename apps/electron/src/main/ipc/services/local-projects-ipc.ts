@@ -56,12 +56,23 @@ function parseSendSessionFileLocalInput(payload: unknown): SendSessionFileLocalI
   return { workspaceId, sessionId, machineId, files: parsedFiles }
 }
 
+/**
+ * `AgentConfigCliType` is `'builtin' | 'registry' | 'custom'`, but this guard
+ * used to accept only the first two. A Custom ACP agent therefore failed every
+ * history call with `Invalid history provider: [object Object]` — the message
+ * stringifies the provider object, so it did not even name the offending field.
+ *
+ * Custom agents legitimately appear in the history-provider list: providers are
+ * built from every agent config on the machine, with no allowlist. Their launch
+ * spec is resolved daemon-side (`MessageHandler.resolveHistoryProvider`), so
+ * there is nothing here that a custom provider cannot satisfy.
+ */
 function isLocalProjectHistoryProvider(value: unknown): value is LocalProjectHistoryProvider {
+  const cliType = (value as { cliType?: unknown } | null)?.cliType
   return (
     !!value &&
     typeof value === 'object' &&
-    ((value as { cliType?: unknown }).cliType === 'builtin' ||
-      (value as { cliType?: unknown }).cliType === 'registry') &&
+    (cliType === 'builtin' || cliType === 'registry' || cliType === 'custom') &&
     typeof (value as { agentType?: unknown }).agentType === 'string' &&
     (value as { agentType: string }).agentType.trim().length > 0
   )

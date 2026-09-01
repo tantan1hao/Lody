@@ -128,12 +128,18 @@ describe('project skills helpers', () => {
 
     expect([...getRegisteredGlobalSkillDirs(agents)].sort()).toEqual([
       DEFAULT_AGENTS_GLOBAL_SKILL_DIR,
+      // Claude 插件装的技能在 marketplace 下面，名字要到扫描时才知道，
+      // 所以注册的是带通配段的模式，由扫描器展开成真实目录。
+      '~/.claude/plugins/marketplaces/*/*/*/skills',
+      '~/.claude/plugins/marketplaces/*/skills',
       '~/.claude/skills',
       '~/.config/goose/skills',
       '~/.config/opencode/skills',
     ]);
     expect([
       ...getRegisteredGlobalSkillDirs([{ cliType: 'registry', agentType: 'amp-acp' }]),
+    // amp 自己单列了 `~/.claude/skills` 作兼容别名，走的不是 claude 那条注册，
+    // 所以拿不到 Claude 的插件目录——这里保持原样，不顺手改别家的行为。
     ]).toEqual([DEFAULT_GLOBAL_SKILL_DIR, '~/.claude/skills']);
   });
 
