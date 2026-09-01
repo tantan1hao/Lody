@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
@@ -17,6 +17,7 @@ import {
   resolveBuiltinAuthenticationProcessLaunch,
   resolveBuiltinACPSetting,
   resolveACPProcessLaunchAsync,
+  resolveCursorAcpCommand,
   resolveRegistryAgentACPSetting,
   resolveRegistryNpxPackage,
   withDefaultAcpPathEntries,
@@ -374,6 +375,29 @@ describe('resolveBuiltinACPSetting', () => {
     );
     expect(resolveRegistryNpxPackage(npx, 'freebsd', 'x64')).toBe('acp-extension-claude-pty@0.1.5');
     expect(resolveRegistryNpxPackage(npx, 'linux', 'ia32')).toBe('acp-extension-claude-pty@0.1.5');
+  });
+
+  it('prefers cursor-agent when present, else ~/.local/bin/agent', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'lody-cursor-cli-'));
+    const pathDir = join(home, 'bin');
+    const officialDir = join(home, '.local', 'bin');
+    await mkdir(pathDir, { recursive: true });
+    await mkdir(officialDir, { recursive: true });
+    await writeFile(join(pathDir, 'cursor-agent'), '');
+    await writeFile(join(officialDir, 'agent'), '');
+    try {
+      expect(
+        resolveCursorAcpCommand({ PATH: pathDir, Path: pathDir }, home)
+      ).toBe(join(pathDir, 'cursor-agent'));
+      expect(resolveCursorAcpCommand({ PATH: '/missing', Path: '/missing' }, home)).toBe(
+        join(officialDir, 'agent')
+      );
+      expect(resolveCursorAcpCommand({ PATH: '/missing', Path: '/missing' }, join(home, 'empty'))).toBe(
+        'cursor-agent'
+      );
+    } finally {
+      await rm(home, { recursive: true, force: true });
+    }
   });
 
   it('launches Kimi Code through the local kimi ACP command', () => {

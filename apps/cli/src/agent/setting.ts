@@ -165,6 +165,54 @@ export function resolveRegistryNpxPackage(
 
 const DEFAULT_ACP_PATH_RELATIVE_DIRS = ['.local/bin', 'bin', '.claude/local'] as const;
 const KIMI_CODE_ACP_PATH_RELATIVE_DIR = '.kimi-code/bin';
+const CURSOR_REGISTRY_AGENT_ID = 'cursor';
+const CURSOR_LEGACY_CLI = 'cursor-agent';
+const CURSOR_OFFICIAL_CLI_RELATIVE = join('.local', 'bin', 'agent');
+
+function isExistingFile(filePath: string): boolean {
+  return existsSync(filePath);
+}
+
+function lookPath(command: string, pathValue: string): string | undefined {
+  if (command.includes('/') || command.includes('\\')) {
+    return isExistingFile(command) ? command : undefined;
+  }
+  for (const dir of pathValue.split(delimiter).filter(Boolean)) {
+    const candidate = join(dir, command);
+    if (isExistingFile(candidate)) {
+      return candidate;
+    }
+    if (process.platform === 'win32') {
+      const exe = `${candidate}.exe`;
+      if (isExistingFile(exe)) {
+        return exe;
+      }
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Cursor's registry entry still says `cursor-agent`. The official CLI is now
+ * `~/.local/bin/agent` (`agent acp`). Do not fall back to a bare `agent` on
+ * PATH — that name is also used by Grok.
+ */
+export function resolveCursorAcpCommand(
+  env: NodeJS.ProcessEnv = process.env,
+  homeDir = homedir()
+): string {
+  const withDefaults = withDefaultAcpPathEntries(env, CURSOR_REGISTRY_AGENT_ID);
+  const pathKey = getPathEnvKey(withDefaults);
+  const legacy = lookPath(CURSOR_LEGACY_CLI, withDefaults[pathKey] ?? '');
+  if (legacy) {
+    return legacy;
+  }
+  const official = join(homeDir, CURSOR_OFFICIAL_CLI_RELATIVE);
+  if (isExistingFile(official)) {
+    return official;
+  }
+  return CURSOR_LEGACY_CLI;
+}
 
 const registryAgentsById: Record<string, RegistryAcpAgent> = Object.fromEntries(
   REGISTRY_ACP_AGENTS.map((agent) => [agent.id, agent])
@@ -235,14 +283,18 @@ export function getAcpCapabilitySourceVersion(
 export function resolveRegistryAgentACPSetting(agent: RegistryAcpAgent): ResolvedACPSetting {
   if (agent.distribution.local?.command) {
     const isNpx = agent.distribution.local.command === 'npx';
+    const command =
+      agent.id === CURSOR_REGISTRY_AGENT_ID && agent.distribution.local.command === CURSOR_LEGACY_CLI
+        ? resolveCursorAcpCommand()
+        : agent.distribution.local.command;
     const args = [...(isNpx ? [NPX_CACHE_MODE_ARG] : []), ...(agent.distribution.local.args ?? [])];
     return {
       status: {
         agent: `${agent.name}@${agent.version}`,
-        command: agent.distribution.local.command,
+        command,
       },
       exec: {
-        command: agent.distribution.local.command,
+        command,
         args,
         env: agent.distribution.local.env,
       },
