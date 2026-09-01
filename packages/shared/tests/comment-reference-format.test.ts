@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { CommentReferencePayloadSchema, formatCommentReferenceForPrompt } from '../src/index';
+import {
+  CommentReferencePayloadSchema,
+  SessionInputBlockSchema,
+  formatCommentReferenceForPrompt,
+} from '../src/index';
 
 describe('session_text comment references', () => {
   it('accepts a conversation quote without file fields', () => {
@@ -38,5 +42,41 @@ describe('session_text comment references', () => {
         '</comment-reference>',
       ].join('\n')
     );
+  });
+
+  it('keeps the existing file-comment prompt format', () => {
+    expect(
+      formatCommentReferenceForPrompt({
+        source: 'lody',
+        path: 'src/foo.ts',
+        lineNumber: 42,
+        side: 'additions',
+        commentBody: 'Handle the null case.',
+        authorName: 'Ada',
+      })
+    ).toBe(
+      [
+        '<comment-reference path="src/foo.ts" line="42" side="additions">',
+        '@Ada:',
+        'Handle the null case.',
+        '</comment-reference>',
+      ].join('\n')
+    );
+  });
+
+  it('accepts a session_text comment_reference input block', () => {
+    expect(
+      SessionInputBlockSchema.parse({
+        type: 'comment_reference',
+        source: 'session_text',
+        commentBody: 'just the selected text',
+        role: 'assistant',
+      })
+    ).toMatchObject({
+      type: 'comment_reference',
+      source: 'session_text',
+      commentBody: 'just the selected text',
+      role: 'assistant',
+    });
   });
 });
