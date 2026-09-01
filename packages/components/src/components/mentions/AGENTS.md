@@ -13,20 +13,22 @@ Product-level mention sources built on `src/ui/mention`.
   `var(--mention-input-width)` so menus stay inside the composer/input range.
 - `$` skill tokens must remain whitespace-free; hydration scans from `$` to the
   next whitespace.
-- `$` skill candidates come from `useProjectSkills`, not Codex's runtime skill
-  registry. One CLI `list-global-skills` home scan returns two scopes: `global`
-  (user-authored, over `ALL_KNOWN_GLOBAL_SKILL_DIRS`) and `system` (agent
-  built-ins, over `ALL_KNOWN_SYSTEM_SKILL_DIRS`, e.g. `~/.codex/skills/.system`),
-  each filtered by the provider's `getRegisteredGlobalSkillDirs` /
-  `getRegisteredSystemSkillDirs`. `~/.agents/skills` is a provider-specific
-  alias, not a universal fallback: only providers with verified support register
-  it. The scanner handles flat `~/<agent>/skills/<skill>/SKILL.md` and catalog
-  `~/<agent>/skills/<category>/<skill>/SKILL.md`; paths outside the provider's
-  registered roots (e.g. plugin caches) appear only once their dirs are added.
-- Before send, known `$` skill tokens are expanded in prompt text to
+- Skill candidates come from `useProjectSkills`, not Codex's runtime skill
+  registry. One CLI `list-global-skills` home scan returns `global`
+  (`ALL_KNOWN_GLOBAL_SKILL_DIRS`), `system` (`ALL_KNOWN_SYSTEM_SKILL_DIRS`, e.g.
+  `~/.codex/skills/.system`), and Claude `hook` files (`ALL_KNOWN_GLOBAL_HOOK_FILES`).
+  Project scans add `.claude/settings.json` / `.claude/hooks/hooks.json` the same
+  way. Provider filters use `getRegisteredGlobalSkillDirs` /
+  `getRegisteredSystemSkillDirs` / `getRegisteredHookDirs`, and a registered `*`
+  glob matches the expanded dir (`skillDirMatchesPattern`). The Claude family
+  (`claude`, `claude-acp`, `claude-code`, `claude-p`) shares plugin
+  marketplace/cache/repos skill dirs, `~/.agents/skills`, and those hook files.
+  `~/.agents/skills` is still not a universal fallback for other providers. Do
+  not scan `.git/hooks` or treat a plugin root as a skill dir.
+- Before send, known skill tokens are expanded in prompt text to
   `use /token [Skill Path](path)`. Project skills use their project-relative
-  `SKILL.md` path; home-scoped (`global` + `system`) skills use the CLI-provided
-  absolute `SKILL.md` path. Display order is project → global → system
+  `SKILL.md` path; home-scoped (`global` + `system` + `hook`) skills use the
+  CLI-provided absolute path. Display order is project → global → system → hook
   (`compareProjectSkillScope`).
 - Hydrators should only add ranges for known tokens/items and should preserve
   existing external `pasted_text` mention ranges. Every hydrator must record a

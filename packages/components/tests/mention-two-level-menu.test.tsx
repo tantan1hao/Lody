@@ -426,7 +426,7 @@ describe('skill candidate detail', () => {
     path: 'Path',
     linksTo: 'Links to',
     symlink: 'symlink',
-    scope: { project: 'Project', global: 'Global', system: 'System' },
+    scope: { project: 'Project', global: 'Global', system: 'System', hook: 'Hook' },
   };
 
   it('carries the skill metadata the old two-pane menu showed', () => {

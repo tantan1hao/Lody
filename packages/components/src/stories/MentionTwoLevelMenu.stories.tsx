@@ -34,7 +34,7 @@ const SKILL_LABELS = {
   path: 'Path',
   linksTo: 'Links to',
   symlink: 'symlink',
-  scope: { project: 'Project', global: 'Global', system: 'System' },
+  scope: { project: 'Project', global: 'Global', system: 'System', hook: 'Hook' },
 };
 
 const FILES: MentionCandidate[] = [

@@ -496,6 +496,194 @@ Secret notes
     }
   });
 
+  it('lists Claude plugin marketplace, cache, and repo skills from globbed home dirs', async () => {
+    const homePath = await createTempProject();
+    try {
+      await mkdir(
+        join(homePath, '.claude', 'plugins', 'marketplaces', 'demo', 'skills', 'from-market'),
+        { recursive: true }
+      );
+      await writeFile(
+        join(
+          homePath,
+          '.claude',
+          'plugins',
+          'marketplaces',
+          'demo',
+          'skills',
+          'from-market',
+          'SKILL.md'
+        ),
+        `---
+name: from-market
+---
+`
+      );
+      await mkdir(
+        join(
+          homePath,
+          '.claude',
+          'plugins',
+          'cache',
+          'demo',
+          'plug',
+          '1.0.0',
+          'skills',
+          'from-cache'
+        ),
+        { recursive: true }
+      );
+      await writeFile(
+        join(
+          homePath,
+          '.claude',
+          'plugins',
+          'cache',
+          'demo',
+          'plug',
+          '1.0.0',
+          'skills',
+          'from-cache',
+          'SKILL.md'
+        ),
+        `---
+name: from-cache
+---
+`
+      );
+      await mkdir(join(homePath, '.claude', 'plugins', 'repos', 'demo', 'skills', 'from-repo'), {
+        recursive: true,
+      });
+      await writeFile(
+        join(homePath, '.claude', 'plugins', 'repos', 'demo', 'skills', 'from-repo', 'SKILL.md'),
+        `---
+name: from-repo
+---
+`
+      );
+
+      const service = new LocalProjectControlService(createLogger());
+      const result = await service.listGlobalSkills({ homePath });
+      const names = result.groups.flatMap((group) => group.skills.map((skill) => skill.name)).sort();
+      expect(names).toEqual(['from-cache', 'from-market', 'from-repo']);
+      expect(result.groups.map((group) => group.dir).sort()).toEqual([
+        '~/.claude/plugins/cache/demo/plug/1.0.0/skills',
+        '~/.claude/plugins/marketplaces/demo/skills',
+        '~/.claude/plugins/repos/demo/skills',
+      ]);
+    } finally {
+      await rm(homePath, { recursive: true, force: true });
+    }
+  });
+
+  it('lists Claude hooks from settings and plugin hooks.json, not .git/hooks', async () => {
+    const homePath = await createTempProject();
+    try {
+      await mkdir(join(homePath, '.claude'), { recursive: true });
+      await writeFile(
+        join(homePath, '.claude', 'settings.json'),
+        JSON.stringify({
+          hooks: {
+            SessionStart: [{ hooks: [{ type: 'command', command: 'echo session' }] }],
+          },
+        })
+      );
+      await mkdir(
+        join(
+          homePath,
+          '.claude',
+          'plugins',
+          'marketplaces',
+          'official',
+          'plugins',
+          'sec',
+          'hooks'
+        ),
+        { recursive: true }
+      );
+      await writeFile(
+        join(
+          homePath,
+          '.claude',
+          'plugins',
+          'marketplaces',
+          'official',
+          'plugins',
+          'sec',
+          'hooks',
+          'hooks.json'
+        ),
+        JSON.stringify({
+          hooks: {
+            PreToolUse: [
+              {
+                matcher: 'Bash',
+                hooks: [{ type: 'command', command: 'python3 check.py' }],
+              },
+            ],
+          },
+        })
+      );
+
+      const service = new LocalProjectControlService(createLogger());
+      const result = await service.listGlobalSkills({ homePath });
+      const hookGroups = result.groups.filter((group) => group.scope === 'hook');
+      expect(hookGroups.map((group) => group.dir).sort()).toEqual([
+        '~/.claude/plugins/marketplaces/official/plugins/sec/hooks/hooks.json',
+        '~/.claude/settings.json',
+      ]);
+      expect(hookGroups.flatMap((group) => group.skills.map((skill) => skill.name)).sort()).toEqual([
+        'PreToolUse-Bash',
+        'SessionStart',
+      ]);
+      expect(result.groups.some((group) => group.dir.includes('.git'))).toBe(false);
+    } finally {
+      await rm(homePath, { recursive: true, force: true });
+    }
+  });
+
+  it('lists project Claude hooks from .claude/settings.json', async () => {
+    const rootPath = await createTempProject();
+    try {
+      await mkdir(join(rootPath, '.claude'), { recursive: true });
+      await writeFile(
+        join(rootPath, '.claude', 'settings.json'),
+        JSON.stringify({
+          hooks: {
+            Stop: [{ hooks: [{ type: 'command', command: 'echo stop' }] }],
+          },
+        })
+      );
+
+      const service = new LocalProjectControlService(createLogger());
+      const result = await service.listProjectSkills(rootPath, ['.claude/skills']);
+      expect(result.groups).toEqual([
+        {
+          scope: 'hook',
+          dir: '.claude/settings.json',
+          truncated: false,
+          skills: [
+            {
+              id: '.claude/settings.json#Stop',
+              name: 'Stop',
+              description: 'echo stop',
+              relativePath: '.claude/settings.json',
+              absolutePath: join(rootPath, '.claude', 'settings.json'),
+              isSymlink: false,
+              content: JSON.stringify(
+                { event: 'Stop', type: 'command', command: 'echo stop' },
+                null,
+                2
+              ),
+            },
+          ],
+        },
+      ]);
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
   it('skips global skill symlinks that resolve outside the user home', async () => {
     const homePath = await createTempProject();
     const outsidePath = await createTempProject();

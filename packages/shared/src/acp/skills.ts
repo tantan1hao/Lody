@@ -6,19 +6,44 @@ export const DEFAULT_GLOBAL_SKILL_DIR = '~/.config/agents/skills';
 const CLAUDE_PROJECT_SKILL_DIR = '.claude/skills';
 const CLAUDE_GLOBAL_SKILL_DIR = '~/.claude/skills';
 /**
- * Claude Code 插件带的技能。市场名和插件名是安装时才知道的，所以用通配段，
- * 由 `expandHomeSkillDirGlobs` 在扫描前落成真实目录。
+ * Claude Code 插件带的技能。市场名、插件名、cache 版本是安装时才知道的，所以
+ * 用通配段，由 `expandHomeSkillDirGlobs` 在扫描前落成真实目录。
  *
- * 两种形状（实测本机 35 个技能全部落在这两种里）：
+ * 市场目录（实测本机技能几乎都在这两种里）：
  *   ~/.claude/plugins/marketplaces/<市场>/skills/<技能>/SKILL.md
  *   ~/.claude/plugins/marketplaces/<市场>/<plugins|external_plugins>/<插件>/skills/<技能>/SKILL.md
+ * 已安装副本（`installed_plugins.json` 的 installPath）：
+ *   ~/.claude/plugins/cache/<市场>/<插件>/<版本>/skills/<技能>/SKILL.md
+ * 本地仓库检出：
+ *   ~/.claude/plugins/repos/<仓库>/skills/<技能>/SKILL.md
  *
- * 不加进来的话，`~/.claude/skills` 里那几个手写的之外，插件装的一个都不出现 ——
- * 本机是 5 个可见、35 个隐形。
+ * 不加进来的话，`~/.claude/skills` 里那几个手写的之外，插件装的一个都不出现。
+ * 不把插件根目录本身登记成 skill dir，避免把 hooks/commands 当 SKILL.md 扫进去。
  */
 const CLAUDE_PLUGIN_SKILL_DIRS = [
   '~/.claude/plugins/marketplaces/*/skills',
   '~/.claude/plugins/marketplaces/*/*/*/skills',
+  '~/.claude/plugins/cache/*/*/skills',
+  '~/.claude/plugins/cache/*/*/*/skills',
+  '~/.claude/plugins/repos/*/skills',
+];
+/**
+ * Claude 用户 settings、项目 settings、以及插件 `hooks/hooks.json`。
+ * 扫的是文件，不是 `.git/hooks`，也不是随便一个叫 hooks 的源码目录。
+ */
+export const ALL_KNOWN_GLOBAL_HOOK_FILES = [
+  '~/.claude/settings.json',
+  '~/.claude/settings.local.json',
+  '~/.claude/hooks/hooks.json',
+  '~/.claude/plugins/marketplaces/*/*/hooks/hooks.json',
+  '~/.claude/plugins/marketplaces/*/*/*/hooks/hooks.json',
+  '~/.claude/plugins/cache/*/*/hooks/hooks.json',
+  '~/.claude/plugins/cache/*/*/*/hooks/hooks.json',
+];
+export const ALL_KNOWN_PROJECT_HOOK_FILES = [
+  '.claude/settings.json',
+  '.claude/settings.local.json',
+  '.claude/hooks/hooks.json',
 ];
 const FACTORY_COMPAT_PROJECT_SKILL_DIR = '.agent/skills';
 /** Codex ships its own built-in ("system") skills under this home-relative
@@ -41,6 +66,13 @@ function skillDirs(
 ): SkillDirsByAgentType {
   return { projectDirs, globalDirs, systemDirs };
 }
+
+/** Shared by `claude` and its ACP/CLI aliases so a key never travels without
+ *  the plugin / agents locations the unsuffixed provider already has. */
+const CLAUDE_FAMILY_SKILL_DIRS = skillDirs(
+  [CLAUDE_PROJECT_SKILL_DIR],
+  [CLAUDE_GLOBAL_SKILL_DIR, DEFAULT_AGENTS_GLOBAL_SKILL_DIR, ...CLAUDE_PLUGIN_SKILL_DIRS]
+);
 
 export const ACP_SKILL_DIRS_BY_AGENT_TYPE: Record<string, SkillDirsByAgentType> = {
   adal: skillDirs(['.adal/skills'], ['~/.adal/skills']),
@@ -67,13 +99,10 @@ export const ACP_SKILL_DIRS_BY_AGENT_TYPE: Record<string, SkillDirsByAgentType> 
     ['~/.autohand/skills']
   ),
   bob: skillDirs(['.bob/skills'], ['~/.bob/skills']),
-  claude: skillDirs(
-    [CLAUDE_PROJECT_SKILL_DIR],
-    [CLAUDE_GLOBAL_SKILL_DIR, ...CLAUDE_PLUGIN_SKILL_DIRS]
-  ),
-  'claude-acp': skillDirs([CLAUDE_PROJECT_SKILL_DIR], [CLAUDE_GLOBAL_SKILL_DIR]),
-  'claude-code': skillDirs([CLAUDE_PROJECT_SKILL_DIR], [CLAUDE_GLOBAL_SKILL_DIR]),
-  'claude-p': skillDirs([CLAUDE_PROJECT_SKILL_DIR], [CLAUDE_GLOBAL_SKILL_DIR]),
+  claude: CLAUDE_FAMILY_SKILL_DIRS,
+  'claude-acp': CLAUDE_FAMILY_SKILL_DIRS,
+  'claude-code': CLAUDE_FAMILY_SKILL_DIRS,
+  'claude-p': CLAUDE_FAMILY_SKILL_DIRS,
   cline: skillDirs(
     ['.cline/skills', '.clinerules/skills', CLAUDE_PROJECT_SKILL_DIR],
     ['~/.cline/skills']
@@ -214,8 +243,11 @@ export const ACP_SKILL_DIRS_BY_AGENT_TYPE: Record<string, SkillDirsByAgentType> 
    v9: home scan also surfaces agent built-in `system` skills (codex
    `~/.codex/skills/.system`) under the new `'system'` scope.
    v10: grok/grok-build get `.agents/skills`; registry `*-acp`/`*-cli` ids
-   inherit the unsuffixed provider mapping (e.g. antigravity-acp). */
-export const KNOWN_SKILL_DIRS_VERSION = 10;
+   inherit the unsuffixed provider mapping (e.g. antigravity-acp).
+   v11: Claude family shares plugin cache/repos + `~/.agents/skills`; home and
+   project scans also surface Claude `hook` files; registered globs match
+   expanded dirs. */
+export const KNOWN_SKILL_DIRS_VERSION = 11;
 
 export const DEFAULT_PROJECT_SKILLS_CONTENT_BUDGET_BYTES = 2 * 1024 * 1024;
 export const DEFAULT_PROJECT_SKILLS_RESULT_MAX_SKILLS = 5_000;
@@ -245,20 +277,54 @@ export const ALL_KNOWN_SYSTEM_SKILL_DIRS: string[] = [
   ...new Set(Object.values(ACP_SKILL_DIRS_BY_AGENT_TYPE).flatMap((value) => value.systemDirs)),
 ].sort((left, right) => left.localeCompare(right));
 
-export type ProjectSkillScope = 'project' | 'global' | 'system';
+export type ProjectSkillScope = 'project' | 'global' | 'system' | 'hook';
 
 const PROJECT_SKILL_SCOPE_ORDER: Record<ProjectSkillScope, number> = {
   project: 0,
   global: 1,
   system: 2,
+  hook: 3,
 };
 
-/** Stable display order for skill scopes: project, then global, then system. */
+/** Stable display order: project, then global, then system, then hook. */
 export function compareProjectSkillScope(
   left: ProjectSkillScope,
   right: ProjectSkillScope
 ): number {
   return PROJECT_SKILL_SCOPE_ORDER[left] - PROJECT_SKILL_SCOPE_ORDER[right];
+}
+
+/**
+ * Whether `dir` is the registered pattern, a child of it, or an expansion of
+ * a star-segment glob (star = one path segment). Mention filters and the
+ * Settings "registered" badge both use this so a marketplace star pattern
+ * matches the scanned `open-code-review/skills` dir instead of dropping it.
+ */
+export function skillDirMatchesPattern(dir: string, pattern: string): boolean {
+  if (dir === pattern) {
+    return true;
+  }
+  const dirParts = dir.split('/');
+  const patternParts = pattern.split('/');
+  if (dirParts.length < patternParts.length) {
+    return false;
+  }
+  for (let i = 0; i < patternParts.length; i++) {
+    const expected = patternParts[i];
+    if (expected !== '*' && expected !== dirParts[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+export function skillDirMatchesAny(dir: string, patterns: Iterable<string>): boolean {
+  for (const pattern of patterns) {
+    if (skillDirMatchesPattern(dir, pattern)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export type ProjectSkill = {
@@ -429,6 +495,150 @@ export function getRegisteredSystemSkillDirs(
     }
   }
   return systemDirs;
+}
+
+function agentUsesClaudeHooks(agentType: string): boolean {
+  return resolveSkillDirMapping(agentType) === CLAUDE_FAMILY_SKILL_DIRS;
+}
+
+export function getRegisteredHookDirs(
+  agents: ReadonlyArray<{ cliType: AgentConfigCliType; agentType: string }>
+): Set<string> {
+  const hookDirs = new Set<string>();
+  for (const agent of agents) {
+    if (!agentUsesClaudeHooks(agent.agentType)) {
+      continue;
+    }
+    for (const file of ALL_KNOWN_GLOBAL_HOOK_FILES) {
+      hookDirs.add(file);
+    }
+    for (const file of ALL_KNOWN_PROJECT_HOOK_FILES) {
+      hookDirs.add(file);
+    }
+  }
+  return hookDirs;
+}
+
+const MAX_HOOKS_PER_DOCUMENT = 256;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function sanitizeHookSkillName(raw: string): string {
+  const sanitized = raw
+    .replace(/[^\w.-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+  return sanitized || 'hook';
+}
+
+function uniqueHookSkillName(base: string, used: Set<string>): string {
+  let name = base;
+  let index = 2;
+  while (used.has(name)) {
+    name = `${base}-${index}`;
+    index += 1;
+  }
+  used.add(name);
+  return name;
+}
+
+function previewHookCommand(command: string): string {
+  return command.replace(/\s+/g, ' ').trim().slice(0, 160);
+}
+
+function extractClaudeHooksTable(parsed: unknown): Record<string, unknown[]> | null {
+  if (!isRecord(parsed)) {
+    return null;
+  }
+
+  const source = isRecord(parsed.hooks) ? parsed.hooks : parsed;
+  const events: Record<string, unknown[]> = {};
+  for (const [event, value] of Object.entries(source)) {
+    if (event === 'description' || !Array.isArray(value)) {
+      continue;
+    }
+    events[event] = value;
+  }
+  const hasMatcher = Object.values(events).some((matchers) =>
+    matchers.some((matcher) => isRecord(matcher) && Array.isArray(matcher.hooks))
+  );
+  return hasMatcher ? events : null;
+}
+
+export function parseClaudeHooksDocument(raw: string): Array<{
+  name: string;
+  description?: string;
+  content: string;
+}> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error('Hook file is not valid JSON.');
+  }
+
+  const table = extractClaudeHooksTable(parsed);
+  if (!table) {
+    return [];
+  }
+
+  const usedNames = new Set<string>();
+  const entries: Array<{ name: string; description?: string; content: string }> = [];
+  for (const [event, matchers] of Object.entries(table)) {
+    for (const matcher of matchers) {
+      if (!isRecord(matcher) || !Array.isArray(matcher.hooks)) {
+        continue;
+      }
+      const matcherLabel = typeof matcher.matcher === 'string' ? matcher.matcher.trim() : '';
+      for (const handler of matcher.hooks) {
+        if (entries.length >= MAX_HOOKS_PER_DOCUMENT) {
+          return entries;
+        }
+        if (!isRecord(handler)) {
+          continue;
+        }
+        const command = typeof handler.command === 'string' ? handler.command : '';
+        const name = uniqueHookSkillName(
+          sanitizeHookSkillName(matcherLabel ? `${event}-${matcherLabel}` : event),
+          usedNames
+        );
+        const description = previewHookCommand(command);
+        entries.push({
+          name,
+          ...(description ? { description } : {}),
+          content: JSON.stringify(
+            {
+              event,
+              ...(matcherLabel ? { matcher: matcherLabel } : {}),
+              ...handler,
+            },
+            null,
+            2
+          ),
+        });
+      }
+    }
+  }
+  return entries;
+}
+
+export function buildHookProjectSkills(args: {
+  groupDir: string;
+  relativePath: string;
+  absolutePath?: string;
+  raw: string;
+}): ProjectSkill[] {
+  return parseClaudeHooksDocument(args.raw).map((entry) => ({
+    id: `${args.groupDir}#${entry.name}`,
+    name: entry.name,
+    ...(entry.description ? { description: entry.description } : {}),
+    relativePath: args.relativePath,
+    ...(args.absolutePath ? { absolutePath: args.absolutePath } : {}),
+    isSymlink: false,
+    content: entry.content,
+  }));
 }
 
 function normalizeFrontmatterValue(rawValue: string): string {

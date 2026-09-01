@@ -4,6 +4,7 @@ import {
   SKILL_MENTION_TRIGGER as T,
   buildSkillMentionItems,
   buildSkillMentionRewrites,
+  getAllowedSkillMentionDirs,
   getSkillMentionToken,
   hydrateSkillMentionsFromText,
   mergeMentionSkillState,
@@ -195,6 +196,38 @@ describe('selectSkillMentionCandidates', () => {
   it('ranks prefix matches ahead of substring matches', () => {
     const result = selectSkillMentionCandidates(items, 'co', null);
     expect(result[0]?.token).toBe('code-review');
+  });
+
+  it('treats registered glob skill dirs as matching expanded marketplace paths', () => {
+    const pluginItems = buildSkillMentionItems([
+      {
+        scope: 'global',
+        dir: '~/.claude/plugins/marketplaces/open-code-review/skills',
+        truncated: false,
+        skills: [
+          skill({
+            name: 'ocr-plugin',
+            relativePath:
+              '~/.claude/plugins/marketplaces/open-code-review/skills/ocr-plugin/SKILL.md',
+          }),
+        ],
+      },
+    ]);
+    const result = selectSkillMentionCandidates(
+      pluginItems,
+      '',
+      new Set(['~/.claude/plugins/marketplaces/*/skills'])
+    );
+    expect(result.map((item) => item.token)).toEqual(['ocr-plugin']);
+  });
+});
+
+describe('getAllowedSkillMentionDirs', () => {
+  it('includes Claude plugin globs and hook files for the claude family', () => {
+    const dirs = getAllowedSkillMentionDirs({ cliType: 'builtin', agentType: 'claude' });
+    expect(dirs?.has('~/.claude/plugins/cache/*/*/*/skills')).toBe(true);
+    expect(dirs?.has('~/.claude/settings.json')).toBe(true);
+    expect(dirs?.has('~/.agents/skills')).toBe(true);
   });
 });
 

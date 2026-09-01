@@ -2133,7 +2133,7 @@ const ProjectSkillSchema = z
 
 const ProjectSkillGroupSchema = z
   .object({
-    scope: z.enum(['project', 'global', 'system']),
+    scope: z.enum(['project', 'global', 'system', 'hook']),
     dir: z.string(),
     skills: z.array(ProjectSkillSchema),
     truncated: z.boolean(),

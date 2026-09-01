@@ -725,6 +725,7 @@ export function useMentionCategories(sources: MentionCategorySources): MentionCa
                 project: t('workspace.projects.skills.scopeProject', 'Project'),
                 global: t('workspace.projects.skills.scopeGlobal', 'Global'),
                 system: t('workspace.projects.skills.scopeSystem', 'System'),
+                hook: t('workspace.projects.skills.scopeHook', 'Hook'),
               },
             },
             limit

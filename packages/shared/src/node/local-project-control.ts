@@ -85,7 +85,10 @@ function isProjectSkillsResult(value: unknown): boolean {
     value.groups.every(
       (group) =>
         isObjectRecord(group) &&
-        (group.scope === 'project' || group.scope === 'global' || group.scope === 'system') &&
+        (group.scope === 'project' ||
+          group.scope === 'global' ||
+          group.scope === 'system' ||
+          group.scope === 'hook') &&
         typeof group.dir === 'string' &&
         Array.isArray(group.skills) &&
         group.skills.every(

@@ -3,8 +3,10 @@ import { useAtomValue } from 'jotai';
 import {
   compareProjectSkillScope,
   getRegisteredGlobalSkillDirs,
+  getRegisteredHookDirs,
   getRegisteredSkillDirs,
   getRegisteredSystemSkillDirs,
+  skillDirMatchesAny,
   type AgentConfigCliType,
   type ProjectSkill,
   type ProjectSkillScope,
@@ -155,15 +157,7 @@ export function selectSkillMentionCandidates(
 }
 
 function isSkillMentionDirAllowed(dir: string, allowedDirs: ReadonlySet<string>): boolean {
-  if (allowedDirs.has(dir)) {
-    return true;
-  }
-  for (const allowedDir of allowedDirs) {
-    if (dir.startsWith(`${allowedDir}/`)) {
-      return true;
-    }
-  }
-  return false;
+  return skillDirMatchesAny(dir, allowedDirs);
 }
 
 export function getAllowedSkillMentionDirs(
@@ -177,6 +171,7 @@ export function getAllowedSkillMentionDirs(
     ...getRegisteredSkillDirs([agent]),
     ...getRegisteredGlobalSkillDirs([agent]),
     ...getRegisteredSystemSkillDirs([agent]),
+    ...getRegisteredHookDirs([agent]),
   ]);
 }
 

@@ -3032,6 +3032,7 @@
   "workspace.projects.skills.sheetTitle": "技能",
   "workspace.projects.skills.rowLabel": "项目技能",
   "workspace.projects.skills.scopeGlobal": "全局",
+  "workspace.projects.skills.scopeHook": "Hook",
   "workspace.projects.skills.scopeProject": "项目",
   "workspace.projects.skills.scopeSystem": "系统",
   "workspace.projects.skills.loading": "正在加载技能",

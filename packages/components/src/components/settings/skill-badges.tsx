@@ -30,9 +30,11 @@ export function SkillScopeBadge({
     <span className={cn(SKILL_BADGE_BASE, SKILL_BADGE_PADDING[size], 'font-medium', className)}>
       {scope === 'system'
         ? t('workspace.projects.skills.scopeSystem', 'System')
-        : scope === 'global'
-          ? t('workspace.projects.skills.scopeGlobal', 'Global')
-          : t('workspace.projects.skills.scopeProject', 'Project')}
+        : scope === 'hook'
+          ? t('workspace.projects.skills.scopeHook', 'Hook')
+          : scope === 'global'
+            ? t('workspace.projects.skills.scopeGlobal', 'Global')
+            : t('workspace.projects.skills.scopeProject', 'Project')}
     </span>
   );
 }

@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   DEFAULT_AGENTS_GLOBAL_SKILL_DIR,
+  ALL_KNOWN_GLOBAL_HOOK_FILES,
   ALL_KNOWN_GLOBAL_SKILL_DIRS,
+  ALL_KNOWN_PROJECT_HOOK_FILES,
   ALL_KNOWN_SYSTEM_SKILL_DIRS,
   DEFAULT_GLOBAL_SKILL_DIR,
   DEFAULT_PROJECT_SKILL_DIR,
@@ -10,8 +12,11 @@ import {
   compareProjectSkillScope,
   extractProjectSkillMetadata,
   getRegisteredGlobalSkillDirs,
+  getRegisteredHookDirs,
   getRegisteredSkillDirs,
   getRegisteredSystemSkillDirs,
+  parseClaudeHooksDocument,
+  skillDirMatchesPattern,
   getSkillMarkdownBody,
   getSkillScanCandidateDirs,
   parseSkillFrontmatter,
@@ -128,10 +133,13 @@ describe('project skills helpers', () => {
 
     expect([...getRegisteredGlobalSkillDirs(agents)].sort()).toEqual([
       DEFAULT_AGENTS_GLOBAL_SKILL_DIR,
-      // Claude 插件装的技能在 marketplace 下面，名字要到扫描时才知道，
-      // 所以注册的是带通配段的模式，由扫描器展开成真实目录。
+      // Claude 插件装的技能在 marketplace / cache / repos 下面，名字要到扫描时
+      // 才知道，所以注册的是带通配段的模式，由扫描器展开成真实目录。
+      '~/.claude/plugins/cache/*/*/*/skills',
+      '~/.claude/plugins/cache/*/*/skills',
       '~/.claude/plugins/marketplaces/*/*/*/skills',
       '~/.claude/plugins/marketplaces/*/skills',
+      '~/.claude/plugins/repos/*/skills',
       '~/.claude/skills',
       '~/.config/goose/skills',
       '~/.config/opencode/skills',
@@ -194,15 +202,119 @@ describe('project skills helpers', () => {
     ]).toEqual([]);
   });
 
-  it('orders skill scopes project → global → system', () => {
+  it('orders skill scopes project → global → system → hook', () => {
     expect(compareProjectSkillScope('project', 'global')).toBeLessThan(0);
     expect(compareProjectSkillScope('global', 'system')).toBeLessThan(0);
+    expect(compareProjectSkillScope('system', 'hook')).toBeLessThan(0);
     expect(compareProjectSkillScope('system', 'project')).toBeGreaterThan(0);
-    expect(['system', 'project', 'global'].sort(compareProjectSkillScope)).toEqual([
+    expect(['hook', 'system', 'project', 'global'].sort(compareProjectSkillScope)).toEqual([
       'project',
       'global',
       'system',
+      'hook',
     ]);
+  });
+
+  it('shares Claude plugin and agents skill dirs across claude family aliases', () => {
+    const expected = [
+      ...getRegisteredGlobalSkillDirs([{ cliType: 'builtin', agentType: 'claude' }]),
+    ].sort();
+    for (const agentType of ['claude-acp', 'claude-code', 'claude-p']) {
+      expect([
+        ...getRegisteredGlobalSkillDirs([{ cliType: 'registry', agentType }]),
+      ].sort()).toEqual(expected);
+    }
+    expect(expected).toContain(DEFAULT_AGENTS_GLOBAL_SKILL_DIR);
+    expect(expected).toContain('~/.claude/plugins/cache/*/*/*/skills');
+    expect(expected).toContain('~/.claude/plugins/repos/*/skills');
+  });
+
+  it('never lists git hook directories as Claude hook files', () => {
+    for (const file of [...ALL_KNOWN_GLOBAL_HOOK_FILES, ...ALL_KNOWN_PROJECT_HOOK_FILES]) {
+      expect(file.split('/').includes('.git')).toBe(false);
+    }
+  });
+
+  it('registers Claude hook files only for the claude family', () => {
+    const claudeHooks = [...getRegisteredHookDirs([{ cliType: 'builtin', agentType: 'claude' }])];
+    expect(claudeHooks).toContain('~/.claude/settings.json');
+    expect(claudeHooks).toContain('~/.claude/plugins/marketplaces/*/*/*/hooks/hooks.json');
+    expect(claudeHooks).toContain('.claude/settings.json');
+    expect([...getRegisteredHookDirs([{ cliType: 'builtin', agentType: 'codex' }])]).toEqual([]);
+    expect([
+      ...getRegisteredHookDirs([{ cliType: 'registry', agentType: 'claude-code' }]),
+    ]).toEqual(claudeHooks);
+  });
+
+  it('matches expanded plugin skill dirs against registered globs', () => {
+    expect(
+      skillDirMatchesPattern(
+        '~/.claude/plugins/marketplaces/open-code-review/skills',
+        '~/.claude/plugins/marketplaces/*/skills'
+      )
+    ).toBe(true);
+    expect(
+      skillDirMatchesPattern(
+        '~/.claude/plugins/cache/open-code-review/open-code-review/1.0.0/skills',
+        '~/.claude/plugins/cache/*/*/*/skills'
+      )
+    ).toBe(true);
+    expect(
+      skillDirMatchesPattern(
+        '~/.agents/skills/.system',
+        '~/.agents/skills'
+      )
+    ).toBe(true);
+    expect(
+      skillDirMatchesPattern('~/.agents/skills-extra', '~/.agents/skills')
+    ).toBe(false);
+    expect(
+      skillDirMatchesPattern(
+        '~/.claude/plugins/marketplaces/ocr/plugins/foo/skills',
+        '~/.claude/plugins/marketplaces/*/skills'
+      )
+    ).toBe(false);
+  });
+
+  it('parses Claude hook documents into mentionable entries', () => {
+    expect(
+      parseClaudeHooksDocument(`{
+        "description": "demo",
+        "hooks": {
+          "SessionStart": [{ "hooks": [{ "type": "command", "command": "echo hi" }] }],
+          "PostToolUse": [{
+            "matcher": "Edit|Write",
+            "hooks": [{ "type": "command", "command": "python3 review.py" }]
+          }]
+        }
+      }`)
+    ).toEqual([
+      {
+        name: 'SessionStart',
+        description: 'echo hi',
+        content: JSON.stringify(
+          { event: 'SessionStart', type: 'command', command: 'echo hi' },
+          null,
+          2
+        ),
+      },
+      {
+        name: 'PostToolUse-Edit-Write',
+        description: 'python3 review.py',
+        content: JSON.stringify(
+          {
+            event: 'PostToolUse',
+            matcher: 'Edit|Write',
+            type: 'command',
+            command: 'python3 review.py',
+          },
+          null,
+          2
+        ),
+      },
+    ]);
+    expect(parseClaudeHooksDocument('{"env":{"X":"1"}}')).toEqual([]);
+    expect(() => parseClaudeHooksDocument('{')).toThrow('Hook file is not valid JSON.');
   });
 
   it('parses shallow frontmatter and nested metadata fields', () => {

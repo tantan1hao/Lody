@@ -3032,6 +3032,7 @@
   "workspace.projects.skills.sheetTitle": "Skills",
   "workspace.projects.skills.rowLabel": "Project skills",
   "workspace.projects.skills.scopeGlobal": "Global",
+  "workspace.projects.skills.scopeHook": "Hook",
   "workspace.projects.skills.scopeProject": "Project",
   "workspace.projects.skills.scopeSystem": "System",
   "workspace.projects.skills.loading": "Loading skills",

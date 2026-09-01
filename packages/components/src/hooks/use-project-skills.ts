@@ -4,8 +4,10 @@ import {
   KNOWN_SKILL_DIRS_VERSION,
   compareProjectSkillScope,
   getRegisteredGlobalSkillDirs,
+  getRegisteredHookDirs,
   getRegisteredSkillDirs,
   getRegisteredSystemSkillDirs,
+  skillDirMatchesAny,
   getServerNow,
   getSkillScanCandidateDirs,
   githubFetchDefaultBranchHead,
@@ -90,6 +92,7 @@ type RegisteredSkillDirsByScope = {
   project: Set<string>;
   global: Set<string>;
   system: Set<string>;
+  hook: Set<string>;
 };
 
 const EMPTY_INTERNAL_STATE: ProjectSkillsInternalState = {
@@ -170,6 +173,7 @@ function getRegisteredDirsForSource(
     project: source?.kind === 'global' ? new Set() : getRegisteredSkillDirs(configs),
     global: includesGlobal ? getRegisteredGlobalSkillDirs(configs) : new Set(),
     system: includesGlobal ? getRegisteredSystemSkillDirs(configs) : new Set(),
+    hook: source?.kind === 'github' ? new Set() : getRegisteredHookDirs(configs),
   };
 }
 
@@ -182,10 +186,12 @@ function annotateAndSortGroups(
       const scopeDirs =
         group.scope === 'system'
           ? registeredDirs.system
-          : group.scope === 'global'
-            ? registeredDirs.global
-            : registeredDirs.project;
-      const registration: ProjectSkillGroupRegistration = scopeDirs.has(group.dir)
+          : group.scope === 'hook'
+            ? registeredDirs.hook
+            : group.scope === 'global'
+              ? registeredDirs.global
+              : registeredDirs.project;
+      const registration: ProjectSkillGroupRegistration = skillDirMatchesAny(group.dir, scopeDirs)
         ? 'registered'
         : 'found';
       return {

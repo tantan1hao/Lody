@@ -21,9 +21,12 @@ import type {
   SessionId,
 } from '@lody/shared';
 import {
+  ALL_KNOWN_GLOBAL_HOOK_FILES,
   ALL_KNOWN_GLOBAL_SKILL_DIRS,
+  ALL_KNOWN_PROJECT_HOOK_FILES,
   ALL_KNOWN_SYSTEM_SKILL_DIRS,
   applyProjectSkillsResultBudget,
+  buildHookProjectSkills,
   buildProjectSkill,
   isBinaryImagePath,
 } from '@lody/shared';
@@ -814,9 +817,10 @@ async function resolveProjectEntry(
   };
 }
 
-async function readSkillMarkdownFile(
+async function readBoundedProjectTextFile(
   rootRealPath: string,
-  absolutePath: string
+  absolutePath: string,
+  tooLargeMessage: string
 ): Promise<
   | {
       content: string;
@@ -838,7 +842,7 @@ async function readSkillMarkdownFile(
     return null;
   }
   if (resolved.stat.size > DEFAULT_LOCAL_PROJECT_SKILL_MD_MAX_BYTES) {
-    throw new Error('SKILL.md is too large to read.');
+    throw new Error(tooLargeMessage);
   }
 
   const handle = await fs.promises.open(
@@ -851,7 +855,7 @@ async function readSkillMarkdownFile(
       return null;
     }
     if (stat.size > DEFAULT_LOCAL_PROJECT_SKILL_MD_MAX_BYTES) {
-      throw new Error('SKILL.md is too large to read.');
+      throw new Error(tooLargeMessage);
     }
     return {
       content: await handle.readFile('utf8'),
@@ -862,6 +866,26 @@ async function readSkillMarkdownFile(
   } finally {
     await handle.close();
   }
+}
+
+async function readSkillMarkdownFile(
+  rootRealPath: string,
+  absolutePath: string
+): Promise<
+  | {
+      content: string;
+      stat: fs.Stats;
+      realPath: string;
+      isSymlink: boolean;
+    }
+  | null
+  | 'external-symlink'
+> {
+  return await readBoundedProjectTextFile(
+    rootRealPath,
+    absolutePath,
+    'SKILL.md is too large to read.'
+  );
 }
 
 async function addProjectSkillFromDirectory(args: {
@@ -1177,6 +1201,14 @@ async function listProjectSkillsAtRootPath(
       groups.push(group);
     }
   }
+  groups.push(
+    ...(await scanHookFileGroups({
+      rootRealPath,
+      files: ALL_KNOWN_PROJECT_HOOK_FILES,
+      pathKind: 'project',
+      fingerprintParts,
+    }))
+  );
 
   groups.sort((left, right) => left.dir.localeCompare(right.dir));
 
@@ -1186,9 +1218,13 @@ async function listProjectSkillsAtRootPath(
   };
 }
 
+function isForbiddenHookScanPath(relativePath: string): boolean {
+  return relativePath.split('/').some((segment) => segment === '.git');
+}
+
 function toHomeSkillGroup(
   group: ProjectSkillGroup,
-  scope: Extract<ProjectSkillScope, 'global' | 'system'>
+  scope: Extract<ProjectSkillScope, 'global' | 'system' | 'hook'>
 ): ProjectSkillGroup {
   return {
     ...group,
@@ -1265,6 +1301,79 @@ async function expandHomeSkillDirGlobs(
   return expanded;
 }
 
+async function scanHookFileGroups(args: {
+  rootRealPath: string;
+  files: readonly string[];
+  pathKind: 'home' | 'project';
+  fingerprintParts: SkillFingerprintPart[];
+}): Promise<ProjectSkillGroup[]> {
+  const uniqueFiles =
+    args.pathKind === 'home'
+      ? [
+          ...new Map(
+            (await expandHomeSkillDirGlobs(args.rootRealPath, args.files)).map((hookFile) => {
+              const normalized = normalizeKnownGlobalSkillScanDir(hookFile);
+              return [normalized.displayDir, normalized] as const;
+            })
+          ).values(),
+        ]
+      : [...new Set(args.files.map((hookFile) => normalizeSkillScanDir(hookFile)))].map(
+          (relativeDir) => ({ displayDir: relativeDir, relativeDir })
+        );
+
+  const scannedGroups = await Promise.all(
+    uniqueFiles.map(async (hookFile): Promise<ProjectSkillGroup | null> => {
+      if (isForbiddenHookScanPath(hookFile.relativeDir)) {
+        return null;
+      }
+      try {
+        const absolutePath = path.join(args.rootRealPath, hookFile.relativeDir);
+        const file = await readBoundedProjectTextFile(
+          args.rootRealPath,
+          absolutePath,
+          'Hook file is too large to read.'
+        );
+        if (!file || file === 'external-symlink') {
+          return null;
+        }
+        const skills = buildHookProjectSkills({
+          groupDir: hookFile.relativeDir,
+          relativePath: hookFile.relativeDir,
+          absolutePath: file.realPath,
+          raw: file.content,
+        });
+        if (skills.length === 0) {
+          return null;
+        }
+        args.fingerprintParts.push({
+          groupDir: hookFile.relativeDir,
+          scope: 'hook',
+          relativePath: hookFile.relativeDir,
+          realPath: file.realPath,
+          size: file.stat.size,
+          mtimeMs: file.stat.mtimeMs,
+        });
+        const group: ProjectSkillGroup = {
+          scope: 'hook',
+          dir: hookFile.relativeDir,
+          skills,
+          truncated: false,
+        };
+        return args.pathKind === 'home' ? toHomeSkillGroup(group, 'hook') : group;
+      } catch (error) {
+        return {
+          scope: 'hook',
+          dir: hookFile.displayDir,
+          skills: [],
+          truncated: false,
+          error: formatErrorMessage(error),
+        };
+      }
+    })
+  );
+  return scannedGroups.filter((group): group is ProjectSkillGroup => group !== null);
+}
+
 async function scanHomeSkillDirs(
   homeRealPath: string,
   knownSkillDirs: readonly string[],
@@ -1306,20 +1415,26 @@ async function scanHomeSkillDirs(
 }
 
 /**
- * Scans the current user's home for both `global` (user-authored) and `system`
- * (agent built-in, e.g. codex `~/.codex/skills/.system`) skills over the
- * machine RPC. System dirs are tagged with the dedicated `'system'` scope so
- * the UI can present them separately from `global`.
+ * Scans the current user's home for `global` (user-authored), `system`
+ * (agent built-in, e.g. codex `~/.codex/skills/.system`), and Claude `hook`
+ * files over the machine RPC. System dirs and hook files are tagged with
+ * their own scopes so the UI can present them separately from `global`.
  */
 async function listGlobalSkillsAtHomePath(homePath: string): Promise<ProjectSkillsResult> {
   const homeRealPath = await fs.promises.realpath(homePath);
   const fingerprintParts: SkillFingerprintPart[] = [];
 
-  const [globalGroups, systemGroups] = await Promise.all([
+  const [globalGroups, systemGroups, hookGroups] = await Promise.all([
     scanHomeSkillDirs(homeRealPath, ALL_KNOWN_GLOBAL_SKILL_DIRS, 'global', fingerprintParts),
     scanHomeSkillDirs(homeRealPath, ALL_KNOWN_SYSTEM_SKILL_DIRS, 'system', fingerprintParts),
+    scanHookFileGroups({
+      rootRealPath: homeRealPath,
+      files: ALL_KNOWN_GLOBAL_HOOK_FILES,
+      pathKind: 'home',
+      fingerprintParts,
+    }),
   ]);
-  const groups = [...globalGroups, ...systemGroups];
+  const groups = [...globalGroups, ...systemGroups, ...hookGroups];
 
   groups.sort((left, right) => left.dir.localeCompare(right.dir));
 
