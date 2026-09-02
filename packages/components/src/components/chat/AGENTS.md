@@ -88,11 +88,13 @@
   state and rendering for references attached to outgoing messages. Conversation
   quotes use `source: 'session_text'` on that same chip path.
 - Landing attachment uploads use two sibling hooks in `hooks/`:
-  `use-chat-landing-image-draft.ts` (images) and `use-chat-landing-file-draft.ts`
-  (non-image files; cloud upload + Electron local-transport fast path, mirroring
-  `sessions/session-chat-input-area.tsx`). Every landing branch exposes ONE
-  unfiltered hidden file input and one `onAttachmentAddClick`; selected files
-  are split by MIME into those two state machines, just like paste and drop.
+  `use-chat-landing-image-draft.ts` (images; cloud then `session/image-send`) and
+  `use-chat-landing-file-draft.ts` (non-image files; cloud upload + Electron
+  local-transport fast path, mirroring `sessions/session-chat-input-area.tsx`).
+  Both lists live in `atoms/chat-landing-draft.ts` so they survive a tab switch.
+  Every landing branch exposes ONE unfiltered hidden file input and one
+  `onAttachmentAddClick`; selected files are split by MIME into those two state
+  machines, just like paste and drop.
 
 ## Invariants
 
@@ -108,6 +110,22 @@
   that same identity. Attachment hooks never reset it independently; reset only
   after full draft clear. Submit blocks while either `hasBlockingImages` or
   `hasBlockingFiles`.
+- The reserved session id and both attachment lists live in module-level atoms
+  (`atoms/chat-landing-draft.ts`), keyed by `buildChatLandingDraftKey`, so the
+  draft survives the landing route unmounting when the user visits another tab
+  — the prompt text always did, and an attachment that silently vanished was
+  sent-without-context waiting to happen (#242). Consequences the hooks must
+  keep: NO unmount cleanup (revoking a preview URL or aborting an upload on the
+  way out is what broke the returning draft), so `URL.revokeObjectURL` and
+  `AbortController.abort()` belong only to removing one attachment or clearing
+  the whole draft; an upload in flight at unmount keeps running and settles into
+  the atom. That key is workspace-scoped while the prompt-text key is not,
+  because an `imageId`/`fileId` is addressable only inside the workspace it was
+  uploaded to. It scopes on the workspace SLUG: `useResolvedWorkspaceScope()`
+  reports `null` until the workspace resolves, and a key that flipped mid-mount
+  would strand whatever was added first. Never persist these to localStorage —
+  a `blob:` URL and an `AbortController` do not serialize, and losing a draft
+  attachment on app restart is expected.
 - Submit immediately hides and disables the visible landing draft, but preserves
   its controlled text, attachment resources, and reserved session id until
   `startSession` accepts. Failure must reveal the unchanged draft; only acceptance
