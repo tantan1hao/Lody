@@ -7,7 +7,38 @@ import {
   type ReactNode,
 } from 'react';
 import { useAtomValue, useSetAtom } from 'jotai';
-import { startSessionMentionDrag } from '@/lib/session-mention-drag';
+import {
+  armSessionMentionDrag,
+  clearSessionMentionDrag,
+  isPointOverSessionMentionDropLayer,
+  startSessionMentionDrag,
+} from '@/lib/session-mention-drag';
+import {
+  applySavedSessionOrder,
+  sessionOrderTouchesIds,
+  sidebarSessionSortableId,
+} from '@/lib/sidebar-session-order';
+import {
+  SessionRowReorderHandle,
+  SortableSessionTreeRow,
+  clientPointFromSessionDragEnd,
+  sidebarSessionCollision,
+} from '@/components/sidebar-session-reorder-row';
+import type { SessionListSessionMove } from '@/components/session-list';
+import {
+  DndContext,
+  type DragEndEvent,
+  type DragStartEvent,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
 import {
   Archive,
   Download,
@@ -243,8 +274,11 @@ type SidebarUpdatedBucket = {
   items: SidebarUpdatedItem[];
 };
 
-export function sortUpdatedItems(items: SidebarUpdatedItem[]): SidebarUpdatedItem[] {
-  return [...items].sort((a, b) => {
+export function sortUpdatedItems(
+  items: SidebarUpdatedItem[],
+  sessionOrder: readonly string[] = []
+): SidebarUpdatedItem[] {
+  const byRecency = [...items].sort((a, b) => {
     const aPinned = a.isPinned ? 1 : 0;
     const bPinned = b.isPinned ? 1 : 0;
     if (aPinned !== bPinned) return bPinned - aPinned;
@@ -254,6 +288,13 @@ export function sortUpdatedItems(items: SidebarUpdatedItem[]): SidebarUpdatedIte
     if (byTitle !== 0) return byTitle;
     return a.id.localeCompare(b.id);
   });
+  if (sessionOrder.length === 0) return byRecency;
+  const pinned = byRecency.filter((item) => item.isPinned);
+  const unpinned = byRecency.filter((item) => !item.isPinned);
+  return [
+    ...applySavedSessionOrder(pinned, sessionOrder, (item) => item.id),
+    ...applySavedSessionOrder(unpinned, sessionOrder, (item) => item.id),
+  ];
 }
 
 /**
@@ -297,15 +338,20 @@ export function getVisibleUpdatedItemTree(
   orderedItems: SidebarUpdatedItem[],
   canToggleFullList: boolean,
   showFull: boolean,
-  collapsedOpenedBySessionIds?: Record<string, boolean>
+  collapsedOpenedBySessionIds?: Record<string, boolean>,
+  sessionOrder: readonly string[] = []
 ): OpenedBySessionTreeNode<SidebarUpdatedItem>[] {
   const capped = canToggleFullList && !showFull && updatedBucketOverflowsPreview(orderedItems);
+  const preserveIncomingRootOrder = sessionOrderTouchesIds(
+    sessionOrder,
+    orderedItems.map((item) => item.id)
+  );
   return buildOpenedBySessionTree(orderedItems, {
     ...SIDEBAR_UPDATED_OPENED_BY_TREE_ACCESSORS,
     isCollapsed: (openerId) => collapsedOpenedBySessionIds?.[openerId] === true,
     // Updated mode IS the recency list: rank each opener by its freshest opened
     // Session so nesting can never bury a just-updated row under a stale opener.
-    rootRank: updatedItemRootRank,
+    ...(preserveIncomingRootOrder ? {} : { rootRank: updatedItemRootRank }),
     ...(capped ? { maxRoots: SHOW_FULL_BUCKET_THRESHOLD } : {}),
   });
 }
@@ -314,13 +360,15 @@ export function getVisibleUpdatedItems(
   orderedItems: SidebarUpdatedItem[],
   canToggleFullList: boolean,
   showFull: boolean,
-  collapsedOpenedBySessionIds?: Record<string, boolean>
+  collapsedOpenedBySessionIds?: Record<string, boolean>,
+  sessionOrder: readonly string[] = []
 ): SidebarUpdatedItem[] {
   return getVisibleUpdatedItemTree(
     orderedItems,
     canToggleFullList,
     showFull,
-    collapsedOpenedBySessionIds
+    collapsedOpenedBySessionIds,
+    sessionOrder
   ).map((node) => node.item);
 }
 
@@ -387,6 +435,8 @@ export type SidebarUpdatedSessionListProps = {
    * instead — it must stay reachable in every state.
    */
   headerAction?: ReactNode;
+  sessionOrder?: readonly string[];
+  onMoveSession?: (move: SessionListSessionMove) => void;
 };
 
 const defaultLabels: SidebarUpdatedSessionListLabels = {
@@ -418,6 +468,8 @@ export const SidebarUpdatedSessionList = memo(function SidebarUpdatedSessionList
   showFullBuckets,
   onToggleFullBucket,
   headerAction,
+  sessionOrder = [],
+  onMoveSession,
 }: SidebarUpdatedSessionListProps) {
   const { t } = useTranslation();
   const merged: SidebarUpdatedSessionListLabels = useMemo(
@@ -480,8 +532,8 @@ export const SidebarUpdatedSessionList = memo(function SidebarUpdatedSessionList
 
   const buckets = useMemo<SidebarUpdatedBucket[]>(() => {
     if (!items.length) return [];
-    return [{ key: 'all', label: merged.heading, items: sortUpdatedItems(items) }];
-  }, [items, merged.heading]);
+    return [{ key: 'all', label: merged.heading, items: sortUpdatedItems(items, sessionOrder) }];
+  }, [items, merged.heading, sessionOrder]);
 
   // Updated mode is a flat firehose, so a bucket can hold the whole workspace
   // while showing 20 rows. Resolving the tree per render would re-scan all of
@@ -501,11 +553,63 @@ export const SidebarUpdatedSessionList = memo(function SidebarUpdatedSessionList
             bucket.items,
             canToggleFullBucket,
             Boolean(showFullBuckets?.[bucket.key]),
-            collapsedOpenedBySessionIds
+            collapsedOpenedBySessionIds,
+            sessionOrder
           ),
         };
       }),
-    [buckets, canToggleFullBucket, collapsedBuckets, collapsedOpenedBySessionIds, showFullBuckets]
+    [
+      buckets,
+      canToggleFullBucket,
+      collapsedBuckets,
+      collapsedOpenedBySessionIds,
+      sessionOrder,
+      showFullBuckets,
+    ]
+  );
+  const canReorderSessions = typeof onMoveSession === 'function' && !isMobile;
+  const reorderSessionLabel = t('sessions.sidebar.reorder', 'Reorder session');
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    if (event.active.data.current?.type !== 'session') return;
+    const sessionId = String(event.active.data.current.sessionId ?? '');
+    if (sessionId) armSessionMentionDrag(sessionId);
+  }, []);
+  const handleDragCancel = useCallback(() => {
+    clearSessionMentionDrag();
+  }, []);
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const point = clientPointFromSessionDragEnd(event);
+      if (point != null && isPointOverSessionMentionDropLayer(point.x, point.y)) {
+        clearSessionMentionDrag();
+        return;
+      }
+      if (!canReorderSessions || event.active.data.current?.type !== 'session') {
+        clearSessionMentionDrag();
+        return;
+      }
+      const overData = event.over?.data.current;
+      if (overData?.type === 'session') {
+        const activeSessionId = String(event.active.data.current.sessionId ?? '');
+        const overSessionId = String(overData.sessionId ?? '');
+        const groupRootIds = Array.isArray(event.active.data.current.groupRootIds)
+          ? (event.active.data.current.groupRootIds as string[])
+          : [];
+        if (activeSessionId && overSessionId && groupRootIds.length >= 2) {
+          onMoveSession?.({
+            activeId: activeSessionId,
+            overId: overSessionId,
+            groupRootIds,
+          });
+        }
+      }
+      clearSessionMentionDrag();
+    },
+    [canReorderSessions, onMoveSession]
   );
 
   if (isLoading && items.length === 0) {
@@ -536,6 +640,13 @@ export const SidebarUpdatedSessionList = memo(function SidebarUpdatedSessionList
 
   return (
     <TooltipProvider>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={sidebarSessionCollision}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
+      >
       <div className={cn('flex flex-col', className)}>
         {buckets.map((bucket, bucketIndex) => {
           const bucketHeaderAction = bucketIndex === 0 ? headerAction : null;
@@ -576,11 +687,25 @@ export const SidebarUpdatedSessionList = memo(function SidebarUpdatedSessionList
               />
               {!collapsed ? (
                 <div className="flex flex-col gap-px">
+                  <SortableContext
+                    items={visibleNodes
+                      .filter((node) => node.depth === 0)
+                      .map((node) => sidebarSessionSortableId(node.item.id))}
+                    strategy={verticalListSortingStrategy}
+                  >
                   {visibleNodes.map((node) => {
                     const openedByTree = buildSessionRowOpenedByTreeSlot(node, t, () =>
                       handleToggleOpenedBySessions(node.item.id)
                     );
-                    return (
+                    const reorderRootIds = visibleNodes
+                      .filter((visible) => visible.depth === 0)
+                      .map((visible) => visible.item.id);
+                    const canReorderThisRow =
+                      canReorderSessions &&
+                      node.depth === 0 &&
+                      !isMobile &&
+                      reorderRootIds.length > 1;
+                    const treeRow = (
                       <SessionOpenedByTreeRow
                         key={node.item.id}
                         depth={node.depth}
@@ -606,10 +731,26 @@ export const SidebarUpdatedSessionList = memo(function SidebarUpdatedSessionList
                           archiveTooltipLabel={archiveLabels.tooltip}
                           archiveActionLabel={archiveLabels.action}
                           archiveConfirmLabel={archiveLabels.confirm}
+                          html5MentionDrag={!canReorderThisRow}
                         />
                       </SessionOpenedByTreeRow>
                     );
+                    if (!canReorderSessions || node.depth !== 0) {
+                      return treeRow;
+                    }
+                    return (
+                      <SortableSessionTreeRow
+                        key={node.item.id}
+                        sessionId={node.item.id}
+                        disabled={!canReorderThisRow}
+                        groupRootIds={reorderRootIds}
+                        reorderLabel={reorderSessionLabel}
+                      >
+                        {treeRow}
+                      </SortableSessionTreeRow>
+                    );
                   })}
+                  </SortableContext>
                   {showToggleFullList ? (
                     <button
                       type="button"
@@ -641,6 +782,7 @@ export const SidebarUpdatedSessionList = memo(function SidebarUpdatedSessionList
           onRename={(sessionId, nextTitle) => onRenameItem?.(sessionId, nextTitle)}
         />
       </div>
+      </DndContext>
     </TooltipProvider>
   );
 });
@@ -667,6 +809,7 @@ type UpdatedItemRowProps = {
   archiveTooltipLabel: string;
   archiveActionLabel: string;
   archiveConfirmLabel: string;
+  html5MentionDrag?: boolean;
 };
 
 const UpdatedItemRow = memo(function UpdatedItemRow({
@@ -689,6 +832,7 @@ const UpdatedItemRow = memo(function UpdatedItemRow({
   archiveTooltipLabel,
   archiveActionLabel,
   archiveConfirmLabel,
+  html5MentionDrag = true,
 }: UpdatedItemRowProps) {
   const showSelectedState = selected;
   const useAnchor = typeof href === 'string' && href.length > 0;
@@ -816,10 +960,11 @@ const UpdatedItemRow = memo(function UpdatedItemRow({
       tabIndex={!useAnchor && onSelect ? 0 : undefined}
       data-sidebar-updated-id={item.id}
       data-sidebar-updated-kind={item.kind}
-      // Drag a conversation onto a chat surface to mention it there.
-      draggable
-      onDragStart={(event) =>
-        startSessionMentionDrag(event, { sessionId: item.id, title: item.title })
+      draggable={html5MentionDrag}
+      onDragStart={
+        html5MentionDrag
+          ? (event) => startSessionMentionDrag(event, { sessionId: item.id, title: item.title })
+          : undefined
       }
       className={cn(
         // Named group ('row') so the archive hover-reveal scopes to the hovered row
@@ -884,6 +1029,7 @@ const UpdatedItemRow = memo(function UpdatedItemRow({
           restPointerClassName="group-hover/row:pointer-events-none"
           revealClassName="group-hover/row:opacity-100 group-hover/row:pointer-events-auto"
         />
+        <SessionRowReorderHandle />
         <SessionRowAuthorAvatar author={item.owner} />
         {showPinnedIcon && item.isPinned ? (
           <Pin

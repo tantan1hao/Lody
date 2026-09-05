@@ -50,6 +50,7 @@ import {
   type SessionListProps,
   type SessionListPullRequestOpen,
   type SessionListRow,
+  type SessionListSessionMove,
 } from './session-list';
 import {
   SidebarUpdatedSessionList,
@@ -230,6 +231,8 @@ export interface LoroSidebarProps {
   /** Open PR for a github Updated row. Mirrors `sessionListProps.onOpenPullRequest`. */
   onOpenUpdatedItemPullRequest?: (request: SessionListPullRequestOpen) => void;
   getUpdatedItemHref?: (id: string) => string | undefined;
+  sessionOrder?: readonly string[];
+  onMoveSession?: (move: SessionListSessionMove) => void;
 
   /** Filters the visible session lists. Empty string shows everything. */
   searchQuery?: string;
@@ -673,6 +676,8 @@ export const LoroSidebar = memo(function LoroSidebar({
   onShareUpdatedItemWithTeam,
   onOpenUpdatedItemPullRequest,
   getUpdatedItemHref,
+  sessionOrder,
+  onMoveSession,
   searchQuery = '',
   onSearchQueryChange,
   searchEmpty = false,
@@ -1141,6 +1146,8 @@ export const LoroSidebar = memo(function LoroSidebar({
                   onCopyItemUrl={onCopyUpdatedItemUrl}
                   onShareItemWithTeam={onShareUpdatedItemWithTeam}
                   onOpenPullRequest={onOpenUpdatedItemPullRequest}
+                  sessionOrder={sessionOrder}
+                  onMoveSession={onMoveSession}
                   getItemHref={getUpdatedItemHref}
                   headerAction={sectionHeaderFilterPlaceholder ?? undefined}
                 />
@@ -1178,6 +1185,8 @@ export const LoroSidebar = memo(function LoroSidebar({
                     onCopyItemUrl={onCopyUpdatedItemUrl}
                     onShareItemWithTeam={onShareUpdatedItemWithTeam}
                     onOpenPullRequest={onOpenUpdatedItemPullRequest}
+                    sessionOrder={sessionOrder}
+                    onMoveSession={onMoveSession}
                     getItemHref={getUpdatedItemHref}
                     headerAction={
                       hasPinnedItems ? undefined : (sectionHeaderFilterPlaceholder ?? undefined)
@@ -1196,6 +1205,8 @@ export const LoroSidebar = memo(function LoroSidebar({
                 {sessionListProps ? (
                   <SessionList
                     {...sessionListProps}
+                    sessionOrder={sessionListProps.sessionOrder ?? sessionOrder}
+                    onMoveSession={sessionListProps.onMoveSession ?? onMoveSession}
                     className={sessionListClassName}
                     headerAction={
                       topContent || hasPinnedItems
@@ -1257,6 +1268,8 @@ export const LoroSidebar = memo(function LoroSidebar({
                   {resolvedChatsSessionListProps ? (
                     <SessionList
                       {...resolvedChatsSessionListProps}
+                      sessionOrder={resolvedChatsSessionListProps.sessionOrder ?? sessionOrder}
+                      onMoveSession={resolvedChatsSessionListProps.onMoveSession ?? onMoveSession}
                       className={chatsSessionListClassName}
                     />
                   ) : null}

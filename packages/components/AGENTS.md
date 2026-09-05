@@ -247,7 +247,15 @@ mobile surfaces.
   Every list here is sorted by latest activity, so each surface passes `rootRank`
   and an opener is ranked by its FRESHEST opened Session — without it, nesting
   would bury a just-updated row under a stale opener and silently break the
-  ordering contract of Updated mode. Collapse state is the shared
+  ordering contract of Updated mode.   Desktop can then drag a group's visible
+  roots up or down (the whole row, dnd-kit). That writes `sessionOrderAtom`
+  (`lib/sidebar-session-order.ts`) and skips recency `rootRank` for that group
+  so the tree cannot undo the drop. HTML5 mention drag is off while the row is
+  sortable; dnd-kit arms the same in-flight mention store (tab-strip pattern).
+  Local project folders use the same helpers via `localProjectOrderAtom`
+  (`machineId:projectId`); the header is the activator so nested session rows
+  keep their own DndContext. Search and mobile do not reorder. New sessions stay
+  at the top of a group until that group is dragged. Collapse state is the shared
   `sidebarCollapsedOpenedBySessionsAtom` and defaults to EXPANDED. Both
   navigation directions must stay reachable: the tree and the row context menu's
   "Go to Opener Session" in every sidebar list, `SessionHeaderMenu.openedByRelations`,

@@ -1,6 +1,6 @@
 import { atom } from 'jotai';
 import { atomWithStorage } from 'jotai/utils';
-import { currentWorkspaceIdAtom } from './workspace-context';
+import { currentWorkspaceIdAtom, currentWorkspaceSlugAtom } from './workspace-context';
 
 /**
  * Sidebar state atoms with localStorage persistence
@@ -25,6 +25,8 @@ import { currentWorkspaceIdAtom } from './workspace-context';
  * - Chat scope (my/team tasks filter)
  * - Repo collapse states
  * - Repo ordering
+ * - Session row ordering (same-group roots; pinned-first + recency until dragged)
+ * - Local project folder ordering (same machine section; createdAt until dragged)
  * - Pinned section collapsed state
  * - Chats section collapsed state
  */
@@ -136,6 +138,62 @@ export const toggleRepoCollapsedAtom = atom(null, (get, set, repoFullName: strin
 export const setRepoOrderAtom = atom(null, (_get, set, order: string[]) => {
   set(repoOrderAtom, order);
 });
+
+/**
+ * Per-workspace session row order, persisted to localStorage as
+ * `{ [workspaceId]: string[] }`. Use `sessionOrderAtom` for the current workspace.
+ * Drag reorders only the visible roots of one group / pin slice; sessions that
+ * have never been dragged keep pinned-first + recency.
+ */
+const sessionOrderByWorkspaceAtom = atomWithStorage<Record<string, string[]>>(
+  'lody-sidebar-session-order-by-workspace',
+  {}
+);
+
+const EMPTY_SESSION_ORDER: readonly string[] = Object.freeze([]);
+
+export const sessionOrderAtom = atom<readonly string[], [readonly string[]], void>(
+  (get) => {
+    const key = get(currentWorkspaceIdAtom) ?? get(currentWorkspaceSlugAtom);
+    if (!key) return EMPTY_SESSION_ORDER;
+    const map = get(sessionOrderByWorkspaceAtom);
+    return map[key] ?? EMPTY_SESSION_ORDER;
+  },
+  (get, set, value) => {
+    const key = get(currentWorkspaceIdAtom) ?? get(currentWorkspaceSlugAtom);
+    if (!key) return;
+    const map = get(sessionOrderByWorkspaceAtom);
+    set(sessionOrderByWorkspaceAtom, {
+      ...map,
+      [key]: [...value],
+    });
+  }
+);
+
+const localProjectOrderByWorkspaceAtom = atomWithStorage<Record<string, string[]>>(
+  'lody-sidebar-local-project-order-by-workspace',
+  {}
+);
+
+const EMPTY_LOCAL_PROJECT_ORDER: readonly string[] = Object.freeze([]);
+
+export const localProjectOrderAtom = atom<readonly string[], [readonly string[]], void>(
+  (get) => {
+    const key = get(currentWorkspaceIdAtom) ?? get(currentWorkspaceSlugAtom);
+    if (!key) return EMPTY_LOCAL_PROJECT_ORDER;
+    const map = get(localProjectOrderByWorkspaceAtom);
+    return map[key] ?? EMPTY_LOCAL_PROJECT_ORDER;
+  },
+  (get, set, value) => {
+    const key = get(currentWorkspaceIdAtom) ?? get(currentWorkspaceSlugAtom);
+    if (!key) return;
+    const map = get(localProjectOrderByWorkspaceAtom);
+    set(localProjectOrderByWorkspaceAtom, {
+      ...map,
+      [key]: [...value],
+    });
+  }
+);
 
 // ============================================================================
 // Chats Section Collapsed

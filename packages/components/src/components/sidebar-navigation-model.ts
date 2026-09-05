@@ -9,6 +9,7 @@ import {
   type SessionListRow,
 } from '@/components/session-list';
 import { buildOpenedBySessionTree } from '@/lib/session-opened-by-tree';
+import { sessionOrderTouchesIds } from '@/lib/sidebar-session-order';
 import {
   getVisibleUpdatedItems,
   sortUpdatedItems,
@@ -65,19 +66,26 @@ export type SidebarNavigationModelOptions = {
     collapsed: boolean;
     showFull: boolean;
   };
+  sessionOrder?: readonly string[];
 };
 
 function emitSessionGroup(
   items: SidebarNavItem[],
   group: SessionRowGroup,
   showFullSessionGroups: Record<string, boolean>,
-  collapsedOpenedBySessions: Record<string, boolean>
+  collapsedOpenedBySessions: Record<string, boolean>,
+  sessionOrder: readonly string[] = []
 ): void {
   items.push({ kind: 'group-header', groupKey: group.key, collapsed: group.collapsed });
   if (group.collapsed) return;
 
   const showFull = showFullSessionGroups[group.key] ?? false;
-  for (const session of getVisibleSessionGroupRows(group, showFull, collapsedOpenedBySessions)) {
+  for (const session of getVisibleSessionGroupRows(
+    group,
+    showFull,
+    collapsedOpenedBySessions,
+    sessionOrder
+  )) {
     items.push({ kind: 'session', sessionId: session.sessionId, groupKey: group.key });
   }
 
@@ -89,7 +97,8 @@ function emitSessionGroup(
 function emitLocalSections(
   items: SidebarNavItem[],
   sections: SidebarNavigationLocalSection[],
-  collapsedOpenedBySessions: Record<string, boolean>
+  collapsedOpenedBySessions: Record<string, boolean>,
+  sessionOrder: readonly string[] = []
 ): void {
   for (const section of sections) {
     if (section.collapsed) continue;
@@ -108,7 +117,12 @@ function emitLocalSections(
         getId: (session) => session.id,
         getOpenedBySessionId: (session) => session.openedByRowSessionId ?? null,
         isCollapsed: (openerId) => collapsedOpenedBySessions[openerId] === true,
-        rootRank: (session) => session.rootRankMs ?? 0,
+        ...(sessionOrderTouchesIds(
+          sessionOrder,
+          project.sessions.map((session) => session.id)
+        )
+          ? {}
+          : { rootRank: (session: { rootRankMs?: number }) => session.rootRankMs ?? 0 }),
       });
       for (const node of nodes) {
         items.push({ kind: 'session', sessionId: node.item.id, groupKey: projectKey });
@@ -125,6 +139,7 @@ export function buildSidebarNavigationItems({
   pinnedSectionCollapsed,
   workspace,
   updated,
+  sessionOrder = [],
 }: SidebarNavigationModelOptions): SidebarNavItem[] {
   const items: SidebarNavItem[] = [];
 
@@ -132,7 +147,7 @@ export function buildSidebarNavigationItems({
     // The Pinned section renders through the same list component, so it gets the
     // same opened-by tree — resolved inside the pinned items ONLY, which is what
     // keeps a pinned opener from swallowing an unpinned row (and vice versa).
-    const pinnedNodes = buildOpenedBySessionTree(sortUpdatedItems(pinnedItems), {
+    const pinnedNodes = buildOpenedBySessionTree(sortUpdatedItems(pinnedItems, sessionOrder), {
       ...SIDEBAR_UPDATED_OPENED_BY_TREE_ACCESSORS,
       isCollapsed: (openerId) => collapsedOpenedBySessions[openerId] === true,
     });
@@ -143,12 +158,13 @@ export function buildSidebarNavigationItems({
 
   if (organizeMode === 'updated') {
     if (updated.collapsed) return items;
-    const orderedItems = sortUpdatedItems(updated.items);
+    const orderedItems = sortUpdatedItems(updated.items, sessionOrder);
     for (const item of getVisibleUpdatedItems(
       orderedItems,
       true,
       updated.showFull,
-      collapsedOpenedBySessions
+      collapsedOpenedBySessions,
+      sessionOrder
     )) {
       items.push({ kind: 'session', sessionId: item.id, groupKey: '__updated__' });
     }
@@ -158,27 +174,51 @@ export function buildSidebarNavigationItems({
   if (workspace.machineSections) {
     for (const section of workspace.machineSections) {
       if (section.collapsed) continue;
-      emitLocalSections(items, section.localSections, collapsedOpenedBySessions);
-      for (const group of buildGroups(section.repoSessions, workspace.repos, false)) {
-        emitSessionGroup(items, group, showFullSessionGroups, collapsedOpenedBySessions);
+      emitLocalSections(items, section.localSections, collapsedOpenedBySessions, sessionOrder);
+      for (const group of buildGroups(
+        section.repoSessions,
+        workspace.repos,
+        false,
+        'Chats',
+        sessionOrder
+      )) {
+        emitSessionGroup(items, group, showFullSessionGroups, collapsedOpenedBySessions, sessionOrder);
       }
-      for (const group of buildGroups(section.chatSessions, [], workspace.chatsCollapsed)) {
-        emitSessionGroup(items, group, showFullSessionGroups, collapsedOpenedBySessions);
+      for (const group of buildGroups(
+        section.chatSessions,
+        [],
+        workspace.chatsCollapsed,
+        'Chats',
+        sessionOrder
+      )) {
+        emitSessionGroup(items, group, showFullSessionGroups, collapsedOpenedBySessions, sessionOrder);
       }
     }
     return items;
   }
 
-  emitLocalSections(items, workspace.localSections, collapsedOpenedBySessions);
+  emitLocalSections(items, workspace.localSections, collapsedOpenedBySessions, sessionOrder);
 
   if (!workspace.githubSectionCollapsed) {
-    for (const group of buildGroups(workspace.repoSessions, workspace.repos, false)) {
-      emitSessionGroup(items, group, showFullSessionGroups, collapsedOpenedBySessions);
+    for (const group of buildGroups(
+      workspace.repoSessions,
+      workspace.repos,
+      false,
+      'Chats',
+      sessionOrder
+    )) {
+      emitSessionGroup(items, group, showFullSessionGroups, collapsedOpenedBySessions, sessionOrder);
     }
   }
 
-  for (const group of buildGroups(workspace.chatSessions, [], workspace.chatsCollapsed)) {
-    emitSessionGroup(items, group, showFullSessionGroups, collapsedOpenedBySessions);
+  for (const group of buildGroups(
+    workspace.chatSessions,
+    [],
+    workspace.chatsCollapsed,
+    'Chats',
+    sessionOrder
+  )) {
+    emitSessionGroup(items, group, showFullSessionGroups, collapsedOpenedBySessions, sessionOrder);
   }
 
   return items;
