@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
 
-import { readConversationQuoteSelection } from '../src/components/ai-gui/conversation-selection';
+import {
+  readConversationQuoteSelection,
+  resolveConversationQuotePayload,
+} from '../src/components/ai-gui/conversation-selection';
 
 function selectIn(element: HTMLElement): Selection {
   const selection = window.getSelection();
@@ -70,5 +73,42 @@ describe('readConversationQuoteSelection', () => {
     expect(readConversationQuoteSelection(window.getSelection(), container)).toBeNull();
 
     container.remove();
+  });
+
+  it('reads a quote without a scroll container when the conversation ancestor exists', () => {
+    const conversation = document.createElement('div');
+    conversation.setAttribute('data-session-conversation', '');
+    const bubble = document.createElement('div');
+    bubble.setAttribute('data-native-selection-allow', '');
+    bubble.setAttribute('data-session-turn-id', 'turn-2');
+    bubble.setAttribute('data-session-turn-role', 'user');
+    bubble.textContent = 'Quote me.';
+    conversation.appendChild(bubble);
+    document.body.appendChild(conversation);
+
+    const quote = readConversationQuoteSelection(selectIn(bubble), null);
+    expect(quote?.payload).toEqual({
+      source: 'session_text',
+      commentBody: 'Quote me.',
+      turnId: 'turn-2',
+      role: 'user',
+    });
+
+    conversation.remove();
+  });
+
+  it('quotes the fallback text when the live selection is empty', () => {
+    const payload = resolveConversationQuotePayload({
+      selection: null,
+      fallbackText: 'Whole reply.',
+      turnId: 'turn-3',
+      role: 'assistant',
+    });
+    expect(payload).toEqual({
+      source: 'session_text',
+      commentBody: 'Whole reply.',
+      turnId: 'turn-3',
+      role: 'assistant',
+    });
   });
 });

@@ -149,6 +149,7 @@ export interface ChatLandingViewProps {
    */
   leftSidebarExpandSlot?: ReactNode;
   onSessionSkill?: (skill: ComposerSessionSkill) => void;
+  availableSessionSkills?: readonly ComposerSessionSkill[];
   activeSessionSkill?: ComposerSessionSkill | null;
   /** Error boundary reset keys */
   resetKeys?: unknown[];
@@ -242,6 +243,7 @@ export function ChatLandingView({
   onOpenMobileDrawer,
   leftSidebarExpandSlot,
   onSessionSkill,
+  availableSessionSkills,
   activeSessionSkill,
   resetKeys = [],
   errorLabels = {},
@@ -459,6 +461,7 @@ export function ChatLandingView({
         footerSelector={footerSelector ?? selector}
         bottomBar={bottomBar}
         onSessionSkill={onSessionSkill}
+        availableSessionSkills={availableSessionSkills}
         activeSessionSkill={activeSessionSkill}
         statusMessage={composerStatusMessage}
         statusTone={composerStatusTone}

@@ -1,4 +1,8 @@
-import { resolveSessionHistoryStatus, type SessionHistory } from '@lody/shared';
+import {
+  resolveSessionHistoryStatus,
+  type SessionHistory,
+  type SessionStatus,
+} from '@lody/shared';
 
 type SessionHistoryStatusEntry = Pick<SessionHistory, 'role' | 'status' | 'read'> & {
   timestamp?: string;
@@ -70,4 +74,38 @@ export function isUnstartedTrailingDispatchPreStart(
   const dispatchedAtMs = resolveUnstartedTrailingDispatchAtMs(history);
   if (dispatchedAtMs === null) return false;
   return nowMs - dispatchedAtMs < timeoutMs;
+}
+
+/** Latest assistant entry is already a completed turn (`finished` stamped). */
+export function isLatestAssistantTurnFinished(
+  history: readonly Pick<SessionHistory, 'role' | 'finished'>[] | null | undefined
+): boolean {
+  if (!history?.length) return false;
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const entry = history[index];
+    if (entry?.role === 'assistant') {
+      return entry.finished === true;
+    }
+  }
+  return false;
+}
+
+/**
+ * CLI keeps ephemeral session presence `running` through post-prompt finalize
+ * (usage flush, completion notification). The answer is already on screen and
+ * `finished` is stamped; treating that leftover as "Thinking…" is the hang
+ * after a one-line reply. A new send is `hasPendingDispatch`. Initializing
+ * and permission presence stay visible. Image generation is still a live run.
+ */
+export function isPostAnswerFinalizePresence(args: {
+  liveStatus: SessionStatus | null | undefined;
+  lastAssistantFinished: boolean;
+  hasPendingDispatch: boolean;
+}): boolean {
+  return (
+    args.liveStatus?.type === 'running' &&
+    args.liveStatus.activity !== 'image_generation' &&
+    args.lastAssistantFinished &&
+    !args.hasPendingDispatch
+  );
 }

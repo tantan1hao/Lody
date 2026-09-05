@@ -59,6 +59,14 @@
   chips or a below-composer agent/permission row. Usage reads subscription rate
   limits from the selected agent's Machine Flock metadata and remains hidden for
   custom or environment-overridden providers.
+- Composer Plan / Debug / Multitask / Ask chips (`composer-session-skills.tsx`)
+  always list all four. Prefer ACP mode, then Codex collaboration plan / Grok
+  `interaction_mode=plan`; otherwise fill an empty prompt with the skill hint.
+  Multitask navigates to Tasks; when `tasksFeatureEnabledAtom` is off the click
+  is a no-op but the chip stays visible so the row matches the product face.
+- Builtin/registry Grok model pickers union the static catalog (`grok-4.6`,
+  `grok-4.5`) onto a stale machine-cache roster. Official Grok can persist a
+  provisional 4.5-only `session/new` list; the composer must still offer 4.6.
 - The desktop run config menu's "Recently used" group (`lib/recent-run-configs.ts`)
   is device-local localStorage history keyed per workspace, recorded only when a
   chat is actually STARTED — never when a knob moves. A row offers a whole

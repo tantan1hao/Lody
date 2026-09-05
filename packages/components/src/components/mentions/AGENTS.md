@@ -24,7 +24,11 @@ Product-level mention sources built on `src/ui/mention`.
   (`claude`, `claude-acp`, `claude-code`, `claude-p`) shares plugin
   marketplace/cache/repos skill dirs, `~/.agents/skills`, and those hook files.
   `~/.agents/skills` is still not a universal fallback for other providers. Do
-  not scan `.git/hooks` or treat a plugin root as a skill dir.
+  not scan `.git/hooks` or treat a plugin root as a skill dir. Cursor plugin
+  skills live under `~/.cursor/plugins/cache/*/*/*/skills` and join the home
+  scan the same way. The `/` skill search ranks token/name prefix, then
+  substring, path, then description — a query like `th` must keep skills whose
+  description matches, not only `grill-with-docs`.
 - Before send, known skill tokens are expanded in prompt text to
   `use /token [Skill Path](path)`. Project skills use their project-relative
   `SKILL.md` path; home-scoped (`global` + `system` + `hook`) skills use the

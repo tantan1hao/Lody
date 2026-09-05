@@ -180,6 +180,9 @@ function buildSessionCreateResult(payload: SessionToCreate): CreateSessionResult
   if (payload.parentSessionId) {
     sessionMeta.parentSessionId = payload.parentSessionId;
   }
+  if (payload.childSessionPlacement === 'side-panel') {
+    sessionMeta.childSessionPlacement = 'side-panel';
+  }
   // Where this session came from, not how it runs: the launch config above is
   // already frozen, so nothing re-reads the mutable Role catalog from these.
   if (payload.agentRoleId) {

@@ -2603,6 +2603,140 @@ describe('SessionExecutionService', () => {
     );
   });
 
+  it('continues a fresh ACP restore from local history when Streams sync times out', async () => {
+    const meta = {
+      repoFullName: 'owner/repo',
+      isArchived: false,
+      acpSessionId: undefined,
+    };
+    const localHistory: SessionHistoryInput[] = [
+      {
+        id: 'turn-prior',
+        role: 'user',
+        timestamp: '2026-08-05T05:30:00.000Z',
+        status: 'delivered',
+        fileDiff: [],
+        items: [{ type: 'text', text: 'Prior durable turn.' }],
+      },
+      {
+        id: 'turn-current',
+        role: 'user',
+        timestamp: '2026-08-05T05:31:00.000Z',
+        status: 'pending',
+        fileDiff: [],
+        items: [{ type: 'text', text: '继续' }],
+      },
+    ];
+    let history: SessionHistoryInput[] = localHistory;
+    const syncDocOrThrow = vi.fn(async () => {
+      throw new Error(
+        'Document sync failed for session-session-fresh-restore-timeout (fresh-acp-history-replay): Timeout waiting for document sync (doc=session-session-fresh-restore-timeout)'
+      );
+    });
+    const awaitTurnHistoryGate = vi.fn(async () => {});
+    const sessionDoc = {
+      getMetaState: vi.fn(async () => meta),
+      setStatus: vi.fn(async () => {}),
+      setBaseBranch: vi.fn(async () => {}),
+      getHistory: vi.fn(async () => history),
+      updateHistory: vi.fn(
+        async (updater: (prev: SessionHistoryInput[]) => SessionHistoryInput[]) => {
+          history = updater(history);
+        }
+      ),
+    };
+    const agentClient = {
+      isCreated: vi.fn(() => true),
+      cancel: vi.fn(async () => {}),
+      prompt: vi.fn(async () => ({})),
+      currentModel: undefined,
+    };
+    const restoredSession = {
+      sessionId: 'session-fresh-restore-timeout' as SessionId,
+      acpSessionId: 'acp-fresh-restore-timeout' as ACPSessionId,
+      agentClient,
+      terminalManager: {} as unknown,
+      getWorkdir: () => '/tmp',
+      getHostWorkdir: () => '/tmp',
+      getParentSessionId: () => undefined,
+      exec: vi.fn(async () => ''),
+      terminate: vi.fn(async () => {}),
+      updateGitIdentity: vi.fn(),
+      createAgent: vi.fn(async () => 'acp-fresh-restore-timeout'),
+      applyExecutionPlaneLimits: vi.fn(async () => {}),
+    };
+    const buildAcpPromptBlocks = vi.fn(async () => [{ type: 'text', text: 'built prompt' }] as any);
+    const logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    };
+    const deps = createBaseDeps({
+      logger: logger as unknown as SessionExecutionServiceDeps['logger'],
+      sessionManager: {
+        getSession: vi.fn(() => null),
+        getPendingSession: vi.fn(() => null),
+        createSession: vi.fn(async () => restoredSession as unknown),
+        setSessionError: vi.fn(),
+        terminateSession: vi.fn(),
+        refreshGhTokenForSession: vi.fn(async () => {}),
+      } as unknown as SessionManager,
+      workspaceDocument: {
+        repo: {
+          upsertDocMeta: vi.fn(async () => {}),
+          getDocMeta: vi.fn(async () => undefined),
+        },
+        getOrCreateSessionDoc: vi.fn(async () => sessionDoc),
+        syncDocOrThrow,
+        updateAcpCapabilities: vi.fn(async () => {}),
+      } as unknown as LoroDocumentManager,
+      awaitTurnHistoryGate,
+      buildAcpPromptBlocks,
+    });
+
+    const service = new SessionExecutionService(deps);
+    await service.continueSession(
+      {
+        type: 'session/chat',
+        sessionId: 'session-fresh-restore-timeout' as SessionId,
+        machineId: 'machine-1',
+        workspaceId: 'workspace-1' as WorkspaceId,
+        project: { kind: 'github', repoFullName: 'owner/repo', branch: 'main' },
+        acpSessionConfig: {
+          prompt: '继续',
+          cliType: 'builtin',
+          agentType: 'codex',
+        },
+        userTurnId: 'turn-current',
+        userId: 'user-1',
+        userName: 'User',
+        userEmail: 'user@example.com',
+      },
+      { dispatchSource: 'rpc' }
+    );
+
+    expect(syncDocOrThrow).toHaveBeenCalledTimes(1);
+    expect(syncDocOrThrow).toHaveBeenCalledWith(
+      getSessionRoomId('session-fresh-restore-timeout'),
+      expect.objectContaining({
+        reason: 'fresh-acp-history-replay',
+        timeoutMs: 20_000,
+      })
+    );
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('Fresh ACP history sync did not finish')
+    );
+    expect(awaitTurnHistoryGate).toHaveBeenCalledWith('session-fresh-restore-timeout');
+    expect(buildAcpPromptBlocks).toHaveBeenCalledWith(
+      expect.objectContaining({
+        replayPromptText: expect.stringContaining('Prior durable turn.'),
+      })
+    );
+    expect(agentClient.prompt).toHaveBeenCalledTimes(1);
+    expect(deps.recordChatFailure).not.toHaveBeenCalled();
+  });
+
   it('resumes a worktree without resolving its deleted recorded base branch', async () => {
     const rootPath = createGitLocalProject();
     runGit(rootPath, ['remote', 'add', 'origin', 'https://github.com/example/project.git']);

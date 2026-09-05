@@ -87,10 +87,8 @@ export function getSidePanelTabSelection(tabId: string | null): SidePanelTabSele
 }
 
 export function getSideChatLauncherState(args: {
-  providerSupportsFork: boolean;
   machineOffline: boolean;
 }): 'hidden' | 'disabled' | 'enabled' {
-  if (!args.providerSupportsFork) return 'hidden';
   if (args.machineOffline) return 'disabled';
   return 'enabled';
 }

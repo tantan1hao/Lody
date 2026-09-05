@@ -103,6 +103,7 @@ import {
 } from '@/hooks/use-acp-session-config-selection';
 import { useOnlineMachineIds } from '@/hooks/use-machine-online-status';
 import {
+  listApplicableComposerSessionSkills,
   planComposerSessionSkillApply,
   type ComposerSessionSkill,
 } from '@/lib/composer-session-skill';
@@ -1614,8 +1615,17 @@ function WorkspaceChatLanding({
           'chat.sessionSkill.debugPromptHint',
           'Find the root cause first. Do not change the environment or guess before you have evidence.'
         ),
+        planPromptHint: t(
+          'chat.sessionSkill.planPromptHint',
+          'Write a concrete implementation plan before making changes.'
+        ),
+        askPromptHint: t(
+          'chat.sessionSkill.askPromptHint',
+          'Answer the question without making edits.'
+        ),
       });
       if (apply.navigateMultitask) {
+        if (!tasksFeatureEnabled) return;
         void navigate({
           to: '/$workspaceName/tasks',
           params: { workspaceName: workspaceSlug },
@@ -1638,6 +1648,7 @@ function WorkspaceChatLanding({
       setPrompt,
       setSelectedModeId,
       t,
+      tasksFeatureEnabled,
       workspaceSlug,
     ]
   );
@@ -1654,6 +1665,16 @@ function WorkspaceChatLanding({
     }
     return null;
   }, [configOptionSelectors, configOptionValues, selectedModeId]);
+  const availableSessionSkills = useMemo(
+    () =>
+      listApplicableComposerSessionSkills({
+        modeOptions,
+        configOptionSelectors,
+        configOptionValues,
+        multitaskEnabled: tasksFeatureEnabled,
+      }),
+    [configOptionSelectors, configOptionValues, modeOptions, tasksFeatureEnabled]
+  );
   const dispatchConfigOptionValues = useMemo(
     () => filterAcpSessionConfigOptionValues(configOptionValues, configOptionSelectors),
     [configOptionSelectors, configOptionValues]
@@ -6156,7 +6177,10 @@ function WorkspaceChatLanding({
             onFileRetry={submitting ? undefined : handleRetryFile}
             mcp={mcpSelection.menu}
             footerSelector={mobileSheetFooterSelectorNode}
-            onSessionSkill={handleSessionSkill}
+            onSessionSkill={
+              availableSessionSkills.length === 0 ? undefined : handleSessionSkill
+            }
+            availableSessionSkills={availableSessionSkills}
             activeSessionSkill={activeSessionSkill}
             statusMessage={visibleComposerStatus?.message}
             statusTone={visibleComposerStatus?.tone}
@@ -6609,7 +6633,8 @@ function WorkspaceChatLanding({
         topSelector={<div className="w-full min-w-0">{topSelectorNode}</div>}
         footerSelector={footerSelectorNode}
         bottomBar={bottomBarNode}
-        onSessionSkill={handleSessionSkill}
+        onSessionSkill={availableSessionSkills.length === 0 ? undefined : handleSessionSkill}
+        availableSessionSkills={availableSessionSkills}
         activeSessionSkill={activeSessionSkill}
         composerNotice={composerNoticeNode}
         composerStatusMessage={visibleComposerStatus?.message}

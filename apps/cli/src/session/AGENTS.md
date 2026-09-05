@@ -245,6 +245,11 @@ delegation proofs or a shared-machine gate without a new product and security de
   `SessionForkSpec.targetPlacement === 'side-panel'` is a sparse
   presentation hint persisted as target `childSessionPlacement`; it does not alter parent/root
   workspace ownership, history cloning, ACP lifetime, or the fork commit boundary.
+  When the live source agent does not advertise native `sessionFork` (or the ACP runtime is
+  gone), a non-worktree fork still commits the cloned history and origin notice, but MUST NOT
+  start ACP or persist a fresh `acpSessionId` — that empty id would resume on the next turn and
+  skip Lody history replay. The next user turn uses `session/new` + `buildReplayPromptFromHistory`.
+  Worktree fork still requires native ACP fork.
   `targetContext.kind === 'new-worktree'` is a distinct asynchronous saga: accept only when the
   provider advertises native fork support, capture the source's committed `HEAD` after any dirty
   source acknowledgement, then persist a target-doc `forkOperation` before returning. Create the
@@ -285,6 +290,12 @@ delegation proofs or a shared-machine gate without a new product and security de
   current process, rebind `agentConfigId`/`cliType`/`agentType`, clear `acpSessionId`, then let
   the next turn start with `session/new` and replay Lody history. Provider-native memory is
   lost on purpose; do not invent a portable ACP session id across agents.
+- Fresh ACP restore (`session-execution-service.ts`) still best-effort syncs the SessionDoc
+  before history replay (`fresh-acp-history-replay`, 20s timeout), but a Streams
+  timeout/network error must NOT become `session_restore_failed`: warn, keep going with
+  the turn history gate + local history so agent switches still inherit context. Hard-
+  failing here aborts an already-created ACP session on flaky self-hosted links and
+  leaves the next turn with an empty provider memory.
 - `session-edit-and-resend-service.ts` owns same-Lody-session replacement of the last normal User
   turn for builtin Codex/Claude. Prepare provider `forkAtTurn` (or `session/new` for the first
   User) before cancelling the exact active turn, then wait for old ownership release before one

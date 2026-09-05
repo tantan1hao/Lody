@@ -121,7 +121,9 @@ work) and a hover preview.
   `isMessageContent` gates rendering; a missing case silently drops the item.
 - Selecting visible user/assistant prose can attach a `source: 'session_text'`
   comment reference through the existing `addCommentReference` chip path.
-  Do not invent a second quote/chip system.
+  The turn action bar (next to Copy) uses that same path so the action is
+  reachable when the floating selection toolbar does not appear. Do not invent
+  a second quote/chip system.
 - A user entry marked by `SessionMeta.lastMissingHistoryUserMsgId` renders the
   terminal "Not delivered" label. That label is the only recovery entry: its
   dialog resends the same content as a new ordinary message, then marks the old

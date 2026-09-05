@@ -181,10 +181,18 @@ describe('project skills helpers', () => {
   it('maps Cursor to project and user skill directories Lody can mention', () => {
     expect([
       ...getRegisteredSkillDirs([{ cliType: 'registry', agentType: 'cursor' }]),
-    ]).toEqual([DEFAULT_PROJECT_SKILL_DIR, '.cursor/skills']);
+    ]).toEqual([DEFAULT_PROJECT_SKILL_DIR, '.cursor/skills', '.cursor/skills-cursor']);
     expect([
       ...getRegisteredGlobalSkillDirs([{ cliType: 'registry', agentType: 'cursor' }]),
-    ]).toEqual([DEFAULT_AGENTS_GLOBAL_SKILL_DIR, '~/.cursor/skills']);
+    ]).toEqual([
+      DEFAULT_AGENTS_GLOBAL_SKILL_DIR,
+      '~/.cursor/skills',
+      '~/.cursor/skills-cursor',
+      '~/.cursor/plugins/cache/*/*/skills',
+      '~/.cursor/plugins/cache/*/*/*/skills',
+    ]);
+    expect(ALL_KNOWN_GLOBAL_SKILL_DIRS).toContain('~/.cursor/skills-cursor');
+    expect(ALL_KNOWN_GLOBAL_SKILL_DIRS).toContain('~/.cursor/plugins/cache/*/*/*/skills');
   });
 
   it('maps only codex agents to their system skill directory', () => {

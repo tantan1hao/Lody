@@ -190,6 +190,8 @@ export interface ChatComposerProps {
   focusOnContainerClick?: boolean;
   /** Plan / Debug / Multitask / Ask chips inside the input box. */
   onSessionSkill?: (skill: ComposerSessionSkill) => void;
+  /** Only show skills the current agent can actually apply. */
+  availableSessionSkills?: readonly ComposerSessionSkill[];
   activeSessionSkill?: ComposerSessionSkill | null;
 }
 
@@ -288,6 +290,7 @@ export function ChatComposer({
   skipNextViewportResizeAutoScrollRef,
   focusOnContainerClick = false,
   onSessionSkill,
+  availableSessionSkills,
   activeSessionSkill,
 }: ChatComposerProps) {
   const { t, i18n } = useTranslation();
@@ -880,6 +883,7 @@ export function ChatComposer({
 
               {onSessionSkill ? (
                 <ComposerSessionSkills
+                  availableSkills={availableSessionSkills}
                   activeSkill={activeSessionSkill}
                   disabled={promptDisabled}
                   onSelect={onSessionSkill}

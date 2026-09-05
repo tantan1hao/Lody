@@ -10,7 +10,7 @@ import {
   type ReactNode,
   type MutableRefObject,
 } from 'react';
-import { useAtomValue } from 'jotai';
+import { useAtom, useAtomValue } from 'jotai';
 import { ArrowUp, Loader2 } from 'lucide-react';
 import { Button } from '@/ui/button';
 import type { AcpSessionSelectOption } from '@/components/shared/acp-session-select';
@@ -23,6 +23,7 @@ import {
   openAgentRoleEditorForCreate,
   type AgentRoleEditorState,
 } from '@/components/settings/agent-role-editor-dialog';
+import { QueuedMessageBehaviorControl } from '@/components/settings/queued-message-behavior-control';
 import { useWorkspaceAgentRoles } from '@/hooks/use-workspace-agent-roles';
 import {
   DesktopPermissionModeButton,
@@ -51,11 +52,13 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import {
+  listApplicableComposerSessionSkills,
   planComposerSessionSkillApply,
   type ComposerSessionSkill,
 } from '@/lib/composer-session-skill';
 import { orderAcpConfigOptionSelectors } from '@/lib/acp-selector-order';
 import { resolvePlanModeSelectorEnabled } from '@/components/shared/acp-selector-options';
+import { queuedMessageBehaviorAtom, tasksFeatureEnabledAtom } from '@/atoms/settings';
 import { usePostHog } from '@posthog/react';
 import {
   capturePostHogEvent,
@@ -524,6 +527,8 @@ export const SessionChatInputArea = memo(
     const { t, i18n } = useTranslation();
     const navigate = useNavigate();
     const workspaceName = (useParams({ strict: false }) as { workspaceName?: string }).workspaceName;
+    const tasksFeatureEnabled = useAtomValue(tasksFeatureEnabledAtom);
+    const [queuedMessageBehavior, setQueuedMessageBehavior] = useAtom(queuedMessageBehaviorAtom);
     const intlLocale = useMemo(
       () => toIntlLocale(i18n.resolvedLanguage ?? i18n.language),
       [i18n.language, i18n.resolvedLanguage]
@@ -1851,8 +1856,17 @@ export const SessionChatInputArea = memo(
             'chat.sessionSkill.debugPromptHint',
             'Find the root cause first. Do not change the environment or guess before you have evidence.'
           ),
+          planPromptHint: t(
+            'chat.sessionSkill.planPromptHint',
+            'Write a concrete implementation plan before making changes.'
+          ),
+          askPromptHint: t(
+            'chat.sessionSkill.askPromptHint',
+            'Answer the question without making edits.'
+          ),
         });
-        if (apply.navigateMultitask && workspaceName) {
+        if (apply.navigateMultitask) {
+          if (!tasksFeatureEnabled || !workspaceName) return;
           void navigate({
             to: '/$workspaceName/tasks',
             params: { workspaceName },
@@ -1875,6 +1889,7 @@ export const SessionChatInputArea = memo(
         onModeChange,
         setUserInput,
         t,
+        tasksFeatureEnabled,
         userInput,
         workspaceName,
       ]
@@ -1893,6 +1908,16 @@ export const SessionChatInputArea = memo(
       }
       return null;
     }, [configOptionSelectors, configOptionValues, selectedModeId]);
+    const availableSessionSkills = useMemo(
+      () =>
+        listApplicableComposerSessionSkills({
+          modeOptions,
+          configOptionSelectors,
+          configOptionValues,
+          multitaskEnabled: tasksFeatureEnabled,
+        }),
+      [configOptionSelectors, configOptionValues, modeOptions, tasksFeatureEnabled]
+    );
     const handlePastedTextDraftsChange = useCallback(
       (drafts: PastedTextDraft[]) => {
         updatePastedTextDraftsForSession(session.id, () =>
@@ -2509,7 +2534,7 @@ export const SessionChatInputArea = memo(
     ) : null;
     /* Keep desktop actions compact while preserving the mobile touch target. */
     const primaryActionSizeClassName = isMobile ? 'h-8 w-8' : 'h-7 w-7';
-    const primaryActionNode = showStopButton ? (
+    const sendOrStopButton = showStopButton ? (
       <Button
         onClick={() => {
           void onStop();
@@ -2552,6 +2577,19 @@ export const SessionChatInputArea = memo(
           <ArrowUp className={isMobile ? 'h-5 w-5' : 'h-4 w-4'} />
         )}
       </Button>
+    );
+    const primaryActionNode = (
+      <div className="flex items-center gap-1.5">
+        {isArchived ? null : (
+          <QueuedMessageBehaviorControl
+            size="compact"
+            value={queuedMessageBehavior}
+            onChange={setQueuedMessageBehavior}
+            className={isMobile ? 'h-8' : undefined}
+          />
+        )}
+        {sendOrStopButton}
+      </div>
     );
 
     /* Mobile no longer inlines run-config pickers into the composer
@@ -2619,7 +2657,10 @@ export const SessionChatInputArea = memo(
         onFileRetry={submissionPending || isArchived ? undefined : handleRetryFile}
         footerSelector={footerSelectorNode}
         bottomBar={bottomBarNode}
-        onSessionSkill={isArchived ? undefined : handleSessionSkill}
+        onSessionSkill={
+          isArchived || availableSessionSkills.length === 0 ? undefined : handleSessionSkill
+        }
+        availableSessionSkills={availableSessionSkills}
         activeSessionSkill={activeSessionSkill}
         primaryAction={primaryActionNode}
         autoResize

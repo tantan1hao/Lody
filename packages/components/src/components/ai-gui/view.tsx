@@ -66,7 +66,11 @@ import {
 import { AskUserQuestionCard } from '@/components/sessions/ask-user-question-card';
 import { PermissionRequestCard } from '@/components/sessions/floating-permission-request';
 import { CommentReferenceCard } from './comment-reference-card';
-import { ConversationSelectionToolbar } from './conversation-selection-toolbar';
+import {
+  AddAsCommentButton,
+  ConversationSelectionToolbar,
+} from './conversation-selection-toolbar';
+import { resolveConversationQuotePayload } from './conversation-selection';
 import { VisualAnnotationReferenceCard } from './visual-annotation-reference-card';
 import { currentWorkspaceIdAtom } from '@/atoms';
 import { getAgentMetaByIdAtomFamily } from '@/atoms/agents';
@@ -2596,6 +2600,7 @@ const UserMessageRowView = ({
 }) => {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
+  const { addCommentReference } = useContext(SessionChatActionContext);
   // The RPC fast-path ACK overlays "delivered" before the entry's CRDT status
   // flip syncs back (the machine may run the whole turn before it can see the
   // entry to flip it).
@@ -2632,6 +2637,19 @@ const UserMessageRowView = ({
   }
 
   const isPinned = pinCtx?.pinnedHistoryId === message.id;
+
+  const handleAddAsComment = useCallback(() => {
+    if (!addCommentReference || !hasTextContent) return;
+    const payload = resolveConversationQuotePayload({
+      selection: typeof window === 'undefined' ? null : window.getSelection(),
+      fallbackText: getCopyTextFromMessageItems(message.items),
+      turnId: message.id,
+      role: 'user',
+      authorName: user?.name ?? undefined,
+    });
+    if (!payload) return;
+    addCommentReference(payload);
+  }, [addCommentReference, hasTextContent, message.id, message.items, user?.name]);
 
   const handleCopy = useCallback(async () => {
     if (!hasTextContent) return;
@@ -2881,6 +2899,16 @@ const UserMessageRowView = ({
                 <TooltipContent>{didCopy ? 'Copied' : 'Copy message'}</TooltipContent>
               </Tooltip>
             </TooltipProvider>
+            {addCommentReference ? (
+              <AddAsCommentButton
+                className={cn(
+                  'transition-opacity',
+                  !isMobile &&
+                    'opacity-0 group-hover/usermsg:opacity-100 focus-visible:opacity-100'
+                )}
+                onClick={handleAddAsComment}
+              />
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -3432,6 +3460,7 @@ const AssistantTurnFooter = ({
 }) => {
   const { t, i18n } = useTranslation();
   const isMobile = useIsMobile();
+  const { addCommentReference } = useContext(SessionChatActionContext);
   const [didCopy, setDidCopy] = useState(false);
   const textContent = useMemo(() => {
     const contentItems = buildAssistantMessageRenderItems(message.items).map(
@@ -3473,8 +3502,21 @@ const AssistantTurnFooter = ({
     hasCopyableText ||
     completionTimestampLabel.length > 0 ||
     (durationLabel.length > 0 && (isMobile || showDuration)) ||
-    hasTurnConfigInfo;
+    hasTurnConfigInfo ||
+    Boolean(addCommentReference && hasCopyableText);
   const showActionBar = hasActionBarContent || onFork !== undefined;
+
+  const handleAddAsComment = useCallback(() => {
+    if (!addCommentReference || !hasCopyableText) return;
+    const payload = resolveConversationQuotePayload({
+      selection: typeof window === 'undefined' ? null : window.getSelection(),
+      fallbackText: textContent,
+      turnId: message.id,
+      role: 'assistant',
+    });
+    if (!payload) return;
+    addCommentReference(payload);
+  }, [addCommentReference, hasCopyableText, message.id, textContent]);
 
   const handleCopy = useCallback(async () => {
     if (!hasCopyableText) return;
@@ -3541,7 +3583,7 @@ const AssistantTurnFooter = ({
              render, the timestamp must stay on the plain gutter. Mobile pulls
              only the trailing edge — its leading glyph aligns to the duration
              label, not to the answer text. */}
-          {hasCopyableText || hasTurnConfigInfo || onFork ? (
+          {hasCopyableText || hasTurnConfigInfo || onFork || addCommentReference ? (
             <div className={cn('flex items-center gap-0.5', isMobile ? '-mr-[7px]' : '-mx-[7px]')}>
               {hasCopyableText ? (
                 <TooltipProvider>
@@ -3571,6 +3613,9 @@ const AssistantTurnFooter = ({
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
+              ) : null}
+              {hasCopyableText && addCommentReference ? (
+                <AddAsCommentButton onClick={handleAddAsComment} />
               ) : null}
               {/* The turn config lives below the output on every layout. */}
               {hasTurnConfigInfo ? (

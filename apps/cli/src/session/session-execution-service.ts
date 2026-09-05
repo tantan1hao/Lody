@@ -3492,11 +3492,24 @@ export class SessionExecutionService {
             // owning machine has caught up the SessionDoc history. Pull the
             // durable room first so a fresh provider never starts from the
             // RPC-only turn stash and silently loses the prior conversation.
-            yield* self.tryPromise(() =>
-              self.deps.workspaceDocument.syncDocOrThrow(getSessionRoomId(sessionId), {
-                reason: 'fresh-acp-history-replay',
-              })
-            );
+            // Streams can be flaky (self-hosted remote / Tailscale blips): a
+            // hard fail here aborts an already-created ACP session as
+            // "会话恢复失败" and skips history replay entirely. Prefer a
+            // longer best-effort sync, then the turn gate + local history so
+            // agent switches still inherit context.
+            const sessionRoomId = getSessionRoomId(sessionId);
+            yield* self.tryPromise(async () => {
+              try {
+                await self.deps.workspaceDocument.syncDocOrThrow(sessionRoomId, {
+                  reason: 'fresh-acp-history-replay',
+                  timeoutMs: 20_000,
+                });
+              } catch (error) {
+                self.deps.logger.warn(
+                  `[${sessionId}] Fresh ACP history sync did not finish; continuing with local history (${formatErrorMessage(error)})`
+                );
+              }
+            });
             // A one-shot sync can finish before the Web client's current turn
             // reaches Streams. For RPC turns, wait for that causally-later
             // history entry; once it is local, the preceding conversation is
@@ -3515,12 +3528,19 @@ export class SessionExecutionService {
               });
               if (replayPromptResult.stats.messagesIncluded > 0) {
                 usedHistoryReplay = true;
-                self.deps.logger.debug(
-                  `[${sessionId}] Built replay prompt for fresh ACP restore (chars=${replayPromptResult.stats.usedChars} messages=${replayPromptResult.stats.messagesIncluded} paths=${replayPromptResult.stats.pathsCount} truncated=${replayPromptResult.stats.truncated} terminalOmitted=${replayPromptResult.stats.terminalOmitted} thinkingOmitted=${replayPromptResult.stats.thinkingOmitted})`
+                self.deps.logger.info(
+                  `[${sessionId}] Fresh ACP restore will replay local history (chars=${replayPromptResult.stats.usedChars} messages=${replayPromptResult.stats.messagesIncluded} paths=${replayPromptResult.stats.pathsCount} truncated=${replayPromptResult.stats.truncated})`
                 );
               } else {
+                self.deps.logger.warn(
+                  `[${sessionId}] Fresh ACP restore found ${history.length} history entr(y/ies) but built an empty replay (excludedTurnId=${message.userTurnId})`
+                );
                 replayPromptResult = null;
               }
+            } else {
+              self.deps.logger.warn(
+                `[${sessionId}] Fresh ACP restore has no local history to replay after sync/gate`
+              );
             }
           }
           return restoredSession;

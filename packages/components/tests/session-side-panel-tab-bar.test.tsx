@@ -105,16 +105,9 @@ describe('getSidePanelTabSelection', () => {
 });
 
 describe('getSideChatLauncherState', () => {
-  it('hides unsupported providers and disables an offline supported provider', () => {
-    expect(getSideChatLauncherState({ providerSupportsFork: false, machineOffline: false })).toBe(
-      'hidden'
-    );
-    expect(getSideChatLauncherState({ providerSupportsFork: true, machineOffline: true })).toBe(
-      'disabled'
-    );
-    expect(getSideChatLauncherState({ providerSupportsFork: true, machineOffline: false })).toBe(
-      'enabled'
-    );
+  it('stays visible without native fork and disables only when the machine is offline', () => {
+    expect(getSideChatLauncherState({ machineOffline: false })).toBe('enabled');
+    expect(getSideChatLauncherState({ machineOffline: true })).toBe('disabled');
   });
 });
 

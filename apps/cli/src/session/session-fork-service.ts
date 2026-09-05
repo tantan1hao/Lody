@@ -452,16 +452,21 @@ export class SessionForkService {
       );
     }
     const sourceBusy = this.deps.isSourceBusy(sourceSessionId);
-    if (!source.acpSessionId || !source.agentConfigId) {
+    if (!source.agentConfigId) {
       return sessionForkFailure(
         spec,
         'FORK_UNAVAILABLE',
         'The source session has no forkable ACP runtime identity.'
       );
     }
-    const reusedUser = this.deps.sessionManager
-      .getSession(sourceSessionId)
-      ?.getGitIdentityForUser?.(spec.requestedByUserId);
+    const sourceRuntime = this.deps.sessionManager.getSession(sourceSessionId);
+    const sourceAgent = sourceRuntime?.agentClient;
+    const canNativeFork = Boolean(
+      source.acpSessionId &&
+        sourceRuntime?.acpSessionId === source.acpSessionId &&
+        sourceAgent?.supportsSessionFork() === true
+    );
+    const reusedUser = sourceRuntime?.getGitIdentityForUser?.(spec.requestedByUserId);
 
     const targetRoomId = getSessionRoomId(targetSessionId);
     const worktreeFork = spec.targetContext?.kind === 'new-worktree';
@@ -572,20 +577,23 @@ export class SessionForkService {
 
     const forkSessionTurnId = historyResult.acpTurnId;
     if (sourceBusy) {
-      const sourceRuntime = this.deps.sessionManager.getSession(sourceSessionId);
-      const sourceAgent = sourceRuntime?.agentClient;
-      if (
-        !sourceRuntime?.acpSessionId ||
-        sourceRuntime.acpSessionId !== source.acpSessionId ||
-        !sourceAgent?.supportsActiveTurnFork() ||
-        !forkSessionTurnId
-      ) {
+      const canNativeBusyFork =
+        canNativeFork && sourceAgent?.supportsActiveTurnFork() === true && Boolean(forkSessionTurnId);
+      if (!canNativeBusyFork && (worktreeFork || canNativeFork)) {
         return sessionForkFailure(
           spec,
           'SOURCE_SESSION_BUSY',
           'The active agent cannot fork before its current turn.'
         );
       }
+    }
+
+    if (worktreeFork && !canNativeFork) {
+      return sessionForkFailure(
+        spec,
+        'FORK_UNAVAILABLE',
+        'Worktree fork requires native ACP session fork.'
+      );
     }
 
     if (worktreeFork) {
@@ -791,7 +799,7 @@ export class SessionForkService {
       title: forkTitle,
       titleSource: 'generated',
       userId: spec.requestedByUserId,
-      status: SessionStatusFactory.initializing(),
+      status: canNativeFork ? SessionStatusFactory.initializing() : SessionStatusFactory.idle(),
       isArchived: false,
       cliType: source.cliType,
       agentType: source.agentType,
@@ -804,6 +812,15 @@ export class SessionForkService {
       parentSessionId,
       ...(spec.targetPlacement ? { childSessionPlacement: spec.targetPlacement } : {}),
     };
+
+    if (!canNativeFork) {
+      return await this.commitHistoryOnlyFork({
+        spec,
+        targetRoomId,
+        targetMeta,
+        historyResult,
+      });
+    }
 
     let targetPrepared = false;
     try {
@@ -902,6 +919,51 @@ export class SessionForkService {
         }`
       );
       return sessionForkFailure(spec, publicError.code, publicError.message);
+    }
+  }
+
+  /**
+   * Providers without native ACP fork still get a durable child with cloned
+   * Lody history. Do not start ACP here: a fresh empty `acpSessionId` would
+   * resume on the next turn and skip history replay. The next user turn uses
+   * `session/new` + `buildReplayPromptFromHistory`.
+   */
+  private async commitHistoryOnlyFork(args: {
+    spec: SessionForkSpec;
+    targetRoomId: string;
+    targetMeta: SessionMeta;
+    historyResult: NonNullable<ReturnType<typeof cloneHistoryThroughTurn>>;
+  }): Promise<SessionForkResponse> {
+    const { spec, targetRoomId, targetMeta, historyResult } = args;
+    const targetSessionId = spec.targetSessionId;
+    try {
+      await this.deps.workspaceDocument.repo.upsertDocMeta(targetRoomId, targetMeta);
+      const targetDoc = await this.deps.workspaceDocument.getOrCreateSessionDoc(targetSessionId);
+      await targetDoc.updateHistory(() => historyResult.history);
+      await this.deps.workspaceDocument.persistPendingChanges('session-fork-commit');
+      return {
+        type: 'session/fork_response',
+        sourceSessionId: spec.sourceSessionId,
+        targetSessionId,
+        success: true,
+        partial: historyResult.warnings.length > 0,
+        warnings: historyResult.warnings,
+      };
+    } catch (error) {
+      await this.deps.workspaceDocument.repo.deleteDoc(targetRoomId).catch(() => {});
+      await this.deps.workspaceDocument
+        .persistPendingChanges('session-fork-rollback')
+        .catch(() => {});
+      this.deps.logger.error(
+        `[${spec.sourceSessionId}] History-only fork failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      return sessionForkFailure(
+        spec,
+        'TARGET_WRITE_FAILED',
+        'The forked session could not be saved locally.'
+      );
     }
   }
 

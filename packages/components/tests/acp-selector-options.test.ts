@@ -84,12 +84,44 @@ describe('buildAcpSelectorOptions', () => {
     });
 
     expect(options.modelOptions.map((option) => option.value)).toEqual([
+      'grok-4.6',
       'grok-4.5',
       'grok-code-fast-1',
     ]);
     expect(
       options.configOptionSelectors.some((selector) => selector.category === 'model')
     ).toBe(false);
+  });
+
+  it('keeps Grok 4.6 selectable when the machine cache only recorded a 4.5 roster', () => {
+    const options = buildAcpSelectorOptions({
+      configId: agentConfigId,
+      cliType: 'builtin',
+      agentType: 'grok',
+      machine: machineWithCapabilities({
+        [agentConfigId]: {
+          cliType: 'builtin',
+          agentType: 'grok',
+          cacheVersion: ACP_CAPABILITY_CACHE_VERSION,
+          provenance: 'runtime',
+          modes: [],
+          models: [{ modelId: 'grok-4.5', name: 'Grok 4.5' }],
+          configOptions: [
+            {
+              id: 'model',
+              name: 'Model',
+              category: 'model',
+              type: 'select',
+              currentValue: 'grok-4.5',
+              options: [{ value: 'grok-4.5', name: 'Grok 4.5' }],
+            },
+          ],
+          fetchedAt: 1,
+        },
+      }),
+    });
+
+    expect(options.modelOptions.map((option) => option.value)).toEqual(['grok-4.6', 'grok-4.5']);
   });
 
   it('keeps registry model selectors when config options omit category but publish id=model', () => {

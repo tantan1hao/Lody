@@ -2,6 +2,8 @@ import * as React from 'react';
 import { useAtomValue } from 'jotai';
 import {
   compareProjectSkillScope,
+  DEFAULT_AGENTS_GLOBAL_SKILL_DIR,
+  DEFAULT_GLOBAL_SKILL_DIR,
   getRegisteredGlobalSkillDirs,
   getRegisteredHookDirs,
   getRegisteredSkillDirs,
@@ -112,7 +114,7 @@ export function buildSkillMentionItems(
  *     the directories that provider uses (`allowedDirs`); null = show all.
  *  2. Dedupe by token — the same `$<token>` surfaced from multiple dirs appears
  *     once (the inserted text is identical either way).
- *  3. Term filter + rank — prefix > substring > path match.
+ *  3. Term filter + rank — prefix > substring > path > description match.
  */
 export function selectSkillMentionCandidates(
   items: readonly SkillMentionItem[],
@@ -141,6 +143,7 @@ export function selectSkillMentionCandidates(
       const token = item.token.toLowerCase();
       const name = item.skill.name.toLowerCase();
       const path = item.skill.relativePath.toLowerCase();
+      const description = item.skill.description?.toLowerCase() ?? '';
       let score = -1;
       if (token.startsWith(query) || name.startsWith(query)) {
         score = 0;
@@ -148,6 +151,8 @@ export function selectSkillMentionCandidates(
         score = 1;
       } else if (path.includes(query)) {
         score = 2;
+      } else if (description.includes(query)) {
+        score = 3;
       }
       return { item, score };
     })
@@ -160,6 +165,23 @@ function isSkillMentionDirAllowed(dir: string, allowedDirs: ReadonlySet<string>)
   return skillDirMatchesAny(dir, allowedDirs);
 }
 
+/**
+ * Provider-specific dirs plus shared user skill homes. Switching Gemini ↔ Grok
+ * must not hide `~/.agents/skills` / Cursor / Claude / Codex user catalogs the
+ * machine already scanned — otherwise `$` looks empty relative to the disk.
+ */
+const SHARED_USER_SKILL_MENTION_DIRS = [
+  DEFAULT_AGENTS_GLOBAL_SKILL_DIR,
+  DEFAULT_GLOBAL_SKILL_DIR,
+  '~/.cursor/skills',
+  '~/.cursor/skills-cursor',
+  '~/.claude/skills',
+  '~/.codex/skills',
+  '~/.gemini/skills',
+  '~/.cursor/plugins/cache/*/*/skills',
+  '~/.cursor/plugins/cache/*/*/*/skills',
+] as const;
+
 export function getAllowedSkillMentionDirs(
   skillAgent: { cliType?: AgentConfigCliType; agentType?: string } | undefined
 ): ReadonlySet<string> | null {
@@ -168,6 +190,7 @@ export function getAllowedSkillMentionDirs(
   }
   const agent = { cliType: skillAgent.cliType, agentType: skillAgent.agentType };
   return new Set([
+    ...SHARED_USER_SKILL_MENTION_DIRS,
     ...getRegisteredSkillDirs([agent]),
     ...getRegisteredGlobalSkillDirs([agent]),
     ...getRegisteredSystemSkillDirs([agent]),

@@ -2,6 +2,7 @@ import type { SessionTextCommentReferencePayload } from '@lody/shared';
 
 const COMPOSER_SELECTOR = '[data-keyboard-nav="composer"], textarea, input, [contenteditable="true"]';
 const QUOTABLE_SELECTOR = '[data-native-selection-allow]';
+const CONVERSATION_SELECTOR = '[data-session-conversation]';
 const TURN_ID_ATTR = 'data-session-turn-id';
 const TURN_ROLE_ATTR = 'data-session-turn-role';
 const TURN_AUTHOR_ATTR = 'data-session-turn-author';
@@ -28,7 +29,7 @@ export function readConversationQuoteSelection(
   selection: Selection | null,
   container: ParentNode | null
 ): ConversationQuoteSelection | null {
-  if (!selection || selection.isCollapsed || selection.rangeCount === 0 || !container) {
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
     return null;
   }
 
@@ -38,18 +39,22 @@ export function readConversationQuoteSelection(
   }
 
   const range = selection.getRangeAt(0);
-  const ancestor = range.commonAncestorContainer;
-  if (!container.contains(ancestor)) {
-    return null;
-  }
-
   const startEl = elementFromNode(range.startContainer);
   if (!startEl || startEl.closest(COMPOSER_SELECTOR)) {
     return null;
   }
 
+  const conversation = startEl.closest(CONVERSATION_SELECTOR);
+  const scope = conversation ?? container;
+  if (!scope) {
+    return null;
+  }
+  if (!scope.contains(range.commonAncestorContainer)) {
+    return null;
+  }
+
   const quotable = startEl.closest(QUOTABLE_SELECTOR);
-  if (!quotable || !container.contains(quotable)) {
+  if (!quotable || !scope.contains(quotable)) {
     return null;
   }
 
@@ -67,6 +72,42 @@ export function readConversationQuoteSelection(
       ...(turnId ? { turnId } : {}),
       ...(role ? { role } : {}),
     },
-    rect: range.getBoundingClientRect(),
+    rect: visibleRangeRect(range),
+  };
+}
+
+function visibleRangeRect(range: Range): DOMRect {
+  const rect = range.getBoundingClientRect();
+  if (rect.width > 0 || rect.height > 0) {
+    return rect;
+  }
+  return range.getClientRects().item(0) ?? rect;
+}
+
+/**
+ * Prefer the live selection when it belongs to this turn; otherwise quote the
+ * visible fallback text (footer / row action, no selection required).
+ */
+export function resolveConversationQuotePayload(args: {
+  selection: Selection | null;
+  fallbackText: string;
+  turnId: string;
+  role: 'user' | 'assistant';
+  authorName?: string;
+  container?: ParentNode | null;
+}): SessionTextCommentReferencePayload | null {
+  const quote = readConversationQuoteSelection(args.selection, args.container ?? null);
+  if (quote && (!quote.payload.turnId || quote.payload.turnId === args.turnId)) {
+    return quote.payload;
+  }
+  if (isWhitespaceOnly(args.fallbackText)) {
+    return null;
+  }
+  return {
+    source: 'session_text',
+    commentBody: args.fallbackText,
+    turnId: args.turnId,
+    role: args.role,
+    ...(args.authorName ? { authorName: args.authorName } : {}),
   };
 }

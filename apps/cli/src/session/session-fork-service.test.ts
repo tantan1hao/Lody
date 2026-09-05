@@ -50,6 +50,8 @@ function createForkHarness(
   options: {
     sourceBusy?: boolean;
     supportsActiveTurnFork?: boolean;
+    supportsSessionFork?: boolean;
+    sourceRuntimeMissing?: boolean;
     sourceHistory?: SessionHistoryInput[];
     worktree?: { dirty: boolean; headSha: string };
     forkOperation?: unknown;
@@ -167,16 +169,20 @@ function createForkHarness(
     createSession: vi.fn(async () => {
       await options.createSessionGate;
     }),
-    getSession: vi.fn((sessionId: SessionId) =>
-      sessionId === sourceSessionId
+    getSession: vi.fn((sessionId: SessionId) => {
+      if (options.sourceRuntimeMissing === true && sessionId === sourceSessionId) {
+        return undefined;
+      }
+      return sessionId === sourceSessionId
         ? {
             acpSessionId: 'acp-source',
             agentClient: {
               supportsActiveTurnFork: () => options.supportsActiveTurnFork === true,
+              supportsSessionFork: () => options.supportsSessionFork !== false,
             },
           }
-        : { acpSessionId: 'acp-target', getWorkdir: () => process.cwd() }
-    ),
+        : { acpSessionId: 'acp-target', getWorkdir: () => process.cwd() };
+    }),
     terminateSession: vi.fn(async () => undefined),
     resolveSessionWorkdir: vi.fn(async () => '/source/workdir'),
     resolveLocalProjectRootPath: vi.fn(async () => '/source/project-root'),
@@ -385,6 +391,65 @@ describe('SessionForkService durability boundary', () => {
     ]);
     expect(harness.targetDoc.waitUntilSynced).not.toHaveBeenCalled();
     expect(harness.sessionManager.terminateSession).not.toHaveBeenCalled();
+  });
+
+  it('commits cloned history without ACP when the provider cannot native-fork', async () => {
+    const harness = createForkHarness(undefined, { supportsSessionFork: false });
+
+    const result = await harness.service.fork({
+      ...forkSpec,
+      targetPlacement: 'side-panel',
+    });
+
+    expect(result.success).toBe(true);
+    expect(harness.sessionManager.createSession).not.toHaveBeenCalled();
+    expect(harness.sessionManager.terminateSession).not.toHaveBeenCalled();
+    expect(harness.targetDoc.updateHistory).toHaveBeenCalledTimes(1);
+    const clonedHistory = harness.targetDoc.updateHistory.mock.calls[0]?.[0]([]);
+    expect(clonedHistory?.map((entry: { id: string }) => entry.id)).toEqual([
+      'user-1',
+      'assistant-1',
+      `session-fork-origin:${targetSessionId}`,
+    ]);
+    expect(harness.repo.upsertDocMeta).toHaveBeenCalledWith(
+      getSessionRoomId(targetSessionId),
+      expect.objectContaining({
+        parentSessionId: sourceSessionId,
+        childSessionPlacement: 'side-panel',
+        status: SessionStatusFactory.idle(),
+      })
+    );
+    expect(harness.persistPendingChanges.mock.calls.map(([reason]) => reason)).toEqual([
+      'session-fork-commit',
+    ]);
+  });
+
+  it('commits cloned history when the source ACP runtime is no longer live', async () => {
+    const harness = createForkHarness(undefined, { sourceRuntimeMissing: true });
+
+    const result = await harness.service.fork(forkSpec);
+
+    expect(result.success).toBe(true);
+    expect(harness.sessionManager.createSession).not.toHaveBeenCalled();
+    expect(harness.targetDoc.updateHistory).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects worktree fork when the provider cannot native-fork', async () => {
+    const harness = createForkHarness(undefined, {
+      supportsSessionFork: false,
+      worktree: { dirty: false, headSha: 'a'.repeat(40) },
+    });
+
+    const result = await harness.service.fork({
+      ...forkSpec,
+      targetContext: { kind: 'new-worktree' },
+    });
+
+    expect(result).toMatchObject({
+      success: false,
+      error: { code: 'FORK_UNAVAILABLE' },
+    });
+    expect(harness.sessionManager.createSession).not.toHaveBeenCalled();
   });
 
   it('persists a side-panel placement without changing workspace ownership', async () => {

@@ -47,19 +47,30 @@ const SKILLS: ReadonlyArray<{
 ];
 
 export function ComposerSessionSkills({
+  availableSkills,
   activeSkill,
   disabled = false,
   onSelect,
 }: {
+  /** When set, only these skills render. Empty/undefined hides the row. */
+  availableSkills?: readonly ComposerSessionSkill[];
   activeSkill?: ComposerSessionSkill | null;
   disabled?: boolean;
   onSelect: (skill: ComposerSessionSkill) => void;
 }) {
   const { t } = useTranslation();
+  const skills =
+    availableSkills === undefined
+      ? SKILLS
+      : SKILLS.filter((skill) => availableSkills.includes(skill.id));
+
+  if (skills.length === 0) {
+    return null;
+  }
 
   return (
-    <div className="flex flex-wrap gap-1 pb-2" data-composer-session-skills="">
-      {SKILLS.map((skill) => {
+    <div className="flex flex-wrap gap-1 pt-0.5 pb-2" data-composer-session-skills="">
+      {skills.map((skill) => {
         const label = t(skill.labelKey, skill.labelFallback);
         const description = t(skill.descriptionKey, skill.descriptionFallback);
         const active = activeSkill === skill.id;

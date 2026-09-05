@@ -28,6 +28,16 @@ const CLAUDE_PLUGIN_SKILL_DIRS = [
   '~/.claude/plugins/repos/*/skills',
 ];
 /**
+ * Cursor IDE 插件技能。市场 / 插件名 / cache hash 安装时才知道，所以用通配段。
+ * 实测本机 thermos 等在：
+ *   ~/.cursor/plugins/cache/<市场>/<插件>/<版本>/skills/<技能>/SKILL.md
+ * 不加的话 `/` 只能看到 `~/.agents/skills` 和空的 `~/.cursor/skills`。
+ */
+const CURSOR_PLUGIN_SKILL_DIRS = [
+  '~/.cursor/plugins/cache/*/*/skills',
+  '~/.cursor/plugins/cache/*/*/*/skills',
+];
+/**
  * Claude 用户 settings、项目 settings、以及插件 `hooks/hooks.json`。
  * 扫的是文件，不是 `.git/hooks`，也不是随便一个叫 hooks 的源码目录。
  */
@@ -131,8 +141,14 @@ export const ACP_SKILL_DIRS_BY_AGENT_TYPE: Record<string, SkillDirsByAgentType> 
   ),
   crush: skillDirs(['.crush/skills'], ['~/.config/crush/skills']),
   cursor: skillDirs(
-    [DEFAULT_PROJECT_SKILL_DIR, '.cursor/skills'],
-    [DEFAULT_AGENTS_GLOBAL_SKILL_DIR, '~/.cursor/skills']
+    [DEFAULT_PROJECT_SKILL_DIR, '.cursor/skills', '.cursor/skills-cursor'],
+    [
+      DEFAULT_AGENTS_GLOBAL_SKILL_DIR,
+      '~/.cursor/skills',
+      // Cursor IDE ships agent skills here; `~/.cursor/skills` alone is often empty.
+      '~/.cursor/skills-cursor',
+      ...CURSOR_PLUGIN_SKILL_DIRS,
+    ]
   ),
   deepagents: skillDirs([], []),
   devin: skillDirs(
@@ -246,8 +262,12 @@ export const ACP_SKILL_DIRS_BY_AGENT_TYPE: Record<string, SkillDirsByAgentType> 
    inherit the unsuffixed provider mapping (e.g. antigravity-acp).
    v11: Claude family shares plugin cache/repos + `~/.agents/skills`; home and
    project scans also surface Claude `hook` files; registered globs match
-   expanded dirs. */
-export const KNOWN_SKILL_DIRS_VERSION = 11;
+   expanded dirs.
+   v12: Cursor also scans `~/.cursor/skills-cursor` (and project
+   `.cursor/skills-cursor`), where Cursor IDE keeps agent skills.
+   v13: Cursor plugin cache skills join the home scan, same glob shape as
+   Claude plugin dirs. */
+export const KNOWN_SKILL_DIRS_VERSION = 13;
 
 export const DEFAULT_PROJECT_SKILLS_CONTENT_BUDGET_BYTES = 2 * 1024 * 1024;
 export const DEFAULT_PROJECT_SKILLS_RESULT_MAX_SKILLS = 5_000;

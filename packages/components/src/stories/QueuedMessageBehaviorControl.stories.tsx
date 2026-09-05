@@ -28,3 +28,8 @@ export const GuideSelected: Story = {
   args: { value: 'guide', onChange: () => {} },
   render: (args) => <Controlled {...args} />,
 };
+
+export const Compact: Story = {
+  args: { value: 'queue', onChange: () => {}, size: 'compact' },
+  render: (args) => <Controlled {...args} />,
+};

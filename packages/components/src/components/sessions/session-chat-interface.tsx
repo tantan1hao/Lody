@@ -262,6 +262,8 @@ import {
 import { localHomeDirAtom, localMachineIdAtom } from '@/atoms/local-probe';
 import { sessionLivePresenceAtomFamily } from '@/atoms/presence';
 import {
+  isLatestAssistantTurnFinished,
+  isPostAnswerFinalizePresence,
   resolveUnstartedTrailingDispatchAtMs,
   UNSTARTED_TRAILING_USER_TURN_TIMEOUT_MS,
 } from '@/lib/session-dispatch-state';
@@ -2642,7 +2644,6 @@ export const SessionChatInterface = memo(
       }
     }, [latestGoal, pendingGoalCommand]);
 
-    const isSessionActive = liveSessionStatus != null;
     // CLI-reported presence is the fact source for "working now". The only
     // frontend-derived state is the dispatched-but-not-started window, read
     // from the trailing pending user turn in history — never from meta
@@ -2675,6 +2676,20 @@ export const SessionChatInterface = memo(
     const hasPendingDispatch =
       pendingDispatchAtMs != null &&
       dispatchNowMs - pendingDispatchAtMs < UNSTARTED_TRAILING_USER_TURN_TIMEOUT_MS;
+    const lastAssistantFinished = useMemo(
+      () => isLatestAssistantTurnFinished(sessionHistory),
+      [sessionHistory]
+    );
+    // CLI keeps `running` presence through post-prompt finalize. The answer is
+    // already finished on screen; leftover presence must not keep Thinking /
+    // Agent-lock / Stop lit.
+    const isSessionActive =
+      liveSessionStatus != null &&
+      !isPostAnswerFinalizePresence({
+        liveStatus: liveSessionStatus,
+        lastAssistantFinished,
+        hasPendingDispatch,
+      });
     const isSessionWorking = isSessionActive || hasPendingDispatch;
 
     useAppStoreReviewPrompt({

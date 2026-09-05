@@ -897,6 +897,8 @@ const SessionDetail = ({
   const [pendingForks, setPendingForks] = useState<PendingForkState>(() =>
     readPendingWorktreeForks(sessionId)
   );
+  const [creatingLodySideSession, setCreatingLodySideSession] = useState(false);
+  const creatingLodySideSessionRef = useRef(false);
   const [worktreeAvailabilityBySessionId, setWorktreeAvailabilityBySessionId] = useState<
     Partial<Record<string, 'available' | 'unavailable' | 'checking'>>
   >({});
@@ -1154,13 +1156,14 @@ const SessionDetail = ({
       placement: 'tab' | 'side-panel' | 'worktree' = 'tab',
       options: { targetSessionId?: SessionId; acknowledgeDirtySource?: true } = {}
     ) => {
-      if (
-        !runtime ||
-        !user?.id ||
-        !canForkSession(source) ||
-        (pendingForks[source.id] && !options.targetSessionId)
-      )
+      if (!runtime || !user?.id || (pendingForks[source.id] && !options.targetSessionId)) {
         return;
+      }
+      // Side Chat may history-clone when the provider has no native ACP fork.
+      // Tab / worktree launchers stay native-only.
+      if (placement !== 'side-panel' && !canForkSession(source)) {
+        return;
+      }
       const targetSessionId = options.targetSessionId ?? (crypto.randomUUID() as SessionId);
       setPendingForks((current) => ({
         ...current,
@@ -1662,6 +1665,7 @@ const SessionDetail = ({
   );
   // Multi-tab: create a new child session
   const {
+    createSession,
     startSession,
     requestSessionDispatch,
     touchSessionActivity,
@@ -2469,13 +2473,77 @@ const SessionDetail = ({
     [forkActiveConversation]
   );
   const isCreatingSideSession = useMemo(
-    () => Object.values(pendingForks).some((pending) => pending.placement === 'side-panel'),
-    [pendingForks]
+    () =>
+      creatingLodySideSession ||
+      Object.values(pendingForks).some((pending) => pending.placement === 'side-panel'),
+    [creatingLodySideSession, pendingForks]
   );
-  const handleCreateSideSession = useCallback(
-    () => forkActiveConversation('side-panel'),
-    [forkActiveConversation]
+  const createLodySideSession = useCallback(
+    async (source: SessionMeta) => {
+      if (!user?.id || creatingLodySideSessionRef.current) {
+        return;
+      }
+      creatingLodySideSessionRef.current = true;
+      setCreatingLodySideSession(true);
+      try {
+        const { sessionId: childSessionId } = await createSession({
+          machineId: source.machineId,
+          userId: user.id,
+          cliType: source.cliType,
+          agentType: source.agentType,
+          agentConfigId: source.agentConfigId,
+          project: source.project,
+          repoFullName: source.repoFullName,
+          baseBranch: source.baseBranch,
+          branchName: source.branchName,
+          isWorktree: source.isWorktree,
+          parentSessionId: source.parentSessionId ?? source.id,
+          childSessionPlacement: 'side-panel',
+          title: t('sessions.detailTabs.sideSession', 'Side Chat'),
+          titleSource: 'generated',
+        });
+        captureSessionDetailEvent('session/side_chat_created', {
+          child_session_id: childSessionId,
+          source_session_id: source.id,
+          via: 'lody_child',
+        });
+        selectSidePanelTab(getSideSessionPanelTabId(childSessionId));
+        setIsSidebarOpen(true);
+      } catch (error) {
+        console.error('Failed to create side chat', error);
+        toast.error(t('sessions.sideSession.createFailed', 'Unable to open side chat'));
+      } finally {
+        creatingLodySideSessionRef.current = false;
+        setCreatingLodySideSession(false);
+      }
+    },
+    [captureSessionDetailEvent, createSession, selectSidePanelTab, t, user?.id]
   );
+  const handleCreateSideSession = useCallback(() => {
+    const sourceSession = activeDraftTab ? null : activeTabSession;
+    if (!sourceSession || sourceSession.isArchived || creatingLodySideSessionRef.current) {
+      return;
+    }
+    if (!pendingForks[sourceSession.id]) {
+      const activeChatRef = chatRefsMap.current.get(activeTabSessionId);
+      const turnId =
+        activeChatRef && 'getLastAssistantTurnId' in activeChatRef
+          ? activeChatRef.getLastAssistantTurnId()
+          : null;
+      if (turnId) {
+        void handleForkAssistant(sourceSession, turnId, 'side-panel');
+        return;
+      }
+    }
+    void createLodySideSession(sourceSession);
+  }, [
+    activeDraftTab,
+    activeTabSession,
+    activeTabSessionId,
+    createLodySideSession,
+    handleForkAssistant,
+    pendingForks,
+  ]);
 
   useEffect(() => {
     if (activeSidebarTab === 'pr' && (!latestPr || !repoFullName)) {
@@ -3348,10 +3416,10 @@ const SessionDetail = ({
     return options;
   }, [activeBrowserSession, latestPr, latestPrNumber, repoFullName, t]);
   const sideChatOption = useMemo<SessionSidePanelOption | null>(() => {
+    if (activeDraftTab || !activeTabSession || activeTabSession.isArchived) {
+      return null;
+    }
     const launcherState = getSideChatLauncherState({
-      providerSupportsFork: Boolean(
-        !activeDraftTab && activeTabSession && canForkSession(activeTabSession)
-      ),
       machineOffline: activeTabSessionMachineOnlineStatus === 'offline',
     });
     if (launcherState === 'hidden') return null;
@@ -3366,7 +3434,6 @@ const SessionDetail = ({
     activeDraftTab,
     activeTabSession,
     activeTabSessionMachineOnlineStatus,
-    canForkSession,
     isCreatingSideSession,
     t,
   ]);
@@ -3919,13 +3986,15 @@ const SessionDetail = ({
       }
       setClosingSideSessionIds((current) => new Set(current).add(sideSessionId));
       try {
-        const termination = await runtime.requestSessionTerminate(
-          sideSession.machineId,
-          sideSessionId,
-          { timeoutMs: 30_000 }
-        );
-        if (!termination?.success) {
-          throw new Error(termination?.error ?? 'Side session termination failed');
+        if (sideSession.acpSessionId) {
+          const termination = await runtime.requestSessionTerminate(
+            sideSession.machineId,
+            sideSessionId,
+            { timeoutMs: 30_000 }
+          );
+          if (!termination?.success) {
+            throw new Error(termination?.error ?? 'Side session termination failed');
+          }
         }
         await deleteSessions([sideSessionId]);
         const { fallbackTabId, sidebarOpen } = getSidePanelTabStateAfterClose(
@@ -4830,9 +4899,10 @@ const SessionDetail = ({
     // content scrolls UNDER it and gets frosted by the backdrop blur. The
     // conversation scroll + viewer panels read `--conversation-top-inset` so
     // their content clears the header at rest (see ai-gui/view.tsx VList).
-    const mobileHeaderInset = isNativeAppShell()
-      ? 'calc(3rem + var(--safe-area-top, 0px))'
-      : '3rem';
+    // Always include safe-area: web-oss uses viewport-fit=cover / translucent
+    // status bar (and home-screen PWA), so omitting it lets the first message
+    // sit under the title row while the frosted bar stays only 3rem tall.
+    const mobileHeaderInset = 'calc(3rem + var(--safe-area-top, 0px))';
     return (
       // The slide / swipe-to-dismiss and the base layer beneath are owned by
       // `MobileWorkspaceStack` (this renders inside its Vaul right-drawer), so

@@ -248,10 +248,56 @@ const mergeLegacyModelsIntoConfigOptions = (
   return [...next, synthesizeModelConfigOption(models)];
 };
 
+/**
+ * Official Grok may persist a provisional `session/new` roster (4.5 only)
+ * before `_x.ai/models/update` lands. The static builtin catalog already
+ * lists 4.6; union it so switching agent on an old session can still pick 4.6.
+ * Runtime-only models stay after the static order.
+ */
+const unionStaticGrokModelsIntoConfigOptions = (
+  target: AcpSelectorTarget,
+  configOptions: readonly AcpConfigOptionSummary[] | undefined
+): AcpConfigOptionSummary[] | undefined => {
+  if (target.agentType?.toLowerCase() !== 'grok') {
+    return configOptions ? [...configOptions] : undefined;
+  }
+  const staticModels = getStaticBuiltinAcpCapabilities('builtin', 'grok')?.models;
+  if (!staticModels?.length) {
+    return configOptions ? [...configOptions] : undefined;
+  }
+  const merged = mergeLegacyModelsIntoConfigOptions(configOptions ?? [], staticModels);
+  return merged.map((option) => {
+    if (!isSelectModelConfigOption(option)) {
+      return option;
+    }
+    const byValue = new Map(option.options.map((entry) => [entry.value, entry]));
+    const ordered = staticModels.map(
+      (model) =>
+        byValue.get(model.modelId) ?? {
+          value: model.modelId,
+          name: model.name ?? model.modelId,
+          description: model.description ?? undefined,
+        }
+    );
+    for (const model of staticModels) {
+      byValue.delete(model.modelId);
+    }
+    ordered.push(...byValue.values());
+    return ordered === option.options
+      ? option
+      : {
+          ...option,
+          options: ordered,
+        };
+  });
+};
+
 const resolveConfigOptions = (target?: AcpSelectorTarget): ResolvedConfigOptions => {
   if (!target?.cliType || !target.agentType) {
     return { authority: 'unavailable' };
   }
+
+  let resolved: ResolvedConfigOptions = { authority: 'unavailable' };
 
   if (target.configId) {
     const key = getAcpCapabilityCacheKey(target.configId);
@@ -259,48 +305,56 @@ const resolveConfigOptions = (target?: AcpSelectorTarget): ResolvedConfigOptions
     if (isAcpCapabilityCacheEntryCurrentForRuntimeOverrides(capability, target.runtimeOverrides)) {
       const authority = getAcpCapabilityCacheEntryAuthority(capability, target.runtimeOverrides);
       if (capability.configOptions?.length) {
-        return {
+        resolved = {
           authority,
           configOptions: mergeLegacyModelsIntoConfigOptions(
             capability.configOptions,
             capability.models
           ),
         };
+      } else {
+        // Fallback: synthesize configOptions from legacy modes/models.
+        const synthesized: AcpConfigOptionSummary[] = [];
+        if (capability.modes && capability.modes.length > 0) {
+          synthesized.push({
+            id: 'mode',
+            name: 'Mode',
+            category: 'mode',
+            type: 'select',
+            currentValue: capability.modes[0]?.id ?? '',
+            options: capability.modes.map((m) => ({
+              value: m.id,
+              name: m.name,
+              description: m.description ?? undefined,
+            })),
+          });
+        }
+        if (capability.models && capability.models.length > 0) {
+          synthesized.push(synthesizeModelConfigOption(capability.models));
+        }
+        resolved = {
+          authority,
+          configOptions: synthesized.length > 0 ? synthesized : undefined,
+        };
       }
-      // Fallback: synthesize configOptions from legacy modes/models.
-      const synthesized: AcpConfigOptionSummary[] = [];
-      if (capability.modes && capability.modes.length > 0) {
-        synthesized.push({
-          id: 'mode',
-          name: 'Mode',
-          category: 'mode',
-          type: 'select',
-          currentValue: capability.modes[0]?.id ?? '',
-          options: capability.modes.map((m) => ({
-            value: m.id,
-            name: m.name,
-            description: m.description ?? undefined,
-          })),
-        });
-      }
-      if (capability.models && capability.models.length > 0) {
-        synthesized.push(synthesizeModelConfigOption(capability.models));
-      }
-      return {
-        authority,
-        configOptions: synthesized.length > 0 ? synthesized : undefined,
-      };
     }
   }
 
-  const staticCapabilities = getStaticBuiltinAcpCapabilities(
-    target.cliType,
-    target.agentType,
-    target.runtimeOverrides
-  );
-  return staticCapabilities
-    ? { authority: 'provisional', configOptions: staticCapabilities.configOptions }
-    : { authority: 'unavailable' };
+  if (resolved.authority === 'unavailable') {
+    const staticCapabilities = getStaticBuiltinAcpCapabilities(
+      target.cliType,
+      target.agentType,
+      target.runtimeOverrides
+    );
+    resolved = staticCapabilities
+      ? { authority: 'provisional', configOptions: staticCapabilities.configOptions }
+      : { authority: 'unavailable' };
+  }
+
+  return {
+    ...resolved,
+    configOptions: unionStaticGrokModelsIntoConfigOptions(target, resolved.configOptions),
+  };
 };
 
 export const stripRecommended = (text: string): string => text.replace(/\s*\(recommended\)/gi, '');

@@ -138,9 +138,12 @@ embedded` lazy-imported from `../tasks/tasks-workspace.tsx` (`embedded`
 - Floating frosted session header: session-detail's mobile `BaseHeader` is an
   absolute overlay (`bg-background/55 backdrop-blur-xl`, 3rem + safe-area) —
   content scrolls UNDER it and frosts. Contract: session-detail sets
-  `--conversation-top-inset` on the mobile root; the ai-gui `VList` adds it to
-  its paddingTop (unset elsewhere → no-op) and mobile viewer-tab wrappers pad by
-  it. Header buttons are `glass-icon-button.tsx` (`GlassIconButton`): canvas-drawn
+  `--conversation-top-inset` to `calc(3rem + var(--safe-area-top))` for BOTH
+  native shell and mobile web (web-oss is `viewport-fit=cover`); never drop the
+  safe-area on web or the first message sits under the title. The ai-gui
+  `VList` adds the inset to its paddingTop (unset elsewhere → no-op) and mobile
+  viewer-tab wrappers pad by it. Header buttons are `glass-icon-button.tsx`
+  (`GlassIconButton`): canvas-drawn
   glass disc (radial edge glow + specular arc, vertically masked so the rim lights
   top/bottom and melts at the sides; colors from computed `color`, redrawn on
   theme flip) — no CSS filters/SVG, story `MobileFrostedHeader.stories.tsx`.

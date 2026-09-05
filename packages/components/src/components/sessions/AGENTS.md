@@ -145,10 +145,12 @@ Session conversation page chain:
   would open a Loro session doc per side chat even for a user who never expands the panel: mount one
   when it is first selected (`mountedSideSessionIds`), plus any fork target still waiting to report
   durable history, and keep it mounted after that.
-  Show the launcher only when the active conversation's provider has authoritative native-fork
-  support; keep it visible but disabled when that conversation's machine is explicitly offline. That
-  offline rule lives ONLY in `getSideChatLauncherState` — the shared fork entry point stays
-  offline-clickable per `docs/acp-session-fork.md` §3.2.
+  Show the launcher for any non-draft, non-archived conversation; keep it visible but disabled when
+  that conversation's machine is explicitly offline. That offline rule lives ONLY in
+  `getSideChatLauncherState`. When a completed assistant turn exists, launch always forks that
+  turn — native ACP fork when the provider advertises `sessionFork`, otherwise a history-clone
+  child whose next turn uses Lody replay (Grok / Gemini / cursor-agent). Only a conversation with
+  no assistant turn falls back to an empty Lody-level child Session.
   Right-panel selection, collapse, route changes, and component cleanup must never delete it. Only its
   explicit tab `X` terminates the ACP runtime and then permanently deletes the Session doc; if either
   step fails, keep the tab so the user can retry. Parent-session permanent deletion may still cascade
@@ -291,6 +293,10 @@ Session conversation page chain:
   wide markdown, tool output, and user content own their nested horizontal scrollers
   and must never make the whole conversation pane pan sideways.
 - `session-chat-input-area.tsx` — composer; `message-queue-display.tsx` — queued turns.
+  The composer footer hosts the same `QueuedMessageBehaviorControl` as Settings
+  (compact, left of send/stop) and writes `queuedMessageBehaviorAtom`; do not add
+  a second preference. Hide it on archived sessions. Landing has no in-flight
+  turn and does not show this toggle.
   A queued item's Steer action uses native acknowledged steering only when the
   authoritative ACP capability cache advertises it. Never infer steering support
   from built-in/custom config type or agent identity; unsupported and stale cache
@@ -525,10 +531,15 @@ Session conversation page chain:
   Stop. That pre-start label is additionally suppressed whenever the
   status chip has an active connection/machine problem (`statusStripState !=
 null`: browser offline, machine removed or offline) — the chip owns that story,
-  and "Starting…" next to "machine offline" is a contradiction. `isSessionWorking`
+  and "Starting…" next to "machine offline" is a contradiction.   `isSessionWorking`
   (Stop visibility, busy-send queue routing) shares the SAME time-bounded
   pre-start signal, so a stalled dispatch no longer holds the composer in a busy
-  state either.
+  state either. A second frontend-derived exception: leftover `running`
+  presence after the latest assistant turn is `finished` (CLI finalize: usage
+  flush / notifications) is not "working now" — `isPostAnswerFinalizePresence`
+  drops Thinking / Agent-lock / Stop. New sends stay busy via
+  `hasPendingDispatch`; `initializing`, `requestPermission`, and
+  `image_generation` stay visible.
 - `info-chip.tsx` + `session-info-chips.tsx` + `session-info-bar.tsx`: the
   info bar follows the "canonical cluster + fixed stage" model. Cluster =
   collapsed items as uniform icon chips in CONSTANT order (status > goal >

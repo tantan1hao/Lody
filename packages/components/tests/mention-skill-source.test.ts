@@ -198,6 +198,29 @@ describe('selectSkillMentionCandidates', () => {
     expect(result[0]?.token).toBe('code-review');
   });
 
+  it('matches description text after name and path', () => {
+    const described = buildSkillMentionItems([
+      {
+        scope: 'global',
+        dir: '~/.agents/skills',
+        truncated: false,
+        skills: [
+          skill({
+            name: 'teach',
+            description: 'Teach the user a new skill or concept within this workspace',
+            relativePath: '~/.agents/skills/teach/SKILL.md',
+          }),
+          skill({
+            name: 'grill-with-docs',
+            relativePath: '~/.agents/skills/grill-with-docs/SKILL.md',
+          }),
+        ],
+      },
+    ]);
+    const result = selectSkillMentionCandidates(described, 'th', null);
+    expect(result.map((item) => item.token)).toEqual(['grill-with-docs', 'teach']);
+  });
+
   it('treats registered glob skill dirs as matching expanded marketplace paths', () => {
     const pluginItems = buildSkillMentionItems([
       {
@@ -228,6 +251,15 @@ describe('getAllowedSkillMentionDirs', () => {
     expect(dirs?.has('~/.claude/plugins/cache/*/*/*/skills')).toBe(true);
     expect(dirs?.has('~/.claude/settings.json')).toBe(true);
     expect(dirs?.has('~/.agents/skills')).toBe(true);
+  });
+
+  it('keeps shared user skill homes visible for every selected provider', () => {
+    const dirs = getAllowedSkillMentionDirs({ cliType: 'builtin', agentType: 'grok' });
+    expect(dirs?.has('~/.agents/skills')).toBe(true);
+    expect(dirs?.has('~/.cursor/skills-cursor')).toBe(true);
+    expect(dirs?.has('~/.claude/skills')).toBe(true);
+    expect(dirs?.has('~/.codex/skills')).toBe(true);
+    expect(dirs?.has('~/.cursor/plugins/cache/*/*/*/skills')).toBe(true);
   });
 });
 

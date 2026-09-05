@@ -400,6 +400,30 @@ describe('useSessionActions', () => {
     });
   });
 
+  it('persists side-panel placement on a created child session', async () => {
+    const sessionId = 'session-side-chat-create' as SessionId;
+    const upsertDocMeta = vi.fn(async () => undefined);
+    const runtime = createRuntime({
+      repo: { upsertDocMeta } as unknown as WorkspaceRuntime['repo'],
+    });
+    const actions = await renderActions(runtime);
+
+    const result = await actions.createSession({
+      ...createSessionPayload(sessionId),
+      parentSessionId: 'parent-session-id' as SessionId,
+      childSessionPlacement: 'side-panel',
+    });
+
+    expect(result.sessionMeta.childSessionPlacement).toBe('side-panel');
+    expect(upsertDocMeta).toHaveBeenCalledWith(
+      getSessionRoomId(sessionId),
+      expect.objectContaining({
+        parentSessionId: 'parent-session-id',
+        childSessionPlacement: 'side-panel',
+      })
+    );
+  });
+
   it('does not record daily activity while Convex authentication is recovering', async () => {
     convexAuthState.isAuthenticated = false;
     const runtime = createRuntime({});

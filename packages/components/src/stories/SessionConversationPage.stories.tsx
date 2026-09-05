@@ -938,7 +938,9 @@ function StoryShell({
                 className={cn('overflow-hidden bg-background', frameClassName)}
                 style={
                   frame === 'mobile'
-                    ? ({ '--conversation-top-inset': '3rem' } as CSSProperties)
+                    ? ({
+                        '--conversation-top-inset': 'calc(3rem + var(--safe-area-top, 0px))',
+                      } as CSSProperties)
                     : undefined
                 }
               >
@@ -950,13 +952,16 @@ function StoryShell({
                     frame !== 'mobile' ? null : (
                       // Mirrors the production mobile header (session-detail.tsx
                       // `if (isMobile)`): a FLOATING frosted BaseHeader (absolute,
-                      // translucent + backdrop-blur, no border, 3rem tall) with
-                      // glass buttons; the conversation scrolls under it via the
-                      // `--conversation-top-inset` var set on the frame below.
+                      // translucent + backdrop-blur, no border, 3rem + safe-area)
+                      // with glass buttons; the conversation scrolls under it via
+                      // the `--conversation-top-inset` var set on the frame below.
                       <BaseHeader
                         hideMenuButton
                         className="absolute inset-x-0 top-0 z-30 border-b-0 bg-background/55 backdrop-blur-xl"
-                        style={{ height: '3rem' }}
+                        style={{
+                          height: 'calc(3rem + var(--safe-area-top, 0px))',
+                          paddingTop: 'var(--safe-area-top, 0px)',
+                        }}
                         leading={
                           // Mirrors production `MobileSessionHeaderBackButton`.
                           <GlassIconButton

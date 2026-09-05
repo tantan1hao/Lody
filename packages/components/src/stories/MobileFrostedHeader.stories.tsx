@@ -53,7 +53,9 @@ function Bubble({ from, text, code }: { from: string; text?: string; code?: stri
 }
 
 function Prototype() {
-  const headerHeight = '3rem';
+  // Mirror production: 3rem chrome + safe-area so the frosted bar and the
+  // conversation inset stay the same height (see session-detail.tsx).
+  const headerHeight = 'calc(3rem + var(--safe-area-top, 0px))';
   return (
     <div
       className="relative h-dvh w-full overflow-hidden bg-background text-foreground"
@@ -79,7 +81,7 @@ function Prototype() {
       {/* Floating frosted header — same chrome as production session-detail. */}
       <header
         className="absolute inset-x-0 top-0 z-30 flex items-center gap-1 bg-background/55 px-1 backdrop-blur-xl"
-        style={{ height: headerHeight }}
+        style={{ height: headerHeight, paddingTop: 'var(--safe-area-top, 0px)' }}
       >
         <GlassIconButton label="Back">
           <ChevronLeft className="h-5 w-5" />

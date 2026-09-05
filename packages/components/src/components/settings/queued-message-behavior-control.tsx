@@ -6,14 +6,18 @@ export type QueuedMessageBehaviorControlProps = {
   value: QueuedMessageBehavior;
   onChange: (value: QueuedMessageBehavior) => void;
   className?: string;
+  /** Compact sits in the session composer footer next to send/stop. */
+  size?: 'default' | 'compact';
 };
 
 export function QueuedMessageBehaviorControl({
   value,
   onChange,
   className,
+  size = 'default',
 }: QueuedMessageBehaviorControlProps) {
   const { t } = useTranslation();
+  const compact = size === 'compact';
   const options: Array<{ value: QueuedMessageBehavior; label: string }> = [
     {
       value: 'queue',
@@ -33,7 +37,8 @@ export function QueuedMessageBehaviorControl({
         'Queued message behavior'
       )}
       className={cn(
-        'inline-grid h-8 grid-cols-2 rounded-full border border-border/70 bg-muted/60 p-0.5',
+        'inline-grid grid-cols-2 rounded-full border border-border/70 bg-muted/60 p-0.5',
+        compact ? 'h-7' : 'h-8',
         className
       )}
     >
@@ -47,7 +52,8 @@ export function QueuedMessageBehaviorControl({
             aria-checked={selected}
             onClick={() => onChange(option.value)}
             className={cn(
-              'min-w-16 rounded-full px-3 text-xs font-medium transition-colors',
+              'rounded-full text-xs font-medium transition-colors',
+              compact ? 'min-w-10 px-2' : 'min-w-16 px-3',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60',
               selected
                 ? 'bg-background text-foreground shadow-sm'

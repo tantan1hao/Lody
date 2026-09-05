@@ -6,6 +6,8 @@ import { Quote } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { CommentReferencePayload } from '@lody/shared';
 import { cn } from '@/lib/utils';
+import { Button } from '@/ui/button';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/ui/tooltip';
 import { readConversationQuoteSelection } from './conversation-selection';
 
 export type ConversationSelectionToolbarProps = {
@@ -67,10 +69,14 @@ export function ConversationSelectionToolbar({
       syncFromSelection();
     };
     document.addEventListener('selectionchange', onSelectionChange);
+    document.addEventListener('mouseup', onSelectionChange);
+    document.addEventListener('keyup', onSelectionChange);
     container?.addEventListener('scroll', onSelectionChange);
     window.addEventListener('resize', onSelectionChange);
     return () => {
       document.removeEventListener('selectionchange', onSelectionChange);
+      document.removeEventListener('mouseup', onSelectionChange);
+      document.removeEventListener('keyup', onSelectionChange);
       container?.removeEventListener('scroll', onSelectionChange);
       window.removeEventListener('resize', onSelectionChange);
     };
@@ -92,7 +98,7 @@ export function ConversationSelectionToolbar({
   return createPortal(
     <div
       data-conversation-selection-toolbar=""
-      className="pointer-events-auto fixed z-[var(--z-popover)]"
+      className="pointer-events-auto fixed z-[80]"
       style={{
         top: state.top,
         left: state.left,
@@ -115,5 +121,39 @@ export function ConversationSelectionToolbar({
       </button>
     </div>,
     document.body
+  );
+}
+
+/** Turn-footer / user-row icon that uses the same add-as-comment chip path. */
+export function AddAsCommentButton({
+  onClick,
+  className,
+}: {
+  onClick: () => void;
+  className?: string;
+}) {
+  const { t } = useTranslation();
+  const label = t('sessions.quoteSelection.addAsComment', 'Add as comment');
+  return (
+    <TooltipProvider>
+      <Tooltip delayDuration={500}>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className={cn(
+              'h-7 w-7 text-muted-foreground hover:bg-hover hover:text-foreground',
+              className
+            )}
+            onClick={onClick}
+            aria-label={label}
+          >
+            <Quote className="h-3.5 w-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{label}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }

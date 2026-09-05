@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   hasUnstartedTrailingUserTurn,
+  isLatestAssistantTurnFinished,
+  isPostAnswerFinalizePresence,
   isUnstartedTrailingDispatchPreStart,
   resolveUnstartedTrailingDispatchAtMs,
   UNSTARTED_TRAILING_USER_TURN_TIMEOUT_MS,
@@ -99,5 +101,90 @@ describe('isUnstartedTrailingDispatchPreStart', () => {
 
   it('never shows pre-start for a turn without a usable timestamp', () => {
     expect(isUnstartedTrailingDispatchPreStart([userTurn('pending')], dispatchedAt)).toBe(false);
+  });
+});
+
+describe('isLatestAssistantTurnFinished', () => {
+  it('is true when the latest assistant turn is finished', () => {
+    expect(
+      isLatestAssistantTurnFinished([
+        { role: 'user' },
+        { role: 'assistant', finished: true },
+        { role: 'user' },
+      ])
+    ).toBe(true);
+  });
+
+  it('is false while the latest assistant turn is still open', () => {
+    expect(
+      isLatestAssistantTurnFinished([
+        { role: 'assistant', finished: true },
+        { role: 'user' },
+        { role: 'assistant' },
+      ])
+    ).toBe(false);
+  });
+
+  it('is false when history has no assistant turn', () => {
+    expect(isLatestAssistantTurnFinished([{ role: 'user' }])).toBe(false);
+  });
+});
+
+describe('isPostAnswerFinalizePresence', () => {
+  it('hides leftover running presence after a finished answer', () => {
+    expect(
+      isPostAnswerFinalizePresence({
+        liveStatus: { type: 'running' },
+        lastAssistantFinished: true,
+        hasPendingDispatch: false,
+      })
+    ).toBe(true);
+  });
+
+  it('keeps thinking while the latest assistant turn is still open', () => {
+    expect(
+      isPostAnswerFinalizePresence({
+        liveStatus: { type: 'running' },
+        lastAssistantFinished: false,
+        hasPendingDispatch: false,
+      })
+    ).toBe(false);
+  });
+
+  it('keeps busy when a new send is still waiting for first presence', () => {
+    expect(
+      isPostAnswerFinalizePresence({
+        liveStatus: { type: 'running' },
+        lastAssistantFinished: true,
+        hasPendingDispatch: true,
+      })
+    ).toBe(false);
+  });
+
+  it('does not hide initializing or permission presence', () => {
+    expect(
+      isPostAnswerFinalizePresence({
+        liveStatus: { type: 'initializing' },
+        lastAssistantFinished: true,
+        hasPendingDispatch: false,
+      })
+    ).toBe(false);
+    expect(
+      isPostAnswerFinalizePresence({
+        liveStatus: { type: 'requestPermission' },
+        lastAssistantFinished: true,
+        hasPendingDispatch: false,
+      })
+    ).toBe(false);
+  });
+
+  it('does not hide image generation', () => {
+    expect(
+      isPostAnswerFinalizePresence({
+        liveStatus: { type: 'running', activity: 'image_generation' },
+        lastAssistantFinished: true,
+        hasPendingDispatch: false,
+      })
+    ).toBe(false);
   });
 });
