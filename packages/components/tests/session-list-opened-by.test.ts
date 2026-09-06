@@ -81,6 +81,37 @@ describe('session group opened-by tree', () => {
     ]);
   });
 
+  it('applies a saved session order inside the repo group', () => {
+    const group = buildGroups(
+      [
+        makeRow({ sessionId: 'a', latestMessageAt: '2026-04-22T12:00:00.000Z' }),
+        makeRow({ sessionId: 'b', latestMessageAt: '2026-04-22T11:00:00.000Z' }),
+      ],
+      [{ repoFullName: REPO, collapsed: false }],
+      false,
+      'Chats',
+      ['b', 'a']
+    ).find((candidate) => candidate.repoFullName === REPO);
+    expect(group?.sessions.map((row) => row.sessionId)).toEqual(['b', 'a']);
+  });
+
+  it('keeps a dragged root order instead of bubbling child recency', () => {
+    const group = buildRepoGroup([
+      makeRow({ sessionId: 'stale-opener', latestMessageAt: '2026-04-22T08:00:00.000Z' }),
+      makeRow({
+        sessionId: 'fresh-child',
+        openedBySessionId: 'stale-opener',
+        latestMessageAt: '2026-04-22T12:00:00.000Z',
+      }),
+      makeRow({ sessionId: 'other', latestMessageAt: '2026-04-22T09:00:00.000Z' }),
+    ]);
+    expect(
+      getVisibleSessionGroupTree(group, true, undefined, ['other', 'stale-opener']).map(
+        (node) => node.item.sessionId
+      )
+    ).toEqual(['other', 'stale-opener', 'fresh-child']);
+  });
+
   it('hides opened sessions while their opener is collapsed', () => {
     const group = buildRepoGroup(makeOpenerGroupRows());
     expect(

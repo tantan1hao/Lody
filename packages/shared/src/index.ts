@@ -111,6 +111,8 @@ export * from './machine-flock';
 export * from './workspace-mcp';
 export * from './agent-role';
 export * from './workspace-flock';
+export * from './group-chat';
+export * from './group-chat-ledger';
 export * from './local-machine-rpc';
 export * from './local-loro-data-plane';
 export * from './json-guards';

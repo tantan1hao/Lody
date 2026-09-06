@@ -75,6 +75,8 @@ export interface SessionChatStreamProps {
   workspaceId?: WorkspaceId | null;
   sessionDoc: SessionDoc;
   sessionCreatedAt?: string;
+  sessionKind?: 'direct' | 'room';
+  onRoomWidgetSelect?: (entryId: string, value: string) => void;
   dividerLabel?: string;
   className?: string;
   /** Scrolls as the first conversation row (for example, Session provenance). */
@@ -183,6 +185,8 @@ const SessionChatStreamImpl = forwardRef<SessionChatStreamHandle, SessionChatStr
       skipNextViewportResizeAutoScrollRef,
       suppressStickyAutoScrollRef,
       outlineOverlayRoot,
+      sessionKind,
+      onRoomWidgetSelect,
     },
     ref
   ) => {
@@ -192,8 +196,11 @@ const SessionChatStreamImpl = forwardRef<SessionChatStreamHandle, SessionChatStr
       chatStreamItemsCacheRef.current = getChatStreamItemsCache(sessionId);
     }
     const { items, lastAssistantMessageId, lastCompletedAssistantMessageId, cache } = useMemo(
-      () => buildChatStreamItems(sessionHistory, sessionId, chatStreamItemsCacheRef.current),
-      [sessionHistory, sessionId]
+      () =>
+        buildChatStreamItems(sessionHistory, sessionId, chatStreamItemsCacheRef.current, {
+          hideAssistant: sessionKind === 'room',
+        }),
+      [sessionHistory, sessionId, sessionKind]
     );
     chatStreamItemsCacheRef.current = cache;
     useEffect(() => {
@@ -289,6 +296,7 @@ const SessionChatStreamImpl = forwardRef<SessionChatStreamHandle, SessionChatStr
         skipNextViewportResizeAutoScrollRef={skipNextViewportResizeAutoScrollRef}
         suppressStickyAutoScrollRef={suppressStickyAutoScrollRef}
         outlineOverlayRoot={outlineOverlayRoot}
+        onRoomWidgetSelect={onRoomWidgetSelect}
       />
     );
   }

@@ -563,6 +563,10 @@ export const sessionHistorySchema = schema.LoroMap({
   // Send status for user messages - only set when message delivery failed (e.g., timeout)
   // Cleared when message is successfully retried
   sendStatus: schema.String<SessionHistorySendStatus>({ required: false }),
+  /** Composer nonce for room (and optional 1:1) send idempotency. */
+  clientNonce: schema.String({ required: false }),
+  /** Room or thread reply target history id. */
+  replyToId: schema.String({ required: false }),
 });
 
 export type PrStatus = 'open' | 'closed' | 'merged' | 'draft';
@@ -892,6 +896,20 @@ export type SessionMeta = {
    * MCP from writing a Task's entrusted `agent`.
    */
   autoReview?: SessionAutoReviewMeta;
+  /**
+   * Conversation kind. Absent means a one-to-one ACP session (`direct`).
+   * A `room` has no ACP of its own: membership lives on this meta, and
+   * visible replies are `room_speech` items written by member home sessions.
+   */
+  sessionKind?: 'direct' | 'room';
+  /** Room members as Agent Role ids. Only meaningful when `sessionKind === 'room'`. */
+  memberRoleIds?: AgentRoleId[];
+  /** Lazy-created one-to-one home sessions for each room member Role. */
+  memberHomeSessionIds?: Record<string, SessionId>;
+  /** Bumped on each room user send so an in-flight group turn can cancel. */
+  groupEpoch?: number;
+  /** Members whose current group turn was interrupted by a private DM. */
+  dmPreemptedGroupMemberIds?: AgentRoleId[];
 };
 
 export type SessionLegacyMetaFields = {
@@ -1103,10 +1121,14 @@ export type SessionHistoryInput = Omit<
   | 'items'
   | 'read'
   | 'userId'
+  | 'clientNonce'
+  | 'replyToId'
 > & {
   items?: Array<MessageContent & { text?: string | undefined }>;
   read?: boolean;
   userId?: string;
+  clientNonce?: string;
+  replyToId?: string;
   userTurnId?: string | undefined;
   acpTurnId?: string | undefined;
   modelInfo?: ModelInfo | undefined;

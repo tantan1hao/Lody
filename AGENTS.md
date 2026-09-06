@@ -82,6 +82,9 @@ self-hosted composition and secret-free operator templates.
   of scope is a Role-level auto-approval POLICY. Settings and mention discovery use
   `canReadAgentRole`/`canManageAgentRole`; MCP creation resolves an explicit Role id from
   the workspace catalog without requiring a mention-scoped authorization record.
+- Group rooms are Session docs (`sessionKind: 'room'`), not a Flock family.
+  Members are Roles; the room has no ACP; visible text is only
+  `lody_room_speak` / `lody_send_to_agent`.
 - A Role never falls back. `machineId + agentConfigId` bind the execution site exactly;
   when the machine, config, or a stored model/mode is unavailable the Role stays listed
   with the precise reason and stops being mentionable. MCP creation resolves the current

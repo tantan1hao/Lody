@@ -347,3 +347,7 @@ fires `fireOwnerAccessRecheck` (fire-and-forget, `forceBackendVerification: true
 bypassing the message-handler owner fast-path): a confirmed online allow is the ONLY
 writer of the access snapshot/`verifiedAt`, a definitive deny clears it, and
 `indeterminate` writes nothing.
+
+A `sessionKind === 'room'` Session is not an ACP conversation. Dispatch
+routes it to `group-chat/` (`group-turn`): persist the user entry, then
+wake member home sessions. Do not start ACP on the room document.

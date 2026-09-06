@@ -13,6 +13,7 @@ import {
   historyItemsToInputBlocks,
   normalizeSessionInputBlocks,
   getLocalProjectHistoryProviderKey,
+  isRoomSession,
   type MachineId,
   type SessionHistoryInput,
   type SessionInputBlock,
@@ -88,7 +89,8 @@ export type DispatchAction =
     }
   | { type: 'reset-stale-status'; statusType: string }
   | { type: 'no-dispatchable-turn' }
-  | { type: 'dispatch'; mode: 'create' | 'continue'; turn: SessionHistoryInput };
+  | { type: 'dispatch'; mode: 'create' | 'continue'; turn: SessionHistoryInput }
+  | { type: 'group-turn'; turn: SessionHistoryInput };
 
 export type CancelAction =
   | { type: 'noop'; reason: 'not-owned' | 'archived' | 'no-cancel-turn' | 'already-seen' }
@@ -231,6 +233,10 @@ export function resolveSessionDispatchAction(
   const turn = findNextDispatchableUserTurn(history, meta);
   if (!turn) {
     return { type: 'no-dispatchable-turn' };
+  }
+
+  if (isRoomSession(meta)) {
+    return { type: 'group-turn', turn };
   }
 
   // ── Step 4: Decide create vs continue ──

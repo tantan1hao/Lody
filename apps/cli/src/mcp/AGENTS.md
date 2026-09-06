@@ -37,3 +37,6 @@ Root and `apps/cli/AGENTS.md` instructions apply.
   servers publish no Task tools, and a still-resident Agent whose next Turn disables the feature
   is rejected at every Task handler. Task-originated automation explicitly freezes `true` so it
   can update and comment on the Task it is executing.
+- `lody_room_speak` is the only visible mouth for a group-room member turn.
+  `lody_send_to_agent` posts to another Role, session, or room and returns
+  immediately. Neither tool is a Role-create rewrite.

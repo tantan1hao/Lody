@@ -1,7 +1,15 @@
 export type SessionMessageSubmitRoute =
   | { type: 'direct_dispatch' }
   | { type: 'guide' }
-  | { type: 'queue'; reason: 'forced' | 'prompt_busy' | 'unfinished_assistant_turn' };
+  | {
+      type: 'queue';
+      reason:
+        | 'forced'
+        | 'prompt_busy'
+        | 'unfinished_assistant_turn'
+        | 'transport_down'
+        | 'room_send_in_flight';
+    };
 
 export type SessionMessageSubmitRouteInput = {
   forceDirect: boolean;
@@ -9,6 +17,9 @@ export type SessionMessageSubmitRouteInput = {
   isPromptBusy: boolean;
   hasUnfinishedAssistantTurn: boolean;
   queuedMessageBehavior: 'queue' | 'guide';
+  isRoom?: boolean;
+  transportDown?: boolean;
+  roomUserSendInFlight?: boolean;
 };
 
 /**
@@ -26,12 +37,22 @@ export function resolveSessionMessageSubmitRoute({
   isPromptBusy,
   hasUnfinishedAssistantTurn,
   queuedMessageBehavior,
+  isRoom = false,
+  transportDown = false,
+  roomUserSendInFlight = false,
 }: SessionMessageSubmitRouteInput): SessionMessageSubmitRoute {
   if (forceDirect) {
     return { type: 'direct_dispatch' };
   }
+  if (isRoom && transportDown) {
+    return { type: 'queue', reason: 'transport_down' };
+  }
+  if (isRoom && roomUserSendInFlight) {
+    return { type: 'queue', reason: 'room_send_in_flight' };
+  }
   if (
     !forceQueue &&
+    !isRoom &&
     isPromptBusy &&
     queuedMessageBehavior === 'guide' &&
     hasUnfinishedAssistantTurn

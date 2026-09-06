@@ -54,7 +54,7 @@ export function SidebarSearchInput({
         aria-label={ariaLabel}
         autoComplete="off"
         spellCheck={false}
-        className="min-w-0 flex-1 border-none bg-transparent text-[0.8rem] leading-tight outline-none placeholder:text-muted-foreground focus:outline-none focus:ring-0 [appearance:textfield] [&::-webkit-search-cancel-button]:hidden"
+        className="min-w-0 flex-1 border-none bg-transparent text-base leading-tight outline-none placeholder:text-muted-foreground focus:outline-none focus:ring-0 [appearance:textfield] md:text-[0.8rem] [&::-webkit-search-cancel-button]:hidden"
       />
       {value ? (
         <button

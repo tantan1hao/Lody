@@ -2,7 +2,7 @@ gzip on;
 gzip_comp_level 6;
 gzip_min_length 1024;
 gzip_vary on;
-gzip_types application/javascript application/json application/wasm image/svg+xml text/css text/javascript;
+gzip_types application/javascript application/json image/svg+xml text/css text/javascript;
 
 location = /login {
     default_type text/html;
@@ -17,7 +17,7 @@ location = /session {
     default_type text/plain;
     alias /srv/lody-oss/session-ok.txt;
     include /etc/nginx/snippets/lody-oss-public-session-set.inc;
-    add_header Cache-Control "no-store";
+    add_header Cache-Control "no-store" always;
 }
 
 # Public bootstrap document. The web client fetches it with credentials
@@ -118,8 +118,13 @@ location /ds/ {
 location ^~ /assets/ {
     root /srv/lody-oss/web;
     try_files $uri =404;
+    gzip_static on;
+    gzip_vary on;
     add_header Cache-Control "public, max-age=31536000, immutable" always;
     add_header X-Content-Type-Options "nosniff" always;
+    # Vite module tags use `crossorigin`. iOS Safari fails the import unless
+    # the hashed file also sends a CORS allow header.
+    add_header Access-Control-Allow-Origin "*" always;
 }
 
 location ^~ /emojibase/ {
@@ -127,6 +132,7 @@ location ^~ /emojibase/ {
     try_files $uri =404;
     add_header Cache-Control "public, max-age=31536000, immutable" always;
     add_header X-Content-Type-Options "nosniff" always;
+    add_header Access-Control-Allow-Origin "*" always;
 }
 
 location / {

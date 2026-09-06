@@ -3,7 +3,7 @@ import { useAtomValue } from 'jotai';
 import type { MessageTextSpan } from '@lody/shared';
 import {
   SESSION_IMAGE_MAX_COUNT,
-  machineSupportsSessionImageSendProtocol,
+  sessionMachineSupportsImageSend,
   type SessionId,
   type SessionImagePayload,
   type SessionInputBlock,
@@ -23,6 +23,7 @@ import {
 import { rememberSessionImageBlob } from '@/lib/session-image-cache';
 import type { MachineId } from '@lody/shared';
 import { getMachineMetaByIdAtomFamily } from '@/atoms/machines';
+import { localMachineIdAtom } from '@/atoms/local-probe';
 import type { WorkspaceRuntime } from '@/atoms/runtime';
 type PendingImage = {
   localId: string;
@@ -83,8 +84,12 @@ export function useChatLandingImageDraft(args: {
   } = args;
   const postHog = usePostHog();
   const useOfficialImageUpload = !isAccountlessAppPlatform();
+  const localMachineId = useAtomValue(localMachineIdAtom);
   const machineMeta = useAtomValue(getMachineMetaByIdAtomFamily(machineId ?? undefined));
-  const machineSupportsImageSend = machineSupportsSessionImageSendProtocol(machineMeta);
+  const machineSupportsImageSend = sessionMachineSupportsImageSend({
+    machine: machineMeta,
+    isLocalMachine: Boolean(localMachineId && machineId && localMachineId === machineId),
+  });
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const imageUploadFailedLabel = t('sessions.imageUploadFailed', 'Image upload failed');
   const imageUploadMissingAuthLabel = t(

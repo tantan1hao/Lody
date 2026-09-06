@@ -738,7 +738,7 @@ function HeaderSearchInput({
         enterKeyHint="search"
         /* Drop the browser's default focus border on type=search; the
            muted pill is the visual container. */
-        className="min-w-0 flex-1 border-none bg-transparent text-[0.82rem] outline-none focus:outline-none focus:ring-0 placeholder:text-muted-foreground"
+        className="min-w-0 flex-1 border-none bg-transparent text-base outline-none focus:outline-none focus:ring-0 placeholder:text-muted-foreground"
       />
       {value ? (
         <button

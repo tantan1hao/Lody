@@ -1218,7 +1218,7 @@ function ProjectSearchInput({
         placeholder={labels.searchPlaceholder ?? '搜索对话'}
         aria-label={labels.searchAriaLabel ?? '搜索'}
         enterKeyHint="search"
-        className="min-w-0 flex-1 border-none bg-transparent text-[0.82rem] outline-none focus:outline-none focus:ring-0 placeholder:text-muted-foreground"
+        className="min-w-0 flex-1 border-none bg-transparent text-base outline-none focus:outline-none focus:ring-0 placeholder:text-muted-foreground"
       />
       {value ? (
         <button

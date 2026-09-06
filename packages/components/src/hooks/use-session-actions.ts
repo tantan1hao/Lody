@@ -191,6 +191,12 @@ function buildSessionCreateResult(payload: SessionToCreate): CreateSessionResult
       sessionMeta.agentRoleRevision = payload.agentRoleRevision;
     }
   }
+  if (payload.sessionKind === 'room') {
+    sessionMeta.sessionKind = 'room';
+    if (payload.memberRoleIds && payload.memberRoleIds.length > 0) {
+      sessionMeta.memberRoleIds = payload.memberRoleIds;
+    }
+  }
   return { sessionId, sessionMeta };
 }
 

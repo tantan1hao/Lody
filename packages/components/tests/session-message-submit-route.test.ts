@@ -53,4 +53,23 @@ describe('resolveSessionMessageSubmitRoute', () => {
       })
     ).toEqual({ type: 'direct_dispatch' });
   });
+
+  it('queues a room send when transport is down or a user send is in flight', () => {
+    expect(resolve({ isRoom: true, transportDown: true })).toEqual({
+      type: 'queue',
+      reason: 'transport_down',
+    });
+    expect(resolve({ isRoom: true, roomUserSendInFlight: true })).toEqual({
+      type: 'queue',
+      reason: 'room_send_in_flight',
+    });
+    expect(
+      resolve({
+        isRoom: true,
+        isPromptBusy: true,
+        hasUnfinishedAssistantTurn: true,
+        queuedMessageBehavior: 'guide',
+      })
+    ).toEqual({ type: 'queue', reason: 'prompt_busy' });
+  });
 });

@@ -306,6 +306,8 @@ import {
 } from '@/session/session-execution-service';
 import { TurnHistoryGate } from '@/session/turn-history-gate';
 import { SessionDispatchWatcher } from '@/session/session-dispatch-watcher';
+import { bindGroupChatService } from '@/session/group-chat/group-chat-bindings';
+import type { GroupChatService } from '@/session/group-chat/group-chat-service';
 import { SessionUserResolver } from '@/session/session-user-resolver';
 import { SessionForkService } from '@/session/session-fork-service';
 import { createFileSessionForkOperationStore } from '@/session/session-fork-operation-store';
@@ -843,6 +845,7 @@ export class MessageHandler {
   private pendingProcessLifecycleAction: MachineProcessLifecycleAction | null = null;
   private readonly store = new SessionTransientStore();
   private sessionActivePresence!: SessionActivePresenceController;
+  private groupChatService?: GroupChatService & { rememberMeta(meta: SessionMeta): void };
   private readonly titleGenerationInFlight = new Map<SessionId, Promise<string | null>>();
   // Note: titleGenerationInFlight, archiveInFlight, deleteInFlight are self-cleaning
   // and stay as independent tracking. All other per-session state lives in this.store.
@@ -3659,6 +3662,58 @@ export class MessageHandler {
           userId,
         })
     );
+    this.groupChatService = bindGroupChatService({
+      manager: this.workspaceDocument,
+      workspaceId: this.workspaceId,
+      interruptSession: async (sessionId) => {
+        const turnId = this.executionService.getActiveUserTurnId?.(sessionId);
+        if (!turnId) return;
+        await this.executionService.cancelSession({
+          type: 'session/cancel',
+          machineId: this.machineId,
+          workspaceId: this.workspaceId,
+          sessionId,
+          turnId,
+        });
+      },
+      setRoomPresence: (sessionId, running) => {
+        if (running) this.startSessionActivePresence(sessionId, 'thinking');
+        else this.clearSessionActivePresence(sessionId);
+      },
+      dispatchHomeTurn: async ({ homeSessionId, prompt, roomSessionId, roomTitle, signal }) => {
+        const doc = await this.workspaceDocument.getOrCreateSessionDoc(homeSessionId);
+        const meta = (await doc.getMetaState()) as SessionMeta | undefined;
+        if (!meta) return;
+        this.groupChatService?.rememberMeta(meta);
+        const turnId = uuidV4();
+        const entry: SessionHistoryInput = {
+          id: turnId,
+          role: 'user',
+          timestamp: new Date(getServerNow()).toISOString(),
+          status: 'pending',
+          items: [
+            {
+              type: 'system_notice',
+              name: 'group_turn_wake',
+              meta: { roomSessionId, roomTitle },
+            },
+          ],
+          inputConfig: {
+            prompt,
+            cliType: meta.cliType,
+            agentType: meta.agentType,
+          },
+          fileDiff: [],
+          finished: true,
+        };
+        await doc.updateHistory((history) => [...history, entry]);
+        await this.workspaceDocument.repo.upsertDocMeta(getSessionRoomId(homeSessionId), {
+          latestUserMsgId: turnId,
+          lastMissingHistoryUserMsgId: undefined,
+        });
+        await this.waitForGroupHomeTurn(homeSessionId, turnId, signal);
+      },
+    });
     this.sessionDispatchWatcher = new SessionDispatchWatcher({
       logger: this.logger,
       machineId: this.machineId,
@@ -3667,6 +3722,7 @@ export class MessageHandler {
       userResolver: this.sessionUserResolver,
       workspaceDocument: this.workspaceDocument,
       executionService: this.executionService,
+      groupChat: this.groupChatService,
       getPreparedSessionLaunchConfig: (input) =>
         this.sessionManager.getPreparedSessionLaunchConfig(input),
       accessPolicy: makeSessionAccessPolicy(this.localWorkspaceCatalog),
@@ -9241,6 +9297,48 @@ export class MessageHandler {
         this.titleGenerationInFlight.delete(sessionId);
       }
     }
+  }
+
+  private async waitForGroupHomeTurn(
+    sessionId: SessionId,
+    turnId: string,
+    signal: AbortSignal
+  ): Promise<void> {
+    const roomId = getSessionRoomId(sessionId);
+    const isDone = async (): Promise<boolean> => {
+      const record = await this.workspaceDocument.repo.getDocMeta(roomId);
+      const meta = record?.meta as SessionMeta | undefined;
+      return meta?.lastHandledUserMsgId === turnId;
+    };
+    if (signal.aborted || (await isDone())) return;
+
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      let unsubscribe: (() => void) | undefined;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        signal.removeEventListener('abort', finish);
+        unsubscribe?.();
+        resolve();
+      };
+      signal.addEventListener('abort', finish, { once: true });
+      void this.workspaceDocument.getOrCreateSessionDoc(sessionId).then((doc) => {
+        if (settled) return;
+        unsubscribe = doc.mirror?.subscribe(() => {
+          void isDone().then((done) => {
+            if (done) finish();
+          });
+        });
+        const activeTurnId = this.executionService.getActiveUserTurnId?.(sessionId);
+        if (activeTurnId === turnId) {
+          void this.executionService.waitForTurnRelease(sessionId, turnId).then(finish);
+        }
+        void isDone().then((done) => {
+          if (done) finish();
+        });
+      });
+    });
   }
 
   async startSessionDispatchWatcher(): Promise<void> {

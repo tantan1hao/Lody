@@ -803,3 +803,7 @@ Code Collab file surfaces (data chain: [packages/components/AGENTS.md](../../../
   Do not reintroduce `lazy(() => import())` for these — there must be no separate
   viewer chunk that can fail to load. The old `*-lazy.tsx` wrappers + stale-asset
   ErrorBoundary fallbacks were removed for this reason.
+- A `sessionKind === 'room'` row is a root session, not a child tab. The room
+  transcript renders user messages and `room_speech` / `agent_message` only.
+  Create/switch lives in `create-group-dialog.tsx`; same `memberRoleIds` set
+  navigates to the existing room.

@@ -2027,3 +2027,18 @@ pre,
     animation: none;
   }
 }
+
+/* iOS Safari (and other mobile browsers) zoom the page when a focused
+   form control is under 16px. Compact utilities like `text-sm` / `text-[0.82rem]`
+   would otherwise trip that. Coarse pointers only — desktop stays compact. */
+@media (hover: none) and (pointer: coarse) {
+  :where(
+    input:not([type='button']):not([type='submit']):not([type='reset']):not([type='checkbox']):not(
+        [type='radio']
+      ):not([type='range']):not([type='file']):not([type='color']),
+    textarea,
+    select
+  ) {
+    font-size: 16px !important;
+  }
+}

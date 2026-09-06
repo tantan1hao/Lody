@@ -10,15 +10,17 @@ describe('splitImageAndFileAttachments', () => {
       type: 'application/pdf',
     });
     const fileWithoutMime = new File(['data'], 'archive.bin');
+    const finderPngWithoutMime = new File(['png'], 'shot.png');
 
     expect(
       splitImageAndFileAttachments([
         imageWithTextExtension,
         fileWithImageExtension,
         fileWithoutMime,
+        finderPngWithoutMime,
       ])
     ).toEqual({
-      images: [imageWithTextExtension],
+      images: [imageWithTextExtension, finderPngWithoutMime],
       attachments: [fileWithImageExtension, fileWithoutMime],
     });
   });

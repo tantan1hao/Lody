@@ -393,7 +393,7 @@ function DimensionPage({ pill, onBack }: { pill: MultiSelectPill; onBack: () => 
               autoCorrect="off"
               spellCheck={false}
               className={cn(
-                'min-w-0 flex-1 border-none bg-transparent text-sm outline-none',
+                'min-w-0 flex-1 border-none bg-transparent text-base outline-none',
                 'focus:outline-none focus:ring-0 placeholder:text-muted-foreground'
               )}
             />

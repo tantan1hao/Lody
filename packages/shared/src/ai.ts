@@ -7,7 +7,7 @@ import {
 } from '@agentclientprotocol/sdk';
 import type { ToolCallContent as AcpToolCallContent, SessionMode } from '@agentclientprotocol/sdk';
 import type { PermissionOutcome } from './message';
-import type { AgentConfigId, McpServerId, SessionId } from './ids';
+import type { AgentConfigId, AgentRoleId, McpServerId, SessionId } from './ids';
 import type { MessageTextSpan } from './message-text-spans';
 import type { MinimalVisualAnnotationAnchor } from './visual-annotation-types';
 import type { WorktreeScriptPhase } from './project';
@@ -1085,7 +1085,8 @@ export type SystemNoticeName =
   | 'chat_failed'
   | 'agent_warning'
   | 'task_proposal'
-  | 'session_fork_origin';
+  | 'session_fork_origin'
+  | 'group_turn_wake';
 
 /**
  * Metadata for the resume_from_external_chat_history system notice
@@ -1203,12 +1204,18 @@ export type TaskProposalMeta = {
 /**
  * System notice metadata by notice name
  */
+export type GroupTurnWakeNoticeMeta = {
+  roomSessionId: SessionId;
+  roomTitle: string;
+};
+
 export type SystemNoticeMeta = {
   resume_from_external_chat_history: ResumeFromExternalChatHistoryMeta;
   chat_failed: ChatFailedMeta;
   agent_warning: AgentWarningMeta;
   task_proposal: TaskProposalMeta;
   session_fork_origin: SessionForkOriginMeta;
+  group_turn_wake: GroupTurnWakeNoticeMeta;
 };
 
 export const SESSION_IMAGE_MAX_SIZE_BYTES = 5 * 1024 * 1024;
@@ -1551,7 +1558,39 @@ export type MessageContent =
     } & CommentReferencePayload)
   | ({
       type: 'visual_annotation_reference';
-    } & VisualAnnotationReferencePayload);
+    } & VisualAnnotationReferencePayload)
+  | {
+      type: 'room_speech';
+      speakerRoleId: AgentRoleId;
+      speakerName: string;
+      mark?: string;
+      text: string;
+      images?: SessionImagePayload[];
+      replyTo?: string;
+      warningTone?: boolean;
+      widget?: {
+        prompt: string;
+        options: { label: string; value?: string; description?: string }[];
+        allowCustom?: boolean;
+        dismissOnMoveOn?: boolean;
+        selectedValue?: string;
+      };
+      secretRequest?: {
+        label: string;
+        connector: string;
+        field: string;
+      };
+    }
+  | {
+      type: 'agent_message';
+      direction: 'inbound' | 'outbound';
+      speakerRoleId?: AgentRoleId;
+      speakerName: string;
+      mark?: string;
+      targetRoomId?: SessionId;
+      targetSessionId?: SessionId;
+      text: string;
+    };
 
 export type TerminalExitStatus = {
   exitCode?: number | null;

@@ -35,15 +35,40 @@ export const getFileExtension = (fileName: string): string => {
   return trimmed.slice(dotIndex + 1);
 };
 
+const SESSION_IMAGE_MIME_BY_EXTENSION: Record<
+  string,
+  (typeof SESSION_IMAGE_ALLOWED_MIME_TYPES)[number]
+> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  webp: 'image/webp',
+  gif: 'image/gif',
+};
+
+export const resolveSessionImageMimeType = (
+  file: Pick<File, 'name' | 'type'>
+): SessionImageSendRequest['mimeType'] | null => {
+  const mimeType = file.type.trim().toLowerCase();
+  if (allowedMimeTypeSet.has(mimeType)) {
+    return mimeType as SessionImageSendRequest['mimeType'];
+  }
+  if (mimeType) {
+    return null;
+  }
+  const fromExtension = SESSION_IMAGE_MIME_BY_EXTENSION[getFileExtension(file.name)];
+  return fromExtension ?? null;
+};
+
 export const validateSessionImageFile = (file: File): string | null => {
   const extension = getFileExtension(file.name);
   if (extension && !allowedExtensionSet.has(extension)) {
     return `Unsupported file extension: ${file.name}`;
   }
 
-  const mimeType = file.type.trim().toLowerCase();
-  if (!allowedMimeTypeSet.has(mimeType)) {
-    return `Unsupported image type: ${mimeType || 'unknown'}`;
+  const mimeType = resolveSessionImageMimeType(file);
+  if (!mimeType) {
+    return `Unsupported image type: ${file.type.trim().toLowerCase() || 'unknown'}`;
   }
 
   if (file.size > SESSION_IMAGE_MAX_SIZE_BYTES) {
@@ -204,7 +229,10 @@ export const sendSessionImageToMachine = async (args: {
   if (validationError) {
     throw new Error(validationError);
   }
-  const mimeType = args.file.type.trim().toLowerCase() as SessionImageSendRequest['mimeType'];
+  const mimeType = resolveSessionImageMimeType(args.file);
+  if (!mimeType) {
+    throw new Error(`Unsupported image type: ${args.file.type.trim().toLowerCase() || 'unknown'}`);
+  }
   const data = await fileToBase64(args.file);
   const response = await args.runtime.requestSessionImageSend(
     args.machineId,

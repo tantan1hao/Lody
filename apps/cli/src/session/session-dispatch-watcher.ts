@@ -68,6 +68,14 @@ type SessionDispatchWatcherDeps = {
   currentUserId?: string;
   workspaceDocument: LoroDocumentManager;
   executionService: SessionExecutionService;
+  groupChat?: {
+    rememberMeta?(meta: SessionMeta): void;
+    runRoomUserTurn(args: {
+      roomSessionId: SessionId;
+      userTurnId: string;
+    }): Promise<void>;
+    noteDmPreempt?(homeSessionId: SessionId): Promise<void>;
+  };
   // Required: resolving the requesting user's real name/email is what keeps a
   // dispatched turn's commits attributed to the user who started the session
   // instead of the daemon host's git config.
@@ -1421,9 +1429,29 @@ export class SessionDispatchWatcher {
       };
       const dispatchAction = resolveSessionDispatchAction(dispatchSnapshot, this.deps.machineId);
 
+      if (dispatchAction.type === 'group-turn') {
+        this.deps.groupChat?.rememberMeta?.(freshMeta);
+        outcome = 'group-turn';
+        ensureActive();
+        await this.deps.groupChat?.runRoomUserTurn({
+          roomSessionId: sessionId,
+          userTurnId: nextUserTurn.id,
+        });
+        return;
+      }
+
       if (dispatchAction.type !== 'dispatch') {
         outcome = `fresh-action-${dispatchAction.type}`;
         return;
+      }
+
+      const wakePrompt = nextUserTurn.inputConfig?.prompt;
+      if (
+        typeof wakePrompt === 'string' &&
+        wakePrompt.length > 0 &&
+        !wakePrompt.startsWith('[LODY_HIDDEN_GROUP_PROMPT]')
+      ) {
+        void this.deps.groupChat?.noteDmPreempt?.(sessionId);
       }
 
       const requesterUserId = nextUserTurn.userId ?? freshMeta.userId;

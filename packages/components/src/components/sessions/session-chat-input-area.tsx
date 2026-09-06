@@ -39,6 +39,7 @@ import type { AttachmentAddMenuMcp } from '@/components/chat/attachment-add-menu
 import { MobileSessionRunConfig } from '@/components/mobile/mobile-session-run-config';
 import type { MentionProjectSource } from '@/components/mentions/mention-project-file-source';
 import {
+  shouldRewriteAgentRoleMentions,
   useMentionPromptExpansion,
   type ExpandedMentionPrompt,
   type MentionPromptExpansionArgs,
@@ -67,7 +68,7 @@ import {
 } from '@/lib/posthog-analytics';
 import {
   IMAGE_UPLOAD_REASONS,
-  machineSupportsSessionImageSendProtocol,
+  sessionMachineSupportsImageSend,
   type ImageUploadReason,
 } from '@lody/shared';
 import type {
@@ -556,7 +557,10 @@ export const SessionChatInputArea = memo(
     const workspaceRuntime = useAtomValue(runtimeAtom);
     const sessionMachineMeta = useAtomValue(getMachineMetaByIdAtomFamily(session.machineId));
     const useOfficialImageUpload = !isAccountlessAppPlatform();
-    const machineSupportsImageSend = machineSupportsSessionImageSendProtocol(sessionMachineMeta);
+    const machineSupportsImageSend = sessionMachineSupportsImageSend({
+      machine: sessionMachineMeta,
+      isLocalMachine: Boolean(localMachineId && session.machineId === localMachineId),
+    });
     const effectiveWorkspaceId = resolveEffectiveCodeCollabWorkspaceId({
       currentWorkspaceId: workspaceId,
       runtimeWorkspaceId: workspaceRuntime?.workspaceId,
@@ -2301,6 +2305,7 @@ export const SessionChatInputArea = memo(
       source: isArchived ? undefined : mentionSource,
       skillAgent,
       promptValue: userInput,
+      rewriteAgentRoles: shouldRewriteAgentRoleMentions(session.sessionKind),
     });
     expandPromptMentionsRef.current = expandPromptMentions;
 
@@ -2580,7 +2585,7 @@ export const SessionChatInputArea = memo(
     );
     const primaryActionNode = (
       <div className="flex items-center gap-1.5">
-        {isArchived ? null : (
+        {isArchived || session.sessionKind === 'room' ? null : (
           <QueuedMessageBehaviorControl
             size="compact"
             value={queuedMessageBehavior}

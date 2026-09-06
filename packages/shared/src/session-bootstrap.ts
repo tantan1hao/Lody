@@ -70,6 +70,8 @@ export const buildInitialSessionMetaPatch = (args: {
   project?: SessionMeta['project'];
   parentSessionId?: SessionId;
   fromFeedbackPostId?: string;
+  sessionKind?: SessionMeta['sessionKind'];
+  memberRoleIds?: SessionMeta['memberRoleIds'];
 }): Partial<SessionMeta> => {
   const repoFullName = resolveProjectGitHubRepo(args.project);
   // A local ProjectRef branch is a user selector and may be an opaque
@@ -100,6 +102,12 @@ export const buildInitialSessionMetaPatch = (args: {
   }
   if (args.parentSessionId) {
     metaToWrite.parentSessionId = args.parentSessionId;
+  }
+  if (args.sessionKind === 'room') {
+    metaToWrite.sessionKind = 'room';
+    if (args.memberRoleIds && args.memberRoleIds.length > 0) {
+      metaToWrite.memberRoleIds = args.memberRoleIds;
+    }
   }
   return metaToWrite;
 };

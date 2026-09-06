@@ -431,12 +431,14 @@ export interface SessionChatStreamViewProps {
    * (e.g. during search result navigation).
    */
   suppressStickyAutoScrollRef?: React.RefObject<boolean>;
+  onRoomWidgetSelect?: (entryId: string, value: string) => void;
 }
 
 const SessionChatActionContext = createContext<{
   sendMessage?: (message: ClientToServer) => void;
   openHtmlFile?: (file: SessionFilePayload) => boolean;
   addCommentReference?: (reference: CommentReferencePayload) => boolean;
+  selectRoomWidget?: (entryId: string, value: string) => void;
 }>({});
 const SessionImagePreviewContext = createContext<{
   openImagePreview: (imageKey: string) => void;
@@ -1176,6 +1178,7 @@ export const SessionChatStreamView = forwardRef<
       skipNextViewportResizeAutoScrollRef,
       suppressStickyAutoScrollRef,
       outlineOverlayRoot,
+      onRoomWidgetSelect,
     },
     ref
   ) => {
@@ -1610,8 +1613,9 @@ export const SessionChatStreamView = forwardRef<
         ...(sendMessage ? { sendMessage } : {}),
         ...(onOpenHtmlFile ? { openHtmlFile: onOpenHtmlFile } : {}),
         ...(addCommentReference ? { addCommentReference } : {}),
+        ...(onRoomWidgetSelect ? { selectRoomWidget: onRoomWidgetSelect } : {}),
       }),
-      [addCommentReference, onOpenHtmlFile, sendMessage]
+      [addCommentReference, onOpenHtmlFile, onRoomWidgetSelect, sendMessage]
     );
     const hasOnlyEmptyItem = items.length === 1 && items[0]?.type === 'empty';
 
@@ -1856,6 +1860,71 @@ export const MessageRowView = memo(function MessageRowView({
   return null;
 });
 
+const RoomSpeechView = ({
+  item,
+  entryId,
+}: {
+  item: Extract<MessageContent, { type: 'room_speech' }>;
+  entryId: string;
+}) => {
+  const { selectRoomWidget } = useContext(SessionChatActionContext);
+  return (
+    <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2">
+      <div className="mb-1 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+        <span>
+          {item.mark ? `${item.mark} ` : ''}
+          {item.speakerName}
+        </span>
+        {item.warningTone ? (
+          <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-700 dark:text-amber-400">
+            full access
+          </span>
+        ) : null}
+      </div>
+      {item.replyTo ? (
+        <div className="mb-1 text-[11px] text-muted-foreground">Reply</div>
+      ) : null}
+      <div className="whitespace-pre-wrap text-sm">{item.text}</div>
+      {item.images && item.images.length > 0 ? (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {item.images.map((image) => (
+            <div key={image.imageId} className="text-xs text-muted-foreground">
+              {image.fileName ?? image.imageId}
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {item.widget ? (
+        <div className="mt-2 flex flex-col gap-1">
+          <div className="text-sm">{item.widget.prompt}</div>
+          {item.widget.options.map((option) => {
+            const value = option.value ?? option.label;
+            const selected = item.widget?.selectedValue === value;
+            return (
+              <button
+                key={option.label}
+                type="button"
+                disabled={Boolean(item.widget?.selectedValue) || !selectRoomWidget}
+                className={`rounded border px-2 py-1 text-left text-xs ${
+                  selected ? 'border-primary bg-primary/10' : 'border-border'
+                }`}
+                onClick={() => selectRoomWidget?.(entryId, value)}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+      {item.secretRequest ? (
+        <div className="mt-2 text-xs text-muted-foreground">
+          Secret: {item.secretRequest.label}
+        </div>
+      ) : null}
+    </div>
+  );
+};
+
 /**
  * Renders system messages (e.g., system notices like resume_from_external_chat_history)
  */
@@ -1895,6 +1964,22 @@ const SystemMessageRowView = ({
             sessionId={sessionId}
             onNavigateSession={onNavigateSession}
           />
+        ) : item.type === 'room_speech' ? (
+          <RoomSpeechView
+            key={`room-speech-${itemIndex}`}
+            item={item}
+            entryId={message.id}
+          />
+        ) : item.type === 'agent_message' ? (
+          <div
+            key={`agent-message-${itemIndex}`}
+            className="rounded-lg border border-border/60 px-3 py-2 text-sm"
+          >
+            <div className="mb-1 text-xs text-muted-foreground">
+              {item.direction === 'outbound' ? 'Sent' : item.speakerName}
+            </div>
+            {item.text}
+          </div>
         ) : item.type === 'worktree_script' ? (
           <WorktreeScriptNoticeView
             key={`worktree-script-${item.phase}-${itemIndex}`}
@@ -2077,6 +2162,16 @@ const SystemNoticeView = ({
   const { t } = useTranslation();
 
   switch (notice.name) {
+    case 'group_turn_wake': {
+      const meta = notice.meta as { roomTitle?: string } | undefined;
+      return (
+        <div className="py-1 text-xs text-muted-foreground">
+          {t('sessions.systemNotices.groupTurnWake', 'Working in group {{title}}', {
+            title: meta?.roomTitle || 'Group',
+          })}
+        </div>
+      );
+    }
     case 'chat_failed':
       return <ChatFailedNoticeView notice={notice} sessionId={sessionId} />;
     case 'agent_warning':

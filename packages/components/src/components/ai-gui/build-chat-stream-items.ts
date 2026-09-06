@@ -151,7 +151,8 @@ function collectDeferredAssistants(history: readonly SessionHistory[]): {
 export function buildChatStreamItems(
   history: readonly SessionHistory[],
   sessionId: SessionId,
-  previousCache?: BuildChatStreamItemsCache
+  previousCache?: BuildChatStreamItemsCache,
+  options?: { hideAssistant?: boolean }
 ): BuildChatStreamItemsResult {
   const items: ChatStreamItem[] = [];
   const seenIds = new Set<string>();
@@ -225,6 +226,7 @@ export function buildChatStreamItems(
   };
 
   for (const entry of history) {
+    if (options?.hideAssistant && entry.role === 'assistant') continue;
     if (deferredIds.has(entry.id)) continue;
     const alreadySeen = seenIds.has(entry.id);
     emitEntry(entry);

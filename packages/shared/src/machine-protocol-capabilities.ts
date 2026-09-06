@@ -14,6 +14,7 @@ export const MACHINE_PROTOCOL_CAPABILITIES = {
   sessionImageSend: 'sessionImageSend',
   sessionImageGet: 'sessionImageGet',
   sessionFileGet: 'sessionFileGet',
+  sessionGroupChat: 'sessionGroupChat',
 } as const;
 
 export const LOCAL_PROJECT_REMOVAL_PROTOCOL_VERSION = 1;
@@ -22,6 +23,7 @@ export const SESSION_AGENT_SWITCH_PROTOCOL_VERSION = 1;
 export const SESSION_IMAGE_SEND_PROTOCOL_VERSION = 1;
 export const SESSION_IMAGE_GET_PROTOCOL_VERSION = 1;
 export const SESSION_FILE_GET_PROTOCOL_VERSION = 1;
+export const SESSION_GROUP_CHAT_PROTOCOL_VERSION = 1;
 
 type MachineProtocolCapabilityCarrier = {
   protocolCapabilities?: MachineProtocolCapabilities;
@@ -57,6 +59,7 @@ export const CURRENT_MACHINE_PROTOCOL_CAPABILITIES: MachineProtocolCapabilities 
   [MACHINE_PROTOCOL_CAPABILITIES.sessionImageSend]: SESSION_IMAGE_SEND_PROTOCOL_VERSION,
   [MACHINE_PROTOCOL_CAPABILITIES.sessionImageGet]: SESSION_IMAGE_GET_PROTOCOL_VERSION,
   [MACHINE_PROTOCOL_CAPABILITIES.sessionFileGet]: SESSION_FILE_GET_PROTOCOL_VERSION,
+  [MACHINE_PROTOCOL_CAPABILITIES.sessionGroupChat]: SESSION_GROUP_CHAT_PROTOCOL_VERSION,
 };
 
 /** Whether the target daemon supports preflighted local-project worktree cleanup and results. */
@@ -103,6 +106,30 @@ export function machineSupportsSessionImageSendProtocol(
   );
 }
 
+/** Whether this running process advertises `sessionImageSend` on its own binding. */
+export function currentProcessSupportsSessionImageSendProtocol(): boolean {
+  return machineSupportsProtocolCapability(
+    { protocolCapabilities: CURRENT_MACHINE_PROTOCOL_CAPABILITIES },
+    MACHINE_PROTOCOL_CAPABILITIES.sessionImageSend,
+    SESSION_IMAGE_SEND_PROTOCOL_VERSION
+  );
+}
+
+/**
+ * Flock machine meta can lag a just-upgraded local daemon. The session
+ * machine is still this process, so the current advertised set is the
+ * negotiation source — not the CLI release version.
+ */
+export function sessionMachineSupportsImageSend(args: {
+  machine: MachineProtocolCapabilityCarrier | null | undefined;
+  isLocalMachine: boolean;
+}): boolean {
+  return (
+    machineSupportsSessionImageSendProtocol(args.machine) ||
+    (args.isLocalMachine && currentProcessSupportsSessionImageSendProtocol())
+  );
+}
+
 /** Whether the target daemon can return a stored session image for display. */
 export function machineSupportsSessionImageGetProtocol(
   machine: MachineProtocolCapabilityCarrier | null | undefined
@@ -122,5 +149,16 @@ export function machineSupportsSessionFileGetProtocol(
     machine,
     MACHINE_PROTOCOL_CAPABILITIES.sessionFileGet,
     SESSION_FILE_GET_PROTOCOL_VERSION
+  );
+}
+
+/** Whether the target daemon can orchestrate room group turns. */
+export function machineSupportsSessionGroupChatProtocol(
+  machine: MachineProtocolCapabilityCarrier | null | undefined
+): boolean {
+  return machineSupportsProtocolCapability(
+    machine,
+    MACHINE_PROTOCOL_CAPABILITIES.sessionGroupChat,
+    SESSION_GROUP_CHAT_PROTOCOL_VERSION
   );
 }

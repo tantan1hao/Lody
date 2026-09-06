@@ -229,6 +229,9 @@ embedded` lazy-imported from `../tasks/tasks-workspace.tsx` (`embedded`
   `type="search"` — the search type draws a UA cancel glyph in the browser's own
   accent, which belongs to no theme and is no thumb's target — and the clear
   button beside it is ours.
+- Phone form fields stay at 16px (`text-base`). iOS Safari zooms the page
+  when a focused input is smaller; do not use `text-sm` / `text-[0.82rem]` on
+  those controls, and do not lock zoom with `maximum-scale=1`.
 - Any mobile sheet that can put a FIELD on screen owes the native-keyboard
   contract, `mobile-run-config-sheet.tsx` included (its rows open pickers with
   search fields). Call `useKeyboardAwareSheet()` rather than assembling it: it

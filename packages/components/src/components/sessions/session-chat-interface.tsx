@@ -3543,6 +3543,9 @@ export const SessionChatInterface = memo(
               timestamp: new Date().toISOString(),
               inputConfig,
               status: options?.guideExpectedTurnId ? 'pending_apply' : 'pending',
+              ...(session.sessionKind === 'room'
+                ? { clientNonce: crypto.randomUUID() }
+                : {}),
             });
             if (!pendingHistoryEntry) {
               return false;
@@ -3633,6 +3636,7 @@ export const SessionChatInterface = memo(
         session.id,
         session.machineId,
         session.userId,
+        session.sessionKind,
         trackMessageSend,
         touchSessionActivity,
         updateHistoryEntry,
@@ -3775,6 +3779,12 @@ export const SessionChatInterface = memo(
           isPromptBusy: isAgentBusy,
           hasUnfinishedAssistantTurn: activeAssistantTurnId != null,
           queuedMessageBehavior,
+          isRoom: session.sessionKind === 'room',
+          transportDown:
+            !browserOnline ||
+            isMachineRemoved ||
+            sessionMachineOnlineStatus === 'offline',
+          roomUserSendInFlight: session.sessionKind === 'room' && isAgentBusy,
         });
         const startedAtMs = getPerformanceNowMs();
         const inputSummary = summarizeInputBlocksForAnalytics(normalized);
@@ -3882,6 +3892,10 @@ export const SessionChatInterface = memo(
         queuedMessageBehavior,
         selectedModeId,
         selectedModelId,
+        session.sessionKind,
+        browserOnline,
+        isMachineRemoved,
+        sessionMachineOnlineStatus,
       ]
     );
 
@@ -5123,6 +5137,9 @@ export const SessionChatInterface = memo(
 
     const handleRemoveQueueItem = useCallback(
       async (itemId: string) => {
+        if (session.sessionKind === 'room') {
+          return;
+        }
         try {
           await removeMessageQueueItem(itemId);
           captureSessionEvent('session/queue_item_removed', {
@@ -5140,7 +5157,7 @@ export const SessionChatInterface = memo(
           });
         }
       },
-      [captureSessionEvent, removeMessageQueueItem, t]
+      [captureSessionEvent, removeMessageQueueItem, session.sessionKind, t]
     );
 
     const shouldHideHeader = hideHeader;
@@ -5700,6 +5717,15 @@ export const SessionChatInterface = memo(
                           ref={chatStreamRef}
                           sessionId={session?.id}
                           workspaceId={workspaceId}
+                          sessionKind={session.sessionKind}
+                          onRoomWidgetSelect={
+                            session.sessionKind === 'room'
+                              ? (entryId, value) => {
+                                  void dispatchPrompt(value, { forceDirect: true });
+                                  void entryId;
+                                }
+                              : undefined
+                          }
                           sessionDoc={sessionDoc}
                           sessionCreatedAt={session?.createdAt}
                           dividerLabel={sessionDividerLabel}

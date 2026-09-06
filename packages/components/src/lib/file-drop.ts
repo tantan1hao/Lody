@@ -1,3 +1,5 @@
+import { SESSION_IMAGE_ALLOWED_EXTENSIONS } from '@lody/shared';
+
 type FileTransferItem = Pick<DataTransferItem, 'kind' | 'getAsFile'>;
 type FileDropDataTransfer = {
   types?: ArrayLike<string> | Iterable<string>;
@@ -36,9 +38,31 @@ export const getFilesFromDataTransfer = (
   return toArray<File>(dataTransfer.files);
 };
 
+const COMPOSER_IMAGE_EXTENSIONS = new Set<string>(SESSION_IMAGE_ALLOWED_EXTENSIONS);
+
+const getFileExtension = (fileName: string): string => {
+  const trimmed = fileName.trim().toLowerCase();
+  const dotIndex = trimmed.lastIndexOf('.');
+  if (dotIndex < 0 || dotIndex === trimmed.length - 1) {
+    return '';
+  }
+  return trimmed.slice(dotIndex + 1);
+};
+
+/** MIME wins when the browser set one; Finder drops often arrive with an empty type. */
+export const isComposerImageFile = (file: File): boolean => {
+  if (file.type.startsWith('image/')) {
+    return true;
+  }
+  if (file.type.trim()) {
+    return false;
+  }
+  return COMPOSER_IMAGE_EXTENSIONS.has(getFileExtension(file.name));
+};
+
 export const splitImageAndFileAttachments = (
   files: File[]
 ): { images: File[]; attachments: File[] } => ({
-  images: files.filter((file) => file.type.startsWith('image/')),
-  attachments: files.filter((file) => !file.type.startsWith('image/')),
+  images: files.filter(isComposerImageFile),
+  attachments: files.filter((file) => !isComposerImageFile(file)),
 });

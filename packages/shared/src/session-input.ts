@@ -53,6 +53,8 @@ export type PendingUserHistoryEntry = {
   read: false;
   fileDiff: [];
   finished: true;
+  clientNonce?: string;
+  replyToId?: string;
 };
 
 export type SessionConversationConfig = {
@@ -550,6 +552,8 @@ export const buildPendingUserHistoryEntry = (args: {
   timestamp: string;
   inputConfig?: SessionTurnInputConfig;
   status?: PendingUserHistoryEntry['status'];
+  clientNonce?: string;
+  replyToId?: string;
 }): PendingUserHistoryEntry | null => {
   const userId = args.userId?.trim();
   if (!userId) {
@@ -571,5 +575,7 @@ export const buildPendingUserHistoryEntry = (args: {
     read: false,
     fileDiff: [],
     finished: true,
+    ...(args.clientNonce ? { clientNonce: args.clientNonce } : {}),
+    ...(args.replyToId ? { replyToId: args.replyToId } : {}),
   };
 };

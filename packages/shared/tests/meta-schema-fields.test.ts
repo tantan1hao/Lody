@@ -5,6 +5,8 @@ import {
   MACHINE_PROTOCOL_CAPABILITIES,
   getMachineProtocolCapabilityVersion,
   machineSupportsProtocolCapability,
+  machineSupportsSessionGroupChatProtocol,
+  sessionMachineSupportsImageSend,
 } from '../src/machine-protocol-capabilities';
 
 describe('meta schema fields', () => {
@@ -23,6 +25,8 @@ describe('meta schema fields', () => {
     expect(legacy.lastHandledUserMsgId).toBeUndefined();
     expect(legacy.processingUserMsgId).toBeUndefined();
     expect(legacy.lastMissingHistoryUserMsgId).toBeUndefined();
+    expect(legacy.sessionKind).toBeUndefined();
+    expect(legacy.memberRoleIds).toBeUndefined();
   });
 
   it('accepts dispatch-driven session meta fields', () => {
@@ -146,5 +150,36 @@ describe('meta schema fields', () => {
     ).toBe(true);
     expect(getMachineProtocolCapabilityVersion(currentMachine, 'futureProtocol')).toBe(3);
     expect(machineSupportsProtocolCapability(currentMachine, 'futureProtocol', 4)).toBe(false);
+    expect(machineSupportsSessionGroupChatProtocol(legacyMachine)).toBe(false);
+    expect(
+      machineSupportsSessionGroupChatProtocol({
+        protocolCapabilities: { [MACHINE_PROTOCOL_CAPABILITIES.sessionGroupChat]: 1 },
+      })
+    ).toBe(true);
+  });
+
+  it('lets the local process advertise session image send when flock meta is stale', () => {
+    expect(
+      sessionMachineSupportsImageSend({
+        machine: { protocolCapabilities: undefined },
+        isLocalMachine: true,
+      })
+    ).toBe(true);
+    expect(
+      sessionMachineSupportsImageSend({
+        machine: { protocolCapabilities: undefined },
+        isLocalMachine: false,
+      })
+    ).toBe(false);
+    expect(
+      sessionMachineSupportsImageSend({
+        machine: {
+          protocolCapabilities: {
+            [MACHINE_PROTOCOL_CAPABILITIES.sessionImageSend]: 1,
+          },
+        },
+        isLocalMachine: false,
+      })
+    ).toBe(true);
   });
 });

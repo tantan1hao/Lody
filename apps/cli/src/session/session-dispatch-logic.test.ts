@@ -267,3 +267,40 @@ describe('SessionExecutionService history mutation ownership', () => {
     releaseNextQueue?.();
   });
 });
+
+describe('resolveSessionDispatchAction group rooms', () => {
+  it('routes a room session to group-turn instead of ACP create/continue', () => {
+    const machineId = 'machine-1' as MachineId;
+    const turn = {
+      id: 'room-user',
+      timestamp: '2026-08-03T00:00:01.000Z',
+      role: 'user' as const,
+      items: [{ type: 'text' as const, text: 'hello' }],
+      fileDiff: [],
+      status: 'pending' as const,
+    };
+    expect(
+      resolveSessionDispatchAction(
+        {
+          meta: {
+            id: 'room-1',
+            machineId,
+            createdAt: '2026-08-03T00:00:00.000Z',
+            userId: 'user-1',
+            cliType: 'builtin',
+            agentType: 'codex',
+            sessionKind: 'room',
+            memberRoleIds: ['role-a'] as SessionMeta['memberRoleIds'],
+            latestUserMsgId: 'room-user',
+          } as SessionMeta,
+          history: [turn],
+          hasActiveTurn: false,
+          hasBlockingPendingCreate: false,
+          hasReusableSession: false,
+          hasRewriteBarrier: false,
+        },
+        machineId
+      )
+    ).toEqual({ type: 'group-turn', turn });
+  });
+});

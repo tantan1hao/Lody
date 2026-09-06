@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { applyTextRewrites, reanchorMessageTextSpansForTrim } from '@lody/shared';
 
-import { buildVerbatimMentionRewrites } from '../src/components/mentions/mention-expansion';
+import {
+  buildVerbatimMentionRewrites,
+  shouldRewriteAgentRoleMentions,
+} from '../src/components/mentions/mention-expansion';
 import { buildSkillMentionRewrites } from '../src/components/mentions/mention-skill-source';
 import { buildSessionMentionRewrites } from '../src/components/mentions/mention-session-source';
 import { buildPastedTextRewrites } from '../src/lib/pasted-text-draft';
@@ -170,5 +173,13 @@ describe('before-send mention rewrite', () => {
       mentions: [{ value: 'gone', start: 40, end: 60, kind: 'file' }],
     });
     expect(result).toEqual({ text: 'short', spans: undefined });
+  });
+});
+
+describe('shouldRewriteAgentRoleMentions', () => {
+  it('keeps @Role as addressing in a room composer', () => {
+    expect(shouldRewriteAgentRoleMentions('room')).toBe(false);
+    expect(shouldRewriteAgentRoleMentions('direct')).toBe(true);
+    expect(shouldRewriteAgentRoleMentions(undefined)).toBe(true);
   });
 });

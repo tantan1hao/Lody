@@ -6,7 +6,7 @@ const sessionId = 'session-test' as SessionId;
 
 const entry = (partial: {
   id: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'system';
   items?: unknown[];
   plan?: unknown[];
 }): SessionHistory =>
@@ -257,5 +257,23 @@ describe('buildChatStreamItems', () => {
     );
 
     expect(renderedIds(items)).toEqual(['a1', 'u1']);
+  });
+
+  it('hides assistant entries in a room transcript', () => {
+    const { items } = buildChatStreamItems(
+      [
+        entry({ id: 'u1', role: 'user', items: [text('hello')] }),
+        entry({ id: 'a1', role: 'assistant', items: [text('should not render')] }),
+        entry({
+          id: 's1',
+          role: 'system',
+          items: [{ type: 'room_speech', speakerRoleId: 'role-a', speakerName: 'Alice', text: 'hi' }],
+        }),
+      ],
+      sessionId,
+      undefined,
+      { hideAssistant: true }
+    );
+    expect(renderedIds(items)).toEqual(['u1', 's1']);
   });
 });

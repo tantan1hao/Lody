@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { resolveSessionImagePersistPath } from '../src/lib/session-image-upload';
+import {
+  resolveSessionImageMimeType,
+  resolveSessionImagePersistPath,
+  validateSessionImageFile,
+} from '../src/lib/session-image-upload';
 
 describe('resolveSessionImagePersistPath', () => {
   it('uses official upload when that service exists and the client is signed in', () => {
@@ -48,5 +52,18 @@ describe('resolveSessionImagePersistPath', () => {
         machineSupportsSend: false,
       })
     ).toBe('unsupported_machine');
+  });
+});
+
+describe('resolveSessionImageMimeType', () => {
+  it('fills an empty Finder MIME from a composer image extension', () => {
+    expect(resolveSessionImageMimeType(new File(['png'], 'shot.png'))).toBe('image/png');
+    expect(validateSessionImageFile(new File(['png'], 'shot.png'))).toBeNull();
+  });
+
+  it('keeps an explicit non-image MIME as rejected', () => {
+    expect(
+      resolveSessionImageMimeType(new File(['pdf'], 'shot.png', { type: 'application/pdf' }))
+    ).toBeNull();
   });
 });

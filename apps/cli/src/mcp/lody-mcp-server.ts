@@ -43,6 +43,7 @@ import {
   type LocalSessionControlRequest,
   type AgentConfigMeta,
   type AgentRole,
+  type AgentRoleId,
   type LocalProjectId,
   type LocalProjectMeta,
   type MachineId,
@@ -50,6 +51,7 @@ import {
   type ProjectRef,
   type SessionHistoryInput,
   type SessionId,
+  type SessionImagePayload,
   type SessionMeta,
   type TaskId,
   type TaskIndexRow,
@@ -74,7 +76,11 @@ import {
   REVIEW_SEVERITY_VALUES,
   REVIEW_VERDICT_VALUES,
   ReviewSubmissionSchema,
+  LODY_ROOM_SPEAK_TOOL_NAME,
+  LODY_SEND_TO_AGENT_TOOL_NAME,
+  GROUP_SEND_TO_AGENT_MAX_CHARS,
 } from '@lody/shared';
+import { getActiveGroupChatService } from '@/session/group-chat/group-chat-runtime';
 import { makeLocalControlClientAuto } from '@lody/shared/node/local-ipc';
 import {
   type AuthContext,
@@ -4855,6 +4861,111 @@ export function buildLodyMcpServer(config: { taskToolsEnabled?: boolean } = {}):
       } catch (error) {
         return mcpErrorResult(error);
       }
+    }
+  );
+
+  server.registerTool(
+    LODY_ROOM_SPEAK_TOOL_NAME,
+    {
+      title: 'Speak in a Lody group room',
+      description:
+        'The only way the room can see your words. Plain assistant text is invisible to the room. Send {"type":"text","content":"..."} or exactly "(pass)" if you have nothing to add. Do not use markdown images.',
+      inputSchema: {
+        type: z.enum(['text', 'attachment', 'widget', 'secret-request']).default('text'),
+        content: z.string().optional(),
+        reply_to: z.string().optional(),
+        images: z
+          .array(
+            z.object({
+              imageId: z.string(),
+              mimeType: z.string(),
+              fileName: z.string().optional(),
+              sizeBytes: z.number().int().positive().optional(),
+            })
+          )
+          .optional(),
+        widget: z
+          .object({
+            prompt: z.string(),
+            options: z.array(
+              z.object({
+                label: z.string(),
+                value: z.string().optional(),
+                description: z.string().optional(),
+              })
+            ),
+            allowCustom: z.boolean().optional(),
+            dismissOnMoveOn: z.boolean().optional(),
+          })
+          .optional(),
+        secret: z
+          .object({
+            label: z.string(),
+            connector: z.string(),
+            field: z.string(),
+          })
+          .optional(),
+      },
+    },
+    async (input) => {
+      const service = getActiveGroupChatService();
+      if (!service) {
+        return textResult('Group chat is not available on this machine.', true);
+      }
+      const ctx = getSessionContext();
+      const result = await service.roomSpeak({
+        homeSessionId: ctx.sessionId as SessionId,
+        type: input.type,
+        content: input.content,
+        replyTo: input.reply_to,
+        images: input.images as SessionImagePayload[] | undefined,
+        widget: input.widget,
+        secretRequest: input.secret,
+      });
+      if (!result.ok) return textResult(result.error, true);
+      return textResult(result.pass ? 'Passed. The room will not see this.' : 'Posted to the room.');
+    }
+  );
+
+  server.registerTool(
+    LODY_SEND_TO_AGENT_TOOL_NAME,
+    {
+      title: 'Send a message to another agent or room',
+      description:
+        `Deliver a message to another Agent Role, a one-to-one session, or a group room and return immediately. Do not wait for a reply in this turn. Text max ${GROUP_SEND_TO_AGENT_MAX_CHARS} characters.`,
+      inputSchema: {
+        target_role_id: z.string().optional(),
+        target_room_id: z.string().optional(),
+        target_session_id: z.string().optional(),
+        message: z.string().min(1).max(GROUP_SEND_TO_AGENT_MAX_CHARS),
+        priority: z.boolean().optional(),
+        has_images: z.boolean().optional(),
+      },
+    },
+    async (input) => {
+      const service = getActiveGroupChatService();
+      if (!service) {
+        return textResult('Cross-session messaging is not available on this machine.', true);
+      }
+      const ctx = getSessionContext();
+      const homeId = ctx.sessionId as SessionId;
+      const active = service.getActiveMemberTurn(homeId);
+      const fromMeta = service.deps.getSessionMeta(homeId);
+      const fromRoleId = active?.memberRoleId ?? fromMeta?.agentRoleId;
+      const named = fromRoleId ? await service.deps.resolveMembers([fromRoleId]) : [];
+      const result = await service.sendToAgent({
+        fromSessionId: homeId,
+        fromRoleId,
+        fromRoleName: named[0]?.name ?? fromMeta?.title?.trim() ?? 'Agent',
+        targetRoleId: input.target_role_id as AgentRoleId | undefined,
+        targetRoomId: input.target_room_id as SessionId | undefined,
+        targetSessionId: input.target_session_id as SessionId | undefined,
+        message: input.message,
+        hasImages: input.has_images === true,
+        priority: input.priority === true,
+      });
+      if (!result.ok) return textResult(result.error, true);
+      return textResult(result.ack);
     }
   );
 

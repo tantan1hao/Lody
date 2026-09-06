@@ -859,7 +859,7 @@ function PickerSearchInput({
         aria-label={ariaLabel}
         // eslint-disable-next-line jsx-a11y/no-autofocus -- desktop-only (pointer: fine); the picker opens on explicit user action, so focusing its search is expected.
         autoFocus={autoFocus}
-        className="min-w-0 flex-1 border-none bg-transparent text-sm outline-none focus:outline-none focus:ring-0 placeholder:text-muted-foreground"
+        className="min-w-0 flex-1 border-none bg-transparent text-base outline-none focus:outline-none focus:ring-0 placeholder:text-muted-foreground"
       />
       {query ? (
         <button

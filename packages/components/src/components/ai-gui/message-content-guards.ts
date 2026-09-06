@@ -179,6 +179,14 @@ export const isMessageContent = (value: unknown): value is MessageContent => {
         typeof value.body === 'string' &&
         isRecord(value.anchor)
       );
+    case 'room_speech':
+      return typeof value.speakerRoleId === 'string' && typeof value.speakerName === 'string';
+    case 'agent_message':
+      return (
+        (value.direction === 'inbound' || value.direction === 'outbound') &&
+        typeof value.speakerName === 'string' &&
+        typeof value.text === 'string'
+      );
     default:
       return false;
   }
@@ -210,7 +218,14 @@ export const shouldRenderSystemRowItem = <T extends { type: string }>(
   tasksEnabled: boolean
 ): item is Extract<
   T,
-  { type: 'system_notice' | 'worktree_script' | 'operation_completion' }
+  {
+    type:
+      | 'system_notice'
+      | 'worktree_script'
+      | 'operation_completion'
+      | 'room_speech'
+      | 'agent_message';
+  }
 > => {
   if (item.type === 'system_notice' && 'name' in item && item.name === 'task_proposal') {
     return tasksEnabled;
@@ -218,6 +233,8 @@ export const shouldRenderSystemRowItem = <T extends { type: string }>(
   return (
     item.type === 'system_notice' ||
     item.type === 'worktree_script' ||
-    item.type === 'operation_completion'
+    item.type === 'operation_completion' ||
+    item.type === 'room_speech' ||
+    item.type === 'agent_message'
   );
 };

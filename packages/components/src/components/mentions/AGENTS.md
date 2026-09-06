@@ -121,6 +121,9 @@ Product-level mention sources built on `src/ui/mention`.
   `ConversationDropOverlay` via `SessionMentionDropLayer`. Do not put that mask
   inside each keep-alive tab page: hidden panes and draft tabs make a per-page
   overlay vanish or stack on the wrong surface.
+- In a `sessionKind === 'room'` composer, `@Role` is addressing for
+  `resolveResponders` only: `useMentionPromptExpansion({ rewriteAgentRoles: false })`
+  must not rewrite it into `lody_session_create`.
 - An Agent Role mention is the session mention's shape — a plain `@<token>` whose
   committed RANGE carries the stable Role id — with a different payload. The
   rewrite asks the agent to CREATE a Session and carries the Role id only. The

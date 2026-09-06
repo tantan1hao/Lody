@@ -12,10 +12,22 @@ const isMetadataObject = (value: unknown): value is Record<string, unknown> =>
 
 const setNormalizedMetadataValue = (
   patch: Record<string, unknown>,
-  field: string,
+  path: readonly string[],
   value: unknown
 ): void => {
-  patch[field] = value === undefined ? null : value;
+  const normalized = value === undefined ? null : value;
+  const [field, ...rest] = path;
+  if (!field) {
+    return;
+  }
+  if (rest.length === 0) {
+    patch[field] = normalized;
+    return;
+  }
+  const current = patch[field];
+  const nested = isMetadataObject(current) ? { ...current } : {};
+  setNormalizedMetadataValue(nested, rest, normalized);
+  patch[field] = nested;
 };
 
 export type DocExistenceState = 'active' | 'deleted' | 'missing';
@@ -67,13 +79,13 @@ export function collectDocMetadataPatchesFromEntries(
         patchesByDocId.set(docId, patch);
       }
       for (const [field, value] of Object.entries(entry.value)) {
-        setNormalizedMetadataValue(patch, field, value);
+        setNormalizedMetadataValue(patch, [field], value);
       }
       continue;
     }
 
-    const field = key[2];
-    if (typeof field !== 'string') continue;
+    const nestedPath = key.slice(2).filter((part): part is string => typeof part === 'string');
+    if (nestedPath.length === 0 || nestedPath.length !== key.length - 2) continue;
     let patch = patchesByDocId.get(docId);
     if (!patch) {
       patch = {};
@@ -81,7 +93,7 @@ export function collectDocMetadataPatchesFromEntries(
     }
     // Normalize undefined → null to match loro-repo's canonical patch shape
     // (FlockHydrator maps `undefined` to `null` in MetadataManager.reconcileDoc)
-    setNormalizedMetadataValue(patch, field, entry.value);
+    setNormalizedMetadataValue(patch, nestedPath, entry.value);
   }
   return patchesByDocId;
 }

@@ -44,10 +44,25 @@ export type BuildSessionListRowsOptions = {
    * Omitted callers get one built here from `allSessions`.
    */
   resolveOpenerRowId?: (openerSessionId: string | null | undefined) => string | null;
+  /** Frozen Role names for room row subtitles. Missing ids are omitted. */
+  roleNameById?: ReadonlyMap<string, string>;
 };
 
 function normalizeString(value: string | null | undefined): string {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+export function formatRoomSubtitle(
+  memberRoleIds: readonly string[] | undefined,
+  roleNameById?: ReadonlyMap<string, string>
+): string | undefined {
+  const ids = memberRoleIds ?? [];
+  if (ids.length === 0) return undefined;
+  const names = ids
+    .map((id) => roleNameById?.get(id)?.trim())
+    .filter((name): name is string => Boolean(name));
+  if (names.length > 0) return names.join(', ');
+  return `${ids.length} members`;
 }
 
 function parseTimestamp(value: number | string | Date | null | undefined): number | null {
@@ -338,6 +353,11 @@ export function mapSessionMetaToSessionListRow(
     isWaitingPermission: liveStatus?.type === 'requestPermission',
     isPinned: Boolean(session.isPinned),
     isWorktree: Boolean(session.isWorktree),
+    isRoom: session.sessionKind === 'room',
+    roomSubtitle:
+      session.sessionKind === 'room'
+        ? formatRoomSubtitle(session.memberRoleIds, undefined)
+        : undefined,
     externalHistoryProvider,
     owner,
   };
@@ -399,6 +419,7 @@ export function buildSessionListRows(
     members,
     lineChangeScope = 'all',
     liveSessionStatuses,
+    roleNameById,
   } = options;
 
   // Build child session lookup for status aggregation
@@ -444,6 +465,9 @@ export function buildSessionListRows(
       liveSessionStatuses?.get(session.id) ?? null,
       resolveOpenerRowId
     );
+    if (session.sessionKind === 'room') {
+      task.roomSubtitle = formatRoomSubtitle(session.memberRoleIds, roleNameById);
+    }
     return aggregateChildStatus(session, task, childSessionsByParent, liveSessionStatuses);
   };
 

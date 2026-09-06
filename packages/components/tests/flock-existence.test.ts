@@ -113,4 +113,20 @@ describe('collectDocMetadataPatchesFromEntries', () => {
       name: 'ci-box',
     });
   });
+
+  it('reassembles nested protocolCapabilities leaves instead of collapsing them to a number', () => {
+    const patches = collectDocMetadataPatchesFromEntries([
+      { key: ['m', 'machine-1', 'protocolCapabilities', 'localProjectRemoval'], value: 1 },
+      { key: ['m', 'machine-1', 'protocolCapabilities', 'sessionImageSend'], value: 1 },
+      { key: ['m', 'machine-1', 'name'], value: 'mini' },
+    ]);
+
+    expect(patches.get('machine-1')).toEqual({
+      name: 'mini',
+      protocolCapabilities: {
+        localProjectRemoval: 1,
+        sessionImageSend: 1,
+      },
+    });
+  });
 });

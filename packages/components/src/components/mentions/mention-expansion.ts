@@ -45,7 +45,13 @@ export type MentionPromptExpansionInput = {
   skillAgent: SkillMentionAgent | undefined;
   /** Current composer text; used to skip work when no token is present. */
   promptValue: string;
+  /** Room composers keep @Role as addressing, not a create-session rewrite. */
+  rewriteAgentRoles?: boolean;
 };
+
+export function shouldRewriteAgentRoleMentions(sessionKind?: string): boolean {
+  return sessionKind !== 'room';
+}
 
 export type MentionPromptExpansionArgs = {
   /** Raw composer text, before any expansion. */
@@ -114,6 +120,7 @@ export function useMentionPromptExpansion({
   source,
   skillAgent,
   promptValue,
+  rewriteAgentRoles = true,
 }: MentionPromptExpansionInput): (args: MentionPromptExpansionArgs) => ExpandedMentionPrompt {
   const skillRewrites = useSkillMentionRewrites(source, skillAgent, promptValue);
   const agentRoleContext = React.useMemo(
@@ -134,10 +141,12 @@ export function useMentionPromptExpansion({
         ...buildPastedTextRewrites(pastedTextDrafts),
         ...skillRewrites(text),
         ...buildSessionMentionRewrites(text, mentions),
-        ...buildAgentRoleMentionRewrites(text, mentions, agentRoleItems),
+        ...(rewriteAgentRoles
+          ? buildAgentRoleMentionRewrites(text, mentions, agentRoleItems)
+          : []),
         ...buildVerbatimMentionRewrites(text, mentions),
       ]),
     }),
-    [agentRoleItems, skillRewrites]
+    [agentRoleItems, rewriteAgentRoles, skillRewrites]
   );
 }

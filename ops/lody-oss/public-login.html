@@ -111,13 +111,24 @@
         try {
           const response = await fetch('/session', {
             method: 'GET',
-            credentials: 'same-origin',
+            credentials: 'include',
             headers: { Authorization: 'Basic ' + btoa(user + ':' + password) },
           });
           if (!response.ok) {
             err.textContent = '用户名或密码不对';
             return;
           }
+          // iOS Safari often ignores Set-Cookie on fetch(). Persist the
+          // authenticated session token from the response header, then navigate.
+          const token = response.headers.get('X-Lody-Session');
+          if (!token) {
+            err.textContent = '登录成功但没有会话，请重试';
+            return;
+          }
+          document.cookie =
+            'lody_oss_session=' +
+            encodeURIComponent(token) +
+            '; Path=/; Max-Age=31536000; Secure; SameSite=Lax';
           location.replace('/');
         } catch (error) {
           err.textContent = '连不上服务器';

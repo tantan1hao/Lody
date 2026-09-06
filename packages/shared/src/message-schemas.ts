@@ -2870,6 +2870,7 @@ export const SystemNoticeNameSchema = z.enum([
   'resume_from_external_chat_history',
   'chat_failed',
   'agent_warning',
+  'group_turn_wake',
 ]);
 
 // Metadata for resume_from_external_chat_history system notice
@@ -3029,6 +3030,48 @@ export const NonSystemNoticeMessageContentSchema = z.discriminatedUnion('type', 
       .strict()
       .optional(),
   }),
+  z.object({
+    type: z.literal('room_speech'),
+    speakerRoleId: z.string().trim().min(1),
+    speakerName: z.string(),
+    mark: z.string().optional(),
+    text: z.string(),
+    replyTo: z.string().optional(),
+    warningTone: z.boolean().optional(),
+    images: z.array(SessionImagePayloadSchema).optional(),
+    widget: z
+      .object({
+        prompt: z.string(),
+        options: z.array(
+          z.object({
+            label: z.string(),
+            value: z.string().optional(),
+            description: z.string().optional(),
+          })
+        ),
+        allowCustom: z.boolean().optional(),
+        dismissOnMoveOn: z.boolean().optional(),
+        selectedValue: z.string().optional(),
+      })
+      .optional(),
+    secretRequest: z
+      .object({
+        label: z.string(),
+        connector: z.string(),
+        field: z.string(),
+      })
+      .optional(),
+  }),
+  z.object({
+    type: z.literal('agent_message'),
+    direction: z.enum(['inbound', 'outbound']),
+    speakerRoleId: z.string().optional(),
+    speakerName: z.string(),
+    mark: z.string().optional(),
+    targetRoomId: z.string().optional(),
+    targetSessionId: z.string().optional(),
+    text: z.string(),
+  }),
 ]);
 
 // System notice message content schema
@@ -3052,6 +3095,16 @@ export const SystemNoticeSchema = z.discriminatedUnion('name', [
     type: z.literal('system_notice'),
     name: z.literal('task_proposal'),
     meta: TaskProposalMetaSchema.optional(),
+  }),
+  z.object({
+    type: z.literal('system_notice'),
+    name: z.literal('group_turn_wake'),
+    meta: z
+      .object({
+        roomSessionId: z.string().trim().min(1),
+        roomTitle: z.string(),
+      })
+      .optional(),
   }),
 ]);
 

@@ -59,6 +59,7 @@ import {
   type SidebarUpdatedSessionListLabels,
 } from './sidebar-updated-session-list';
 import { SidebarFilterPopover, type SidebarFilterLabels } from './sidebar-filter-popover';
+import { CreateGroupChatButton } from '@/components/sessions/create-group-dialog';
 import { WorkspaceAvatar } from './workspace-avatar';
 import type { SidebarOrganizeMode } from '@/atoms/sidebar-state';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -1043,6 +1044,9 @@ export const LoroSidebar = memo(function LoroSidebar({
             icon={<SquarePen className="h-4 w-4" />}
             onClick={onHomeClicked}
           />
+          <div className="px-1">
+            <CreateGroupChatButton />
+          </div>
           {/* Tasks sits with New Chat rather than in the bottom icon rail: it is a
              primary destination, and the rail reads as utilities (docs, feedback,
              settings). Still gated — see `showTasks`. */}
