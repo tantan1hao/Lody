@@ -98,3 +98,25 @@ const quoteToken = (token: string): string => {
  */
 export const formatCustomAcpCommandLine = (spec: CustomAcpLaunchSpec): string =>
   [spec.command, ...(spec.args ?? [])].map(quoteToken).join(' ');
+
+export function customAcpLaunchCommand(
+  spec: CustomAcpLaunchSpec | undefined | null
+): string | null {
+  const command = spec?.command.trim();
+  return command ? command : null;
+}
+
+export function hasCustomAcpLaunchCommand(
+  spec: CustomAcpLaunchSpec | undefined | null
+): boolean {
+  return customAcpLaunchCommand(spec) !== null;
+}
+
+export function customAcpMissingLaunchCommandMessage(agentType: string): string {
+  return `Custom ACP ${agentType} has no launch command configured`;
+}
+
+export function isCustomAcpMissingLaunchCommandError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /^Custom ACP .+ has no launch command configured$/.test(message);
+}

@@ -16,6 +16,7 @@ import {
   type RegistryAcpAgent,
   type RegistryNpxDistribution,
   serializeCustomAcpLaunchSpec,
+  customAcpMissingLaunchCommandMessage,
 } from '@lody/shared';
 
 import { getAcpBinaryManager } from '@/agent/acp-binary-manager';
@@ -359,7 +360,7 @@ export function resolveCustomACPSetting(
 ): ResolvedACPSetting {
   const command = customAcp?.command.trim();
   if (!command) {
-    throw new Error(`Custom ACP ${agentType} has no launch command configured`);
+    throw new Error(customAcpMissingLaunchCommandMessage(agentType));
   }
   return {
     status: { agent: `custom:${agentType}`, command },

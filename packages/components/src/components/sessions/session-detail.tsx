@@ -256,6 +256,7 @@ import {
 import {
   getExternalHistoryProviderLabel,
   getExternalHistoryRefreshKey,
+  isBenignExternalHistoryRefreshError,
   shouldRefreshExternalHistoryOnOpen,
 } from '@/lib/external-history-refresh';
 import { useSessionSharing } from '@/hooks/use-session-sharing';
@@ -1516,6 +1517,9 @@ const SessionDetail = ({
         void result;
       })
       .catch((error: unknown) => {
+        if (isBenignExternalHistoryRefreshError(error)) {
+          return;
+        }
         toast.error(
           t('sessions.historyLoadFailed', {
             defaultValue: 'Failed to load {{provider}} conversation',

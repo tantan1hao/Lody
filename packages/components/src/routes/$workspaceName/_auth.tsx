@@ -10,6 +10,7 @@ import { ElectronMenuHandler } from '@/components/electron-menu-handler';
 import { AppCommands } from '@/components/app-commands';
 import { CommandPalette } from '@/components/commands/command-palette';
 import { AutoArchivePrWatcher } from '@/components/auto-archive-pr-watcher';
+import { AutoExternalAgentHistoryWatcher } from '@/components/auto-external-agent-history-watcher';
 import { useStableSession } from '@/hooks/useStableSession';
 import { useOnlineMachineIds } from '@/hooks/use-machine-online-status';
 import { usePostHog } from '@posthog/react';
@@ -90,6 +91,7 @@ function LocalPlatformLayoutContent({ workspaceName }: { workspaceName: string }
         <AppCommands />
         <CommandPalette />
         <AutoArchivePrWatcher />
+        <AutoExternalAgentHistoryWatcher />
       </LazyMainLayout>
     </RouteSuspense>
   );
@@ -388,6 +390,7 @@ function AuthedLayoutContent({
           <AppCommands />
           <CommandPalette />
           <AutoArchivePrWatcher />
+          <AutoExternalAgentHistoryWatcher />
           <WorkspaceCheckoutPendingDialog />
         </LazyMainLayout>
       </RouteSuspense>
@@ -452,6 +455,7 @@ function AuthedLayoutContent({
         <ElectronMenuHandler />
         <CommandPalette />
         <AutoArchivePrWatcher />
+        <AutoExternalAgentHistoryWatcher />
         <WorkspaceCheckoutPendingDialog />
       </LazyMainLayout>
     </RouteSuspense>

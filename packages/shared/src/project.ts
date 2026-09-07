@@ -91,6 +91,38 @@ export function getLocalProjectHistoryProviderKey(
   return `${provider.cliType}:${provider.agentType}` as LocalProjectHistoryProviderKey;
 }
 
+/**
+ * The agent config a history provider `{ cliType, agentType }` resolves to on
+ * one machine.
+ *
+ * Custom configs keep `agentType` as a per-config slug (`custom-<uuid>`), while
+ * imported sessions and older catalogs sometimes stored the display `name`
+ * (`xsess-root`) as `agentType`. Match the slug first, then the name, so a
+ * rename does not hide the launch spec the daemon needs to spawn.
+ */
+export function findAgentConfigForHistoryProvider<
+  T extends {
+    cliType: AgentConfigCliType;
+    agentType: string;
+    name: string;
+    machineId: string;
+  },
+>(
+  configs: readonly T[],
+  provider: Pick<LocalProjectHistoryProvider, 'cliType' | 'agentType'>,
+  machineId: string
+): T | null {
+  const onMachine = configs.filter(
+    (config) => config.machineId === machineId && config.cliType === provider.cliType
+  );
+  const byType = onMachine.find((config) => config.agentType === provider.agentType);
+  if (byType) return byType;
+  if (provider.cliType !== 'custom') return null;
+  const needle = provider.agentType.trim().toLowerCase();
+  if (!needle) return null;
+  return onMachine.find((config) => config.name.trim().toLowerCase() === needle) ?? null;
+}
+
 export function getExternalAcpHistoryImportKey(options: {
   machineId: string;
   localProjectId: LocalProjectId;

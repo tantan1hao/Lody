@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import {
   autoArchiveOnPrClosedAtom,
   autoArchiveOnPrMergedAtom,
+  autoSyncExternalAgentHistoryAtom,
   electronSessionCompletionNotificationsEnabledAtom,
   iosLiveActivitiesEnabledAtom,
   mobileKeyboardActionAtom,
@@ -92,6 +93,9 @@ export function MobileGeneralSettings() {
   const [queuedMessageBehavior, setQueuedMessageBehavior] = useAtom(queuedMessageBehaviorAtom);
   const [autoArchiveOnPrMerged, setAutoArchiveOnPrMerged] = useAtom(autoArchiveOnPrMergedAtom);
   const [autoArchiveOnPrClosed, setAutoArchiveOnPrClosed] = useAtom(autoArchiveOnPrClosedAtom);
+  const [autoSyncExternalAgentHistory, setAutoSyncExternalAgentHistory] = useAtom(
+    autoSyncExternalAgentHistoryAtom
+  );
   const [preventSleepEnabled, setPreventSleepEnabled] = useState(true);
   const clearCache = useClearCache();
   const isMobile = useIsMobile();
@@ -796,6 +800,28 @@ export function MobileGeneralSettings() {
           </MobileSettingsSection>
         ) : null}
       </MobileInlinePickerCoordinator>
+
+      <MobileSettingsSection
+        title={t('settings.autoExternalHistory.title', 'Other agent sessions')}
+      >
+        <MobileSettingsRowGroup>
+          <MobileSettingsRow
+            label={t(
+              'settings.autoExternalHistory.label',
+              'Auto-sync sessions from other agents'
+            )}
+            helper={t(
+              'settings.autoExternalHistory.helper',
+              'When this device can reach the project, Lody lists those agents and imports new sessions in the background.'
+            )}
+          >
+            <Switch
+              checked={autoSyncExternalAgentHistory}
+              onCheckedChange={setAutoSyncExternalAgentHistory}
+            />
+          </MobileSettingsRow>
+        </MobileSettingsRowGroup>
+      </MobileSettingsSection>
 
       {githubIntegrationAvailable ? (
         <MobileSettingsSection title={t('settings.autoArchive.title', 'Auto-archive sessions')}>

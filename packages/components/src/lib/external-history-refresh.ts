@@ -1,5 +1,6 @@
 import {
   getLocalProjectHistoryProviderKey,
+  isCustomAcpMissingLaunchCommandError,
   REGISTRY_ACP_AGENTS,
   type LocalProjectHistoryProvider,
   type SessionMeta,
@@ -32,4 +33,13 @@ export function getExternalHistoryRefreshKey(
 ): string {
   const providerKey = getLocalProjectHistoryProviderKey(externalHistory.provider);
   return `${sessionId}:${providerKey}:${externalHistory.sourceAcpSessionId}`;
+}
+
+/**
+ * Opening an imported session already has the local transcript. A custom ACP
+ * with no launch command cannot refresh from the other agent; do not present
+ * that as "failed to load the conversation".
+ */
+export function isBenignExternalHistoryRefreshError(error: unknown): boolean {
+  return isCustomAcpMissingLaunchCommandError(error);
 }

@@ -177,6 +177,17 @@ export const autoArchiveOnPrClosedAtom = atomWithStorage<boolean>(
   false
 );
 
+/** Import new conversations that other ACP agents created in a local project. */
+export const autoSyncExternalAgentHistoryAtom = atomWithStorage<boolean>(
+  'lody-auto-sync-external-agent-history',
+  true
+);
+
+export const autoSyncExternalAgentHistoryLastRunAtom = atomWithStorage<Record<string, number>>(
+  'lody-auto-sync-external-agent-history-last-run',
+  {}
+);
+
 /** localStorage keys for developer-only beta gates — keep in sync with the atoms below. */
 export const DEVELOPER_MODE_STORAGE_KEY = 'lody-developer-mode-enabled';
 export const TASKS_BETA_STORAGE_KEY = 'lody-tasks-beta-enabled';

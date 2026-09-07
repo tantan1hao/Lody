@@ -23,6 +23,7 @@ import { useAtom, useAtomValue } from 'jotai';
 import { CompactRow, CompactSection } from './compact-layout';
 import { settingContainerClass } from '.';
 import { AutoArchiveSection } from './auto-archive-setting';
+import { AutoExternalAgentHistorySection } from './auto-external-agent-history-setting';
 import { ExperimentalFeaturesSection } from './experimental-features-setting';
 import {
   getOneSignalPermissionState,
@@ -914,6 +915,8 @@ export function GeneralSettingsComponent() {
         )}
 
         {githubIntegrationAvailable ? <AutoArchiveSection /> : null}
+
+        <AutoExternalAgentHistorySection />
 
         <ExperimentalFeaturesSection />
 

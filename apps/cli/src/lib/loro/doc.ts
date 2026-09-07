@@ -53,6 +53,7 @@ import {
   type SessionForkOperation,
   SessionForkOperationSchema,
   type LodyPresenceStateMap,
+  findAgentConfigForHistoryProvider,
 } from '@lody/shared';
 import { LocalLoroDataPlaneServer } from '@lody/shared/local-loro-data-plane-server';
 import { createLocalLoroDataPlaneScheduler } from '@lody/shared/local-loro-data-plane-scheduler';
@@ -1337,6 +1338,10 @@ export class LoroDocumentManager {
    * table. Reading it here — at launch time, from the machine that owns the
    * agent — keeps the wire contract unchanged and always picks up the current
    * command rather than one snapshotted when the request was built.
+   *
+   * Custom lookups also accept the config `name` when `agentType` does not
+   * match: imported sessions sometimes stored the display name (`xsess-root`)
+   * instead of the per-config slug.
    */
   async findAgentConfigByType(
     cliType: AgentConfigCliType,
@@ -1344,14 +1349,7 @@ export class LoroDocumentManager {
     machineId: MachineId
   ): Promise<AgentConfigMeta | null> {
     const configs = await listMergedAgentConfigs(this.repo, this.workspaceId, [machineId]);
-    return (
-      configs.find(
-        (meta) =>
-          meta.cliType === cliType &&
-          meta.agentType === agentType &&
-          meta.machineId === machineId
-      ) ?? null
-    );
+    return findAgentConfigForHistoryProvider(configs, { cliType, agentType }, machineId);
   }
 
   async getAgentConfigById(
