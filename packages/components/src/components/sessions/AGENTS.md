@@ -296,11 +296,12 @@ Session conversation page chain:
   The composer footer hosts the same `QueuedMessageBehaviorControl` as Settings
   (compact, left of send/stop) and writes `queuedMessageBehaviorAtom`; do not add
   a second preference. Hide it on archived sessions. Landing has no in-flight
-  turn and does not show this toggle.
-  A queued item's Steer action uses native acknowledged steering only when the
-  authoritative ACP capability cache advertises it. Never infer steering support
-  from built-in/custom config type or agent identity; unsupported and stale cache
-  entries retain the interrupt-and-send fallback.
+  turn and does not show this toggle. Composer Guide is sent only when
+  `shouldRequestNativeQueueSteer` is true (authoritative `acknowledgedSteer`);
+  otherwise send routes to the queue and the Guide control is disabled. Never
+  infer steering support from built-in/custom config type or agent identity.
+  A queued item's Steer action uses the same capability gate; unsupported and
+  stale cache entries retain the interrupt-and-send fallback.
   Child-tab suggestions are shared by draft and persisted child sessions through
   `child-tab-empty-state.tsx`; it uses the same `px-3` + `ConversationColumn` as
   the composer, so its right edge and max width must stay aligned automatically.

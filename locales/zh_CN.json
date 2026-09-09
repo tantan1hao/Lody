@@ -2561,6 +2561,7 @@
   "settings.general.sessions.codeOnlyLineChanges.helper": "开启后，session 侧边栏的行数统计会排除文档、测试和开发配置文件。",
   "settings.general.sessions.codeOnlyLineChanges.label": "仅展示代码行变更",
   "settings.general.sessions.queuedMessageBehavior.guide": "引导",
+  "settings.general.sessions.queuedMessageBehavior.guideUnavailable": "当前 Agent 不支持引导进行中的回复，发送会进入排队。",
   "settings.general.sessions.queuedMessageBehavior.helper": "选择 Agent 工作时发送的消息是等待排队，还是立即引导当前回复。",
   "settings.general.sessions.queuedMessageBehavior.label": "排队消息行为",
   "settings.general.sessions.queuedMessageBehavior.queue": "排队",

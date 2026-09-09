@@ -42,6 +42,17 @@ describe('resolveSessionMessageSubmitRoute', () => {
     ).toEqual({ type: 'guide' });
   });
 
+  it('queues guide when the agent does not advertise acknowledged steer', () => {
+    expect(
+      resolve({
+        isPromptBusy: true,
+        hasUnfinishedAssistantTurn: true,
+        queuedMessageBehavior: 'guide',
+        canSteer: false,
+      })
+    ).toEqual({ type: 'queue', reason: 'prompt_busy' });
+  });
+
   it('honors explicit route overrides with forceDirect taking precedence', () => {
     expect(resolve({ forceQueue: true })).toEqual({ type: 'queue', reason: 'forced' });
     expect(

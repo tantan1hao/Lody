@@ -212,7 +212,11 @@ control-plane path is DEPRECATED; do not add functionality to it.
 - `session-gc-manager.ts` — idle cleanup plus memory-pressure reclamation. `evaluateMemoryPressure`
   returns TWO independent verdicts, `evict` and `block`, and they are not the same threshold:
   reclaiming an idle session is invisible (it is restored on its next turn), refusing a turn is a
-  user-visible failure. On **macOS the signal is `kern.memorystatus_vm_pressure_level`**, not bytes
+  user-visible failure. User idle (`lastActivityMs`) only moves on send/upload. Agent activity
+  (`lastAgentActivityMs` plus AgentClient inbound, including ignored Grok `x.ai/queue/changed`)
+  has its own grace (`LODY_SESSION_GC_AGENT_GRACE_MS`, 60m). Pressure eviction uses the same
+  user-idle floor as the sweep — never `idleMs > 0`. On **macOS the signal is
+  `kern.memorystatus_vm_pressure_level`**, not bytes
   — WARNING reclaims, only CRITICAL refuses, and an unreadable level FAILS OPEN. Do not add a
   byte-threshold fallback there: byte estimates cannot see compressor headroom, which is where a
   Mac's reclaimable memory lives, so they report pressure on healthy machines.

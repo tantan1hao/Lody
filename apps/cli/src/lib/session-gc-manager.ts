@@ -49,6 +49,14 @@ import type { MemoryPressureSnapshotSource } from '@/monitor/memory-pressure-sam
 export interface SessionGCConfig {
   /** Idle timeout before a session is fully cleaned up (default: 20 minutes) */
   idleTimeoutMs: number;
+  /**
+   * Keep a session while its agent has been active within this window
+   * (default: 60 minutes). User `lastActivityMs` only moves on send/upload;
+   * ACP updates and provider extension traffic (including ignored Grok
+   * `x.ai/queue/changed`) refresh agent activity. Isolated subagents can keep
+   * working long after the parent turn looks idle.
+   */
+  agentGraceMs: number;
   /** Interval to run GC sweep (default: 1 min) */
   sweepIntervalMs: number;
   /** Enable GC (default: true) */
@@ -93,6 +101,8 @@ export interface MemoryPressureVerdict {
 
 export interface SessionGCDeps {
   getSessionLastActivity: (sessionId: SessionId) => number | undefined;
+  /** Latest ACP / extension inbound time. Missing means no agent activity recorded. */
+  getSessionLastAgentActivity?: (sessionId: SessionId) => number | undefined;
   /** Whether the session has an active turn (prompting or finalizing) */
   hasActiveTurn: (sessionId: SessionId) => boolean;
   /** Whether the session has an active background goal that still needs its ACP runtime */
@@ -145,6 +155,7 @@ const WINDOWS_COMMIT_THRESHOLD_CEILING_BYTES = 2 * GIB;
 const DEFAULT_MAX_EVICTIONS_PER_CALL = 3;
 const DEFAULT_PRESSURE_RECHECK_ATTEMPTS = 2;
 const DEFAULT_PRESSURE_RECHECK_DELAY_MS = 500;
+const DEFAULT_AGENT_GRACE_MS = 60 * 60 * 1000;
 /** ~10% of the last ten seconds spent stalled on reclaim. */
 const DEFAULT_PSI_STALL_AVG10 = 10;
 const DEFAULT_CGROUP_HARD_FLOOR_BYTES = 128 * 1024 * 1024;
@@ -162,6 +173,7 @@ function defaultMemoryThresholdBytes(): number {
 export function loadGCConfig(): SessionGCConfig {
   return {
     idleTimeoutMs: readEnvNumber('LODY_SESSION_GC_IDLE_TIMEOUT_MS', 20 * 60 * 1000), // 20 minutes
+    agentGraceMs: readEnvNumber('LODY_SESSION_GC_AGENT_GRACE_MS', DEFAULT_AGENT_GRACE_MS),
     sweepIntervalMs: readEnvNumber('LODY_SESSION_GC_SWEEP_INTERVAL_MS', 60 * 1000),
     enabled: process.env.LODY_SESSION_GC_ENABLED !== 'false',
     memoryThresholdBytes: readEnvNumber(
@@ -334,6 +346,7 @@ export class SessionGCManager {
     this.deps.logger.debug(
       `[GC] Starting session GC (interval=${this.config.sweepIntervalMs}ms, ` +
         `idleTimeout=${this.config.idleTimeoutMs}ms, ` +
+        `agentGrace=${this.config.agentGraceMs}ms, ` +
         `pressureSignal=${pressureSignal}, ` +
         `maxEvictionsPerCall=${this.config.maxEvictionsPerCall})`
     );
@@ -457,8 +470,11 @@ export class SessionGCManager {
         continue;
       }
 
-      // Skip sessions with no idle time (just created)
-      if (idleMs === 0) {
+      // Memory pressure used to evict after any positive idle (seconds). A
+      // long isolated-subagent run only refreshes agent activity, so it
+      // looked idle and was SIGKILL'd at macOS WARNING. Pressure now uses
+      // the same user-idle floor as the periodic sweep.
+      if (idleMs < this.config.idleTimeoutMs) {
         continue;
       }
 
@@ -661,10 +677,14 @@ export class SessionGCManager {
   /**
    * Check if a session is eligible for cleanup.
    * A session is NOT eligible if it has an active turn, active goal,
-   * pending updates, pending user work, or archive in flight.
+   * recent agent activity, pending updates, pending user work, or archive in flight.
    */
   private async isEligibleForCleanup(sessionId: SessionId): Promise<boolean> {
     if (this.deps.hasActiveTurn(sessionId)) {
+      return false;
+    }
+
+    if (this.hasRecentAgentActivity(sessionId)) {
       return false;
     }
 
@@ -685,6 +705,17 @@ export class SessionGCManager {
     }
 
     return true;
+  }
+
+  private hasRecentAgentActivity(sessionId: SessionId): boolean {
+    if (this.config.agentGraceMs <= 0 || !this.deps.getSessionLastAgentActivity) {
+      return false;
+    }
+    const lastAgentActivity = this.deps.getSessionLastAgentActivity(sessionId);
+    if (lastAgentActivity === undefined) {
+      return false;
+    }
+    return Date.now() - lastAgentActivity < this.config.agentGraceMs;
   }
 
   /**

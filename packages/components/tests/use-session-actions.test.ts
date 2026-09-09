@@ -942,6 +942,77 @@ describe('useSessionActions', () => {
     expect(waitUntilSynced).toHaveBeenCalledOnce();
   });
 
+  it('dispatches a guide as a follow-up when the agent does not support steer', async () => {
+    const sessionId = 'session-steer-unsupported' as SessionId;
+    const userTurnId = 'user-turn-steer-unsupported';
+    const machineId = 'machine-1' as MachineId;
+    const history = [
+      {
+        id: userTurnId,
+        role: 'user',
+        userId: 'user-1',
+        timestamp: '2026-07-17T00:00:00.000Z',
+        status: 'pending_apply',
+        read: false,
+        inputConfig: {
+          prompt: 'queue instead',
+          inputBlocks: [{ type: 'text', text: 'queue instead' }],
+          cliType: 'builtin',
+          agentType: 'grok',
+        },
+      },
+    ];
+    const state = { history };
+    const setState = vi.fn((updater: (draft: typeof state) => void) => updater(state));
+    const waitUntilSynced = vi.fn(async () => undefined);
+    const upsertDocMeta = vi.fn(async () => undefined);
+    const requestSessionSteer = vi.fn(async () => ({
+      type: 'session/steer_response' as const,
+      sessionId,
+      userTurnId,
+      applied: false,
+      disposition: 'unsupported' as const,
+    }));
+    const requestSessionDispatchTurn = vi.fn(async () => ({
+      type: 'session/dispatch-turn_response' as const,
+      sessionId,
+      userTurnId,
+      accepted: true,
+      disposition: 'accepted' as const,
+    }));
+    const runtime = createRuntime({
+      repo: {
+        getDocMeta: vi.fn(async () => ({ meta: { machineId } })),
+        upsertDocMeta,
+      } as unknown as WorkspaceRuntime['repo'],
+    }) as WorkspaceRuntime & {
+      withSessionStore: WorkspaceRuntime['withSessionStore'];
+      requestSessionSteer: WorkspaceRuntime['requestSessionSteer'];
+      requestSessionDispatchTurn: WorkspaceRuntime['requestSessionDispatchTurn'];
+    };
+    runtime.withSessionStore = vi.fn(async (_sessionId: unknown, fn: (store: unknown) => unknown) =>
+      fn({
+        getState: vi.fn(() => state),
+        setState,
+        waitUntilSynced,
+      })
+    ) as unknown as WorkspaceRuntime['withSessionStore'];
+    runtime.requestSessionSteer = requestSessionSteer as WorkspaceRuntime['requestSessionSteer'];
+    runtime.requestSessionDispatchTurn =
+      requestSessionDispatchTurn as WorkspaceRuntime['requestSessionDispatchTurn'];
+    const actions = await renderActions(runtime);
+
+    await expect(
+      actions.requestSessionSteer(sessionId, 'assistant:user-1', userTurnId, { machineId })
+    ).resolves.toBe(false);
+
+    expect(history[0]).toMatchObject({ status: 'pending', read: false });
+    expect(requestSessionDispatchTurn).toHaveBeenCalledWith(
+      machineId,
+      expect.objectContaining({ sessionId, userTurnId })
+    );
+  });
+
   it('does not redispatch a steer rejected for a reason other than an ended turn', async () => {
     const sessionId = 'session-steer-stale' as SessionId;
     const userTurnId = 'user-turn-steer-stale';

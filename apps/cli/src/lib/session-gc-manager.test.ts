@@ -32,6 +32,7 @@ describe('SessionGCManager', () => {
     error: ReturnType<typeof vi.fn>;
   };
   let sessionActivities: Map<SessionId, number>;
+  let sessionAgentActivities: Map<SessionId, number>;
   let activeTurns: Set<SessionId>;
   let activeGoals: Set<SessionId>;
   let pendingUpdates: Set<SessionId>;
@@ -50,6 +51,7 @@ describe('SessionGCManager', () => {
       error: vi.fn(),
     };
     sessionActivities = new Map();
+    sessionAgentActivities = new Map();
     activeTurns = new Set();
     activeGoals = new Set();
     pendingUpdates = new Set();
@@ -72,7 +74,8 @@ describe('SessionGCManager', () => {
     platform: NodeJS.Platform = 'linux'
   ) => {
     const defaultConfig: SessionGCConfig = {
-      idleTimeoutMs: 20 * 60 * 1000, // 20 minutes
+      idleTimeoutMs: 10 * 1000, // 10s so pressure tests can evict 30–90s idle sessions
+      agentGraceMs: 0,
       sweepIntervalMs: 60 * 1000, // 1 minute
       enabled: true,
       memoryThresholdBytes: 1024 * 1024 * 1024, // 1 GB
@@ -85,6 +88,7 @@ describe('SessionGCManager', () => {
       defaultConfig,
       {
         getSessionLastActivity: (sessionId) => sessionActivities.get(sessionId),
+        getSessionLastAgentActivity: (sessionId) => sessionAgentActivities.get(sessionId),
         hasActiveTurn: (sessionId) => activeTurns.has(sessionId),
         hasActiveGoal: async (sessionId) => activeGoals.has(sessionId),
         hasPendingUpdates: (sessionId) => pendingUpdates.has(sessionId),
@@ -110,6 +114,7 @@ describe('SessionGCManager', () => {
     it('returns default config with 20 minute timeout', () => {
       const config = loadGCConfig();
       expect(config.idleTimeoutMs).toBe(20 * 60 * 1000);
+      expect(config.agentGraceMs).toBe(60 * 60 * 1000);
       expect(config.sweepIntervalMs).toBe(60 * 1000);
       expect(config.enabled).toBe(true);
       // Default threshold = 10% of effective memory (32 GB mock), clamped to [1 GB, 4 GB]
@@ -200,6 +205,19 @@ describe('SessionGCManager', () => {
       expect(cleanMock).not.toHaveBeenCalled();
     });
 
+    it('does not clean sessions with recent agent activity', async () => {
+      const manager = createManager({ idleTimeoutMs: 1000, agentGraceMs: 60 * 60 * 1000 });
+      const now = Date.now();
+      const s1 = 'session-1' as SessionId;
+
+      sessionActivities.set(s1, now - 2000);
+      sessionAgentActivities.set(s1, now - 30_000);
+
+      await manager.sweep();
+
+      expect(cleanMock).not.toHaveBeenCalled();
+    });
+
     it('does not clean sessions with active goals', async () => {
       const manager = createManager({ idleTimeoutMs: 1000 });
       const now = Date.now();
@@ -273,6 +291,42 @@ describe('SessionGCManager', () => {
 
       mockedGetMemoryPressureSnapshot.mockResolvedValue({
         availableMemoryBytes: 2 * 1024 * 1024 * 1024,
+        effectiveMemoryLimitBytes: 32 * 1024 * 1024 * 1024,
+      });
+
+      await manager.evictForMemoryPressure();
+
+      expect(cleanMock).not.toHaveBeenCalled();
+    });
+
+    it('does not evict a session idle for less than the user idle timeout', async () => {
+      const manager = createManager({ idleTimeoutMs: 20 * 60 * 1000 });
+      const s1 = 'session-1' as SessionId;
+      // The production bug: 7 minutes of user silence under darwin WARNING.
+      sessionActivities.set(s1, Date.now() - 7 * 60 * 1000);
+
+      mockedGetMemoryPressureSnapshot.mockResolvedValue({
+        availableMemoryBytes: 500 * 1024 * 1024,
+        effectiveMemoryLimitBytes: 32 * 1024 * 1024 * 1024,
+      });
+
+      await manager.evictForMemoryPressure();
+
+      expect(cleanMock).not.toHaveBeenCalled();
+    });
+
+    it('does not evict a user-idle session whose agent is still working', async () => {
+      const manager = createManager({
+        idleTimeoutMs: 1000,
+        agentGraceMs: 60 * 60 * 1000,
+      });
+      const now = Date.now();
+      const s1 = 'session-1' as SessionId;
+      sessionActivities.set(s1, now - 30 * 60 * 1000);
+      sessionAgentActivities.set(s1, now - 45_000);
+
+      mockedGetMemoryPressureSnapshot.mockResolvedValue({
+        availableMemoryBytes: 500 * 1024 * 1024,
         effectiveMemoryLimitBytes: 32 * 1024 * 1024 * 1024,
       });
 

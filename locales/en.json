@@ -2561,6 +2561,7 @@
   "settings.general.sessions.codeOnlyLineChanges.helper": "When enabled, session sidebar line counts exclude docs, tests, and dev files.",
   "settings.general.sessions.codeOnlyLineChanges.label": "Show code-only line changes",
   "settings.general.sessions.queuedMessageBehavior.guide": "Steer",
+  "settings.general.sessions.queuedMessageBehavior.guideUnavailable": "This agent cannot steer an in-flight turn. Messages wait in the queue.",
   "settings.general.sessions.queuedMessageBehavior.helper": "Choose whether messages sent while the agent is working wait in the queue or steer the active response.",
   "settings.general.sessions.queuedMessageBehavior.label": "Queued message behavior",
   "settings.general.sessions.queuedMessageBehavior.queue": "Queue",

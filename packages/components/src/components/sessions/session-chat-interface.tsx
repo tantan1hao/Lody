@@ -2227,6 +2227,13 @@ export const SessionChatInterface = memo(
 
     const runtime = useAtomValue(activeWorkspaceRuntimeAtom);
     const queuedMessageBehavior = useAtomValue(queuedMessageBehaviorAtom);
+    const queueSteerCapability = session.agentConfigId
+      ? sessionMachine?.acpCapabilities?.[getAcpCapabilityCacheKey(session.agentConfigId)]
+      : undefined;
+    const shouldUseNativeQueueSteer = shouldRequestNativeQueueSteer(
+      capabilityAuthority,
+      queueSteerCapability
+    );
     const {
       markSessionRead,
       requestSessionCancel,
@@ -3543,9 +3550,7 @@ export const SessionChatInterface = memo(
               timestamp: new Date().toISOString(),
               inputConfig,
               status: options?.guideExpectedTurnId ? 'pending_apply' : 'pending',
-              ...(session.sessionKind === 'room'
-                ? { clientNonce: crypto.randomUUID() }
-                : {}),
+              ...(session.sessionKind === 'room' ? { clientNonce: crypto.randomUUID() } : {}),
             });
             if (!pendingHistoryEntry) {
               return false;
@@ -3779,11 +3784,10 @@ export const SessionChatInterface = memo(
           isPromptBusy: isAgentBusy,
           hasUnfinishedAssistantTurn: activeAssistantTurnId != null,
           queuedMessageBehavior,
+          canSteer: shouldUseNativeQueueSteer,
           isRoom: session.sessionKind === 'room',
           transportDown:
-            !browserOnline ||
-            isMachineRemoved ||
-            sessionMachineOnlineStatus === 'offline',
+            !browserOnline || isMachineRemoved || sessionMachineOnlineStatus === 'offline',
           roomUserSendInFlight: session.sessionKind === 'room' && isAgentBusy,
         });
         const startedAtMs = getPerformanceNowMs();
@@ -3890,6 +3894,7 @@ export const SessionChatInterface = memo(
         isAgentBusy,
         queueInputBlocks,
         queuedMessageBehavior,
+        shouldUseNativeQueueSteer,
         selectedModeId,
         selectedModelId,
         session.sessionKind,
@@ -4987,13 +4992,6 @@ export const SessionChatInterface = memo(
       ]
     );
 
-    const queueSteerCapability = session.agentConfigId
-      ? sessionMachine?.acpCapabilities?.[getAcpCapabilityCacheKey(session.agentConfigId)]
-      : undefined;
-    const shouldUseNativeQueueSteer = shouldRequestNativeQueueSteer(
-      capabilityAuthority,
-      queueSteerCapability
-    );
     const handleSteerQueuedMessage = useCallback(
       async (item: MessageQueueItem) => {
         if (shouldUseNativeQueueSteer) {
@@ -5890,6 +5888,7 @@ export const SessionChatInterface = memo(
                       sessionLocalProjectRootPath={resolvedLocalProjectMeta?.rootPath ?? null}
                       isMachineRemoved={isMachineRemoved}
                       isAgentBusy={isAgentBusy}
+                      canSteerActiveTurn={shouldUseNativeQueueSteer}
                       canStopAgent={canStopAgent}
                       isExternalHistoryRefreshing={isExternalHistoryRefreshing}
                       externalHistorySyncLabel={externalHistorySyncLabel}

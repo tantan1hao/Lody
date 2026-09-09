@@ -396,6 +396,8 @@ export interface SessionChatInputAreaProps {
   sessionLocalProjectRootPath: string | null;
   isMachineRemoved: boolean;
   isAgentBusy: boolean;
+  /** Authoritative ACP `acknowledgedSteer` for this session's agent. */
+  canSteerActiveTurn?: boolean;
   canStopAgent?: boolean;
   isExternalHistoryRefreshing?: boolean;
   externalHistorySyncLabel?: string;
@@ -486,6 +488,7 @@ export const SessionChatInputArea = memo(
       sessionLocalProjectRootPath,
       isMachineRemoved,
       isAgentBusy,
+      canSteerActiveTurn = true,
       canStopAgent = false,
       isExternalHistoryRefreshing = false,
       externalHistorySyncLabel,
@@ -527,7 +530,8 @@ export const SessionChatInputArea = memo(
   ) {
     const { t, i18n } = useTranslation();
     const navigate = useNavigate();
-    const workspaceName = (useParams({ strict: false }) as { workspaceName?: string }).workspaceName;
+    const workspaceName = (useParams({ strict: false }) as { workspaceName?: string })
+      .workspaceName;
     const tasksFeatureEnabled = useAtomValue(tasksFeatureEnabledAtom);
     const [queuedMessageBehavior, setQueuedMessageBehavior] = useAtom(queuedMessageBehaviorAtom);
     const intlLocale = useMemo(
@@ -2588,8 +2592,9 @@ export const SessionChatInputArea = memo(
         {isArchived || session.sessionKind === 'room' ? null : (
           <QueuedMessageBehaviorControl
             size="compact"
-            value={queuedMessageBehavior}
+            value={canSteerActiveTurn ? queuedMessageBehavior : 'queue'}
             onChange={setQueuedMessageBehavior}
+            guideDisabled={!canSteerActiveTurn}
             className={isMobile ? 'h-8' : undefined}
           />
         )}

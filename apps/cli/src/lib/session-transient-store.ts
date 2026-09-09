@@ -151,6 +151,8 @@ export interface SessionState {
 
   // ── Session-scoped (survives turn boundaries) ───────────────────────────
   lastActivityMs: number;
+  /** ACP / extension inbound time. 0 means none recorded yet. */
+  lastAgentActivityMs: number;
   logger: Logger | null;
 }
 
@@ -185,6 +187,7 @@ function createSessionState(): SessionState {
     permissionWaitMs: 0,
     pendingUnread: false,
     lastActivityMs: Date.now(),
+    lastAgentActivityMs: 0,
     logger: null,
   };
 }
@@ -409,7 +412,7 @@ export class SessionTransientStore {
    * Clear turn-scoped state. Called after a conversation turn finishes
    * (either successfully or on error).
    *
-   * Preserves session-scoped state: lastActivityMs, logger.
+   * Preserves session-scoped state: lastActivityMs, lastAgentActivityMs, logger.
    */
   clearTurnState(sessionId: SessionId): void {
     const state = this.sessions.get(sessionId);

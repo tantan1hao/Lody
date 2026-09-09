@@ -244,6 +244,7 @@ describe('SessionTransientStore', () => {
 
       // Set up session-scoped state
       state.lastActivityMs = 12345;
+      state.lastAgentActivityMs = 67890;
 
       store.clearTurnState(id);
 
@@ -262,6 +263,7 @@ describe('SessionTransientStore', () => {
 
       // Session state should be preserved
       expect(state.lastActivityMs).toBe(12345);
+      expect(state.lastAgentActivityMs).toBe(67890);
       expect(store.has(id)).toBe(true);
     });
 

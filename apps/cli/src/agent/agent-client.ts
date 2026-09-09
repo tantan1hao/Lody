@@ -665,6 +665,7 @@ export class AgentClient implements acp.Client {
    */
   private imageGenerationToolCallIds = new Set<string>();
   private activeCodexRetry: { sessionId: string; toolCallId: string } | null = null;
+  private lastInboundActivityMs = Date.now();
 
   constructor(private options: AgentClientOptions) {
     this.logger = options.logger;
@@ -1219,6 +1220,14 @@ export class AgentClient implements acp.Client {
     return this.acknowledgedSteerCapability;
   }
 
+  getLastInboundActivityMs(): number {
+    return this.lastInboundActivityMs;
+  }
+
+  private markInboundActivity(): void {
+    this.lastInboundActivityMs = Date.now();
+  }
+
   findSteerConfigMismatch(input: SessionTurnInputConfig): string | null {
     return findActiveSteerConfigMismatch(input, this.configOptions, this.currentModel?.modelId);
   }
@@ -1396,6 +1405,7 @@ export class AgentClient implements acp.Client {
     params: Record<string, unknown>
   ): Promise<void> {
     const logicalMethod = method.startsWith('_') ? method.slice(1) : method;
+    this.markInboundActivity();
     if (logicalMethod === this.acknowledgedSteerCapability?.appliedNotificationMethod) {
       await this.handleSteerApplied(logicalMethod, params);
       return;
@@ -2547,7 +2557,10 @@ export class AgentClient implements acp.Client {
       modelLabel: this.currentModel?.name,
     });
     if (!size) return;
-    if (this.lastContextWindowUsage?.size === size && this.lastContextWindowUsage.modelId === modelId) {
+    if (
+      this.lastContextWindowUsage?.size === size &&
+      this.lastContextWindowUsage.modelId === modelId
+    ) {
       return;
     }
     this.publishContextWindowUsage({

@@ -1100,6 +1100,7 @@ export class SessionExecutionService {
         // failed to take, and dispatch honors the pointer on its own.
         await this.requeueUndeliveredSteer(options.sessionId, options.userTurnId, {
           canWriteHistory: false,
+          reason: 'busy',
         });
         return {
           type: 'session/steer_response',
@@ -1149,6 +1150,7 @@ export class SessionExecutionService {
     ): Promise<SessionSteerResponse> => {
       await this.requeueUndeliveredSteer(options.sessionId, options.userTurnId, {
         canWriteHistory: true,
+        reason: disposition,
       });
       return reject(disposition, error);
     };
@@ -1346,7 +1348,13 @@ export class SessionExecutionService {
   private async requeueUndeliveredSteer(
     sessionId: SessionId,
     userTurnId: string,
-    { canWriteHistory }: { canWriteHistory: boolean }
+    {
+      canWriteHistory,
+      reason,
+    }: {
+      canWriteHistory: boolean;
+      reason: Exclude<SessionSteerResponse['disposition'], 'applied'>;
+    }
   ): Promise<void> {
     try {
       // Guards against a late duplicate steer request resurrecting a turn that
@@ -1373,7 +1381,7 @@ export class SessionExecutionService {
         lastMissingHistoryUserMsgId: undefined,
       });
       this.deps.logger.info(
-        `[${sessionId}] Undelivered steer ${userTurnId} requeued as a follow-up turn`
+        `[${sessionId}] Undelivered steer ${userTurnId} (${reason}) requeued as a follow-up turn`
       );
     } catch (error) {
       this.deps.logger.error(

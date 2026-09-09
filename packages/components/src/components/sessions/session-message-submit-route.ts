@@ -17,6 +17,8 @@ export type SessionMessageSubmitRouteInput = {
   isPromptBusy: boolean;
   hasUnfinishedAssistantTurn: boolean;
   queuedMessageBehavior: 'queue' | 'guide';
+  /** Authoritative ACP `acknowledgedSteer`. Guide is a no-op without it. */
+  canSteer?: boolean;
   isRoom?: boolean;
   transportDown?: boolean;
   roomUserSendInFlight?: boolean;
@@ -37,6 +39,7 @@ export function resolveSessionMessageSubmitRoute({
   isPromptBusy,
   hasUnfinishedAssistantTurn,
   queuedMessageBehavior,
+  canSteer = true,
   isRoom = false,
   transportDown = false,
   roomUserSendInFlight = false,
@@ -55,6 +58,7 @@ export function resolveSessionMessageSubmitRoute({
     !isRoom &&
     isPromptBusy &&
     queuedMessageBehavior === 'guide' &&
+    canSteer &&
     hasUnfinishedAssistantTurn
   ) {
     return { type: 'guide' };

@@ -962,6 +962,10 @@ export class MessageHandler {
     this.store.get(sessionId).lastActivityMs = Date.now();
   }
 
+  private touchAgentActivity(sessionId: SessionId): void {
+    this.store.get(sessionId).lastAgentActivityMs = Date.now();
+  }
+
   private readonly preferredBaseBranch = (process.env.LODY_BASE_BRANCH || 'main').trim() || 'main';
 
   private resolveGitHubProjectBranch(
@@ -4929,13 +4933,15 @@ export class MessageHandler {
     // Note: ACP notifications are internal agent events, NOT user activity.
     // We intentionally do NOT call touchSession() here to avoid keeping sessions
     // artificially alive. Only user-initiated actions (chat, image upload) reset
-    // the idle timer.
+    // the idle timer. Agent activity is tracked separately so GC can spare a
+    // long isolated-subagent run that has no user traffic.
     if (this.deletedSessionIds.has(sessionId)) {
       this.logger.debug(
         `[${sessionId}] Dropping ACP update after permanent deletion reached its commit boundary`
       );
       return;
     }
+    this.touchAgentActivity(sessionId);
     if (this.store.recordSuppressedAcpReplay(sessionId)) {
       return;
     }
@@ -10372,6 +10378,14 @@ export class MessageHandler {
   getLastActivity(sessionId: SessionId): number | undefined {
     if (!this.store.has(sessionId)) return undefined;
     return this.store.get(sessionId).lastActivityMs;
+  }
+
+  getLastAgentActivity(sessionId: SessionId): number | undefined {
+    const storeMs = this.store.has(sessionId) ? this.store.get(sessionId).lastAgentActivityMs : 0;
+    const clientMs =
+      this.sessionManager.getSession(sessionId)?.agentClient?.getLastInboundActivityMs() ?? 0;
+    const latest = Math.max(storeMs, clientMs);
+    return latest > 0 ? latest : undefined;
   }
 
   getSessionMonitorState(sessionId: SessionId): {
