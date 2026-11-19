@@ -29,6 +29,7 @@ import { Route as JoinTokenRouteImport } from './routes/join/$token'
 import { Route as WorkspaceCreateRouteImport } from './routes/workspace/create'
 import { Route as WorkspaceNameAuthArchiveRouteImport } from './routes/$workspaceName/_auth/archive'
 import { Route as WorkspaceNameAuthChatRouteImport } from './routes/$workspaceName/_auth/chat'
+import { Route as WorkspaceNameAuthJiangongRouteImport } from './routes/$workspaceName/_auth/jiangong'
 import { Route as WorkspaceNameAuthSessionsRouteImport } from './routes/$workspaceName/_auth/sessions'
 import { Route as WorkspaceNameAuthSettingsRouteImport } from './routes/$workspaceName/_auth/settings'
 import { Route as WorkspaceNameAuthSessionsSessionIdRouteImport } from './routes/$workspaceName/_auth/sessions/$sessionId'
@@ -157,6 +158,12 @@ const WorkspaceNameAuthChatRoute = WorkspaceNameAuthChatRouteImport.update({
   path: '/chat',
   getParentRoute: () => WorkspaceNameAuthRoute,
 } as any)
+const WorkspaceNameAuthJiangongRoute =
+  WorkspaceNameAuthJiangongRouteImport.update({
+    id: '/jiangong',
+    path: '/jiangong',
+    getParentRoute: () => WorkspaceNameAuthRoute,
+  } as any)
 const WorkspaceNameAuthSessionsRoute =
   WorkspaceNameAuthSessionsRouteImport.update({
     id: '/sessions',
@@ -340,6 +347,7 @@ export interface FileRoutesByFullPath {
   '/$workspaceName/': typeof WorkspaceNameIndexRoute
   '/$workspaceName/archive': typeof WorkspaceNameAuthArchiveRoute
   '/$workspaceName/chat': typeof WorkspaceNameAuthChatRoute
+  '/$workspaceName/jiangong': typeof WorkspaceNameAuthJiangongRoute
   '/$workspaceName/sessions': typeof WorkspaceNameAuthSessionsRouteWithChildren
   '/$workspaceName/settings': typeof WorkspaceNameAuthSettingsRouteWithChildren
   '/$workspaceName/sessions/$sessionId': typeof WorkspaceNameAuthSessionsSessionIdRoute
@@ -387,6 +395,7 @@ export interface FileRoutesByTo {
   '/workspace/create': typeof WorkspaceCreateRoute
   '/$workspaceName/archive': typeof WorkspaceNameAuthArchiveRoute
   '/$workspaceName/chat': typeof WorkspaceNameAuthChatRoute
+  '/$workspaceName/jiangong': typeof WorkspaceNameAuthJiangongRoute
   '/$workspaceName/sessions': typeof WorkspaceNameAuthSessionsRouteWithChildren
   '/$workspaceName/sessions/$sessionId': typeof WorkspaceNameAuthSessionsSessionIdRoute
   '/$workspaceName/settings/about': typeof WorkspaceNameAuthSettingsAboutRoute
@@ -436,6 +445,7 @@ export interface FileRoutesById {
   '/$workspaceName/': typeof WorkspaceNameIndexRoute
   '/$workspaceName/_auth/archive': typeof WorkspaceNameAuthArchiveRoute
   '/$workspaceName/_auth/chat': typeof WorkspaceNameAuthChatRoute
+  '/$workspaceName/_auth/jiangong': typeof WorkspaceNameAuthJiangongRoute
   '/$workspaceName/_auth/sessions': typeof WorkspaceNameAuthSessionsRouteWithChildren
   '/$workspaceName/_auth/settings': typeof WorkspaceNameAuthSettingsRouteWithChildren
   '/$workspaceName/_auth/sessions/$sessionId': typeof WorkspaceNameAuthSessionsSessionIdRoute
@@ -486,6 +496,7 @@ export interface FileRouteTypes {
     | '/$workspaceName/'
     | '/$workspaceName/archive'
     | '/$workspaceName/chat'
+    | '/$workspaceName/jiangong'
     | '/$workspaceName/sessions'
     | '/$workspaceName/settings'
     | '/$workspaceName/sessions/$sessionId'
@@ -533,6 +544,7 @@ export interface FileRouteTypes {
     | '/workspace/create'
     | '/$workspaceName/archive'
     | '/$workspaceName/chat'
+    | '/$workspaceName/jiangong'
     | '/$workspaceName/sessions'
     | '/$workspaceName/sessions/$sessionId'
     | '/$workspaceName/settings/about'
@@ -581,6 +593,7 @@ export interface FileRouteTypes {
     | '/$workspaceName/'
     | '/$workspaceName/_auth/archive'
     | '/$workspaceName/_auth/chat'
+    | '/$workspaceName/_auth/jiangong'
     | '/$workspaceName/_auth/sessions'
     | '/$workspaceName/_auth/settings'
     | '/$workspaceName/_auth/sessions/$sessionId'
@@ -769,6 +782,13 @@ declare module '@tanstack/react-router' {
       path: '/chat'
       fullPath: '/$workspaceName/chat'
       preLoaderRoute: typeof WorkspaceNameAuthChatRouteImport
+      parentRoute: typeof WorkspaceNameAuthRoute
+    }
+    '/$workspaceName/_auth/jiangong': {
+      id: '/$workspaceName/_auth/jiangong'
+      path: '/jiangong'
+      fullPath: '/$workspaceName/jiangong'
+      preLoaderRoute: typeof WorkspaceNameAuthJiangongRouteImport
       parentRoute: typeof WorkspaceNameAuthRoute
     }
     '/$workspaceName/_auth/sessions': {
@@ -1049,6 +1069,7 @@ const WorkspaceNameAuthSettingsRouteWithChildren =
 interface WorkspaceNameAuthRouteChildren {
   WorkspaceNameAuthArchiveRoute: typeof WorkspaceNameAuthArchiveRoute
   WorkspaceNameAuthChatRoute: typeof WorkspaceNameAuthChatRoute
+  WorkspaceNameAuthJiangongRoute: typeof WorkspaceNameAuthJiangongRoute
   WorkspaceNameAuthSessionsRoute: typeof WorkspaceNameAuthSessionsRouteWithChildren
   WorkspaceNameAuthSettingsRoute: typeof WorkspaceNameAuthSettingsRouteWithChildren
   WorkspaceNameAuthTasksTaskIdRoute: typeof WorkspaceNameAuthTasksTaskIdRoute
@@ -1059,6 +1080,7 @@ interface WorkspaceNameAuthRouteChildren {
 const WorkspaceNameAuthRouteChildren: WorkspaceNameAuthRouteChildren = {
   WorkspaceNameAuthArchiveRoute: WorkspaceNameAuthArchiveRoute,
   WorkspaceNameAuthChatRoute: WorkspaceNameAuthChatRoute,
+  WorkspaceNameAuthJiangongRoute: WorkspaceNameAuthJiangongRoute,
   WorkspaceNameAuthSessionsRoute: WorkspaceNameAuthSessionsRouteWithChildren,
   WorkspaceNameAuthSettingsRoute: WorkspaceNameAuthSettingsRouteWithChildren,
   WorkspaceNameAuthTasksTaskIdRoute: WorkspaceNameAuthTasksTaskIdRoute,

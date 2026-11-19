@@ -1,3 +1,4 @@
+import { JiangongPanel } from '@/components/jiangong/jiangong-view';
 import {
   Archive,
   ArchiveRestore,
@@ -3387,11 +3388,26 @@ const SessionDetail = ({
     ]
   );
 
+  const autoJiangongSessionRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (isMobile || !activeSession?.wf) return;
+    if (autoJiangongSessionRef.current === activeSession.id) return;
+    autoJiangongSessionRef.current = activeSession.id;
+    if (isSidebarOpen && activeSidebarTab !== null && activeSidebarTab !== 'jiangong') return;
+    setIsSidebarOpen(true);
+    activateSidebarTab('jiangong');
+  }, [activeSession?.id, activeSession?.wf, activateSidebarTab, activeSidebarTab, isMobile, isSidebarOpen]);
+
   // Fixed panels are persistable side-panel tabs; Side Chat is an action that
   // creates a new durable session instead, so the two lists stay separate and
   // only merge for display.
   const sidePanelFixedOptions = useMemo<(SessionSidePanelOption & { id: SidebarTab })[]>(() => {
     const options: (SessionSidePanelOption & { id: SidebarTab })[] = [
+      {
+        id: 'jiangong',
+        label: t('sessions.detailTabs.jiangong', '监工'),
+        kind: 'jiangong',
+      },
       {
         id: 'files',
         label: t('sessions.detailTabs.files', 'Files'),
@@ -5405,7 +5421,9 @@ const SessionDetail = ({
     !isNativeAppShell() && isMacOSElectronRenderer() && !isElectronFullscreen;
 
   const nonBrowserSidebarContent =
-    activeSidebarTab === 'files' ? (
+    activeSidebarTab === 'jiangong' ? (
+      <JiangongPanel currentSessionId={activeSession.id} />
+    ) : activeSidebarTab === 'files' ? (
       <FileTreeView
         session={activeSession}
         handleOpenFile={handleOpenIndexedFile}

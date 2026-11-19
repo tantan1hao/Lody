@@ -537,6 +537,16 @@ function isTasksRoute(pathname: string, workspaceSlug: string | null): boolean {
   return normalizedPath.startsWith('/tasks');
 }
 
+function isJiangongRoute(pathname: string, workspaceSlug: string | null): boolean {
+  const workspacePrefix = workspaceSlug ? `/${workspaceSlug}` : '';
+  const normalizedPath =
+    workspaceSlug && pathname.startsWith(workspacePrefix)
+      ? pathname.slice(workspacePrefix.length) || '/'
+      : pathname;
+
+  return normalizedPath.startsWith('/jiangong');
+}
+
 function isArchiveRoute(pathname: string, workspaceSlug: string | null): boolean {
   const workspacePrefix = workspaceSlug ? `/${workspaceSlug}` : '';
   const normalizedPath =
@@ -1500,6 +1510,7 @@ export function LoroAppSidebar({ className }: LoroAppSidebarProps) {
 
   const activeNav = useMemo(() => {
     if (isArchiveRoute(location.pathname, workspaceSlug)) return 'archive';
+    if (isJiangongRoute(location.pathname, workspaceSlug)) return 'jiangong';
     if (isTasksRoute(location.pathname, workspaceSlug)) return 'tasks';
     if (
       isHomeRoute(location.pathname, workspaceSlug) &&
@@ -2452,6 +2463,26 @@ export function LoroAppSidebar({ className }: LoroAppSidebarProps) {
     });
   }, [activeNav, closeMobileDrawer, router, workspaceSlug]);
 
+  const handleJiangongClicked = useCallback(() => {
+    if (!workspaceSlug) return;
+    closeMobileDrawer();
+    if (activeNav === 'jiangong') {
+      if (typeof window !== 'undefined' && window.history.length > 1) {
+        window.history.back();
+        return;
+      }
+      void router.navigate({
+        to: '/$workspaceName/chat',
+        params: { workspaceName: workspaceSlug },
+      });
+      return;
+    }
+    void router.navigate({
+      to: '/$workspaceName/jiangong',
+      params: { workspaceName: workspaceSlug },
+    });
+  }, [activeNav, closeMobileDrawer, router, workspaceSlug]);
+
   const tasksEnabled = useAtomValue(tasksFeatureEnabledAtom);
 
   const handleTasksClicked = useCallback(() => {
@@ -3181,6 +3212,7 @@ export function LoroAppSidebar({ className }: LoroAppSidebarProps) {
         onCreateWorkspaceClicked={handleCreateWorkspaceClicked}
         onHomeClicked={handleHomeClicked}
         onArchiveClicked={handleArchiveClicked}
+        onJiangongClicked={handleJiangongClicked}
         onTasksClicked={handleTasksClicked}
         onNewTaskClicked={handleNewTaskClicked}
         showTasks={tasksEnabled}

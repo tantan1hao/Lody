@@ -2045,7 +2045,7 @@ export const SessionChatInterface = memo(
       defaultModelId,
       machineFlockRows,
       modeOptions,
-      modelOptions,
+      modelOptions: acpModelOptions,
       sessionMachine,
     } = useSessionAcpSelectorContext({
       machineId: session.machineId,
@@ -2056,6 +2056,17 @@ export const SessionChatInterface = memo(
       selectedModelId,
       configOptionValues,
     });
+    // wf 一线会话：Lody 自带 Codex 的模型列表里没有 wf 用的模型（gpt-6.1、Deepseek、Gemini…），
+    // 不处理的话这里会显示成默认的 GPT。把这张卡实际用的模型放到列表最前面并默认选中。
+    const wfModelId = session.wf?.modelId || undefined;
+    const wfModelLabel = session.wf?.model || undefined;
+    const modelOptions = useMemo(() => {
+      if (!wfModelId || acpModelOptions.some((option) => option.value === wfModelId)) return acpModelOptions;
+      return [
+        { value: wfModelId, label: wfModelLabel ?? wfModelId, description: 'wf 这张卡实际用的模型' },
+        ...acpModelOptions,
+      ];
+    }, [acpModelOptions, wfModelId, wfModelLabel]);
     useMachineFlockAgentConfigsForMachineIds([session.machineId]);
     const machineDotlodyPath = useMemo(
       () => resolveMachineDotlodyPath(machineFlockRows, isLocalSession ? localHomeDir : null),
@@ -2397,13 +2408,14 @@ export const SessionChatInterface = memo(
     const sessionConfigPreferences = useMemo(
       () => ({
         modeId: sessionConversationConfig.modeId,
-        modelId: sessionConversationConfig.modelId,
+        modelId: sessionConversationConfig.modelId || wfModelId,
         configOptionValues: sessionConversationConfig.configOptionValues,
       }),
       [
         sessionConversationConfig.configOptionValues,
         sessionConversationConfig.modeId,
         sessionConversationConfig.modelId,
+        wfModelId,
       ]
     );
     const sessionSelectorOptions = useMemo(

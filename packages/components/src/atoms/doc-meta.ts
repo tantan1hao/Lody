@@ -118,6 +118,8 @@ const SESSION_LIST_VISIBLE_KEYS: readonly (keyof SessionMeta)[] = [
   'awaitingUserSince',
   'taskId',
   'lastCanceledTurn',
+  // 监工视图读 meta.wf，变了要让会话列表跟着更新
+  'wf',
 ] as const;
 const DOC_META_EVENT_FLUSH_BATCH_SIZE = 50;
 

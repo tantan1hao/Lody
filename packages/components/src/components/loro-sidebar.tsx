@@ -43,6 +43,7 @@ import {
   Plus,
   Settings,
   Users,
+  Radar,
 } from 'lucide-react';
 import { SidebarSearchInput } from '@/components/sidebar-search-input';
 import {
@@ -65,7 +66,7 @@ import type { SidebarOrganizeMode } from '@/atoms/sidebar-state';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useStableNow } from '@/hooks/use-stable-now';
 
-export type LoroSidebarNavKey = 'home' | 'archive' | 'tasks';
+export type LoroSidebarNavKey = 'home' | 'archive' | 'tasks' | 'jiangong';
 
 export type LoroSidebarChatScope = 'my' | 'team';
 export type LoroSidebarOrganizeMode = SidebarOrganizeMode;
@@ -250,6 +251,8 @@ export interface LoroSidebarProps {
   onHomeClicked?: () => void;
   onArchiveClicked?: () => void;
   onTasksClicked?: () => void;
+  /** 监工：wf 一线会话总览 */
+  onJiangongClicked?: () => void;
   /** Capture a task without leaving where you are. Also gated by `showTasks`. */
   onNewTaskClicked?: () => void;
   /**
@@ -690,6 +693,7 @@ export const LoroSidebar = memo(function LoroSidebar({
   onHomeClicked,
   onArchiveClicked,
   onTasksClicked,
+  onJiangongClicked,
   onNewTaskClicked,
   showTasks = false,
   onSettingsClicked,
@@ -1333,6 +1337,12 @@ export const LoroSidebar = memo(function LoroSidebar({
             <IconButton label="Archive" active={activeNav === 'archive'} onClick={onArchiveClicked}>
               <Archive className="h-4 w-4" />
             </IconButton>
+
+            {onJiangongClicked ? (
+              <IconButton label="监工" active={activeNav === 'jiangong'} onClick={onJiangongClicked}>
+                <Radar className="h-4 w-4" />
+              </IconButton>
+            ) : null}
           </div>
 
           {isMobile ? (

@@ -7,6 +7,7 @@ import {
   MessageSquare,
   MonitorPlay,
   Plus,
+  Radar,
   X,
 } from 'lucide-react';
 import { FileIcon } from '@/components/icons/file-icons';
@@ -22,7 +23,7 @@ import { cn } from '@/lib/utils';
 export type SessionSidePanelTabItem = {
   id: string;
   label: string;
-  kind: 'files' | 'changes' | 'pr' | 'browser' | 'session' | 'file' | 'diff';
+  kind: 'files' | 'changes' | 'pr' | 'browser' | 'session' | 'file' | 'diff' | 'jiangong';
   filePath?: string;
   closeable?: boolean;
   dirty?: boolean;
@@ -33,8 +34,8 @@ export type SessionSidePanelTabItem = {
 };
 
 export type SessionSidePanelOption = Omit<SessionSidePanelTabItem, 'id' | 'kind'> & {
-  id: 'files' | 'changes' | 'pr' | 'browser' | 'side-session';
-  kind: 'files' | 'changes' | 'pr' | 'browser' | 'session';
+  id: 'files' | 'changes' | 'pr' | 'browser' | 'side-session' | 'jiangong';
+  kind: 'files' | 'changes' | 'pr' | 'browser' | 'session' | 'jiangong';
 };
 
 const SIDE_SESSION_PANEL_PREFIX = 'side-session:';
@@ -153,6 +154,8 @@ function SidePanelTabIcon({ tab }: { tab: SessionSidePanelTabItem }) {
       return <MonitorPlay className="h-3.5 w-3.5 opacity-70" />;
     case 'session':
       return <MessageSquare className="h-3.5 w-3.5 opacity-70" />;
+    case 'jiangong':
+      return <Radar className="h-3.5 w-3.5 opacity-70" />;
     case 'file':
       return tab.filePath ? (
         <FileIcon filePath={tab.filePath} className="h-3.5 w-3.5" />
