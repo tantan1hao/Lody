@@ -751,7 +751,31 @@ function layoutDAG(
       bigTasks.push(comp);
     }
 
-    // 大任务排序：正在跑的大任务排最左第 1 列 > 多步主线大任务 > 最近更新
+    // 为每条大任务按「最早开干时间 + 卡号」分配永久固定编号（任务 1、任务 2…），不随在跑状态切换跳号
+    const compEarliest = (comp: string[]) => {
+      let minTs = Number.MAX_SAFE_INTEGER;
+      let minId = '';
+      for (const tid of comp) {
+        for (const m of trackMembers.get(tid)!) {
+          const ts = cardTs(m);
+          if (ts < minTs || (ts === minTs && (!minId || m.card < minId))) {
+            minTs = ts;
+            minId = m.card;
+          }
+        }
+      }
+      return { minTs, minId };
+    };
+    const stableTaskNum = new Map<string[], number>();
+    [...bigTasks]
+      .sort((a, b) => {
+        const ea = compEarliest(a);
+        const eb = compEarliest(b);
+        return ea.minTs - eb.minTs || ea.minId.localeCompare(eb.minId);
+      })
+      .forEach((comp, idx) => stableTaskNum.set(comp, idx + 1));
+
+    // 大任务展示列排序：正在跑的大任务排最左方便盯梢，但保留各自的永久编号（任务 N）
     const taskScore = (comp: string[]) => {
       const hasRun = comp.some(
         (tid) =>
@@ -759,12 +783,12 @@ function layoutDAG(
           (trackReviews.get(tid) ?? []).some((r) => r.running)
       );
       const maxUp = Math.max(...comp.map((tid) => trackById.get(tid)!.updatedAt));
-      return { runRank: hasRun ? 0 : 1, multiRank: comp.length > 1 ? 0 : 1, maxUp };
+      return { runRank: hasRun ? 0 : 1, stableNum: stableTaskNum.get(comp) ?? 999, maxUp };
     };
     bigTasks.sort((a, b) => {
       const sa = taskScore(a);
       const sb = taskScore(b);
-      return sa.runRank - sb.runRank || sa.multiRank - sb.multiRank || sb.maxUp - sa.maxUp;
+      return sa.runRank - sb.runRank || sa.stableNum - sb.stableNum || sb.maxUp - sa.maxUp;
     });
 
     const pmId = `__pm__:${entry.project}`;
@@ -902,10 +926,11 @@ function layoutDAG(
       const tipTitle = (wfOf(tipCard).title || wfOf(tipCard).goal || tipCard.card).trim();
       const taskTitle = sortedDepths.length > 1 && rootTitle !== tipTitle ? `${rootTitle}` : tipTitle;
 
+      const taskNum = stableTaskNum.get(comp) ?? tIdx + 1;
       taskBoxes.push({
-        id: `__task__:${entry.project}:${tIdx}`,
+        id: `__task__:${entry.project}:${taskNum}`,
         project: entry.project,
-        taskNum: tIdx + 1,
+        taskNum,
         title: taskTitle,
         stepCount: sortedDepths.length,
         hasRunning: taskHasRun,
