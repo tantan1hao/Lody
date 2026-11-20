@@ -761,6 +761,34 @@ export type PendingScheduledTask = {
   timeZone?: string;
 };
 
+export type WfScenarioItem = {
+  num?: number;
+  name: string;
+  result: string;
+  expect?: string;
+  actual?: string;
+  evidence?: string;
+};
+
+export type WfScenarioCounts = {
+  pass: number;
+  fail: number;
+  unverified: number;
+};
+
+export type WfHoldInfo = {
+  project: string;
+  why?: string;
+  at?: number;
+};
+
+export type WfStepItem = {
+  n: number;
+  ask: string;
+  did: string;
+  at: number;
+};
+
 /**
  * wf 一线任务卡信息，由 macpro 上的 wf-lody 同步程序写入导入的会话，供「监工」视图展示。
  * 只是展示用，Lody 自己不读不写。
@@ -783,6 +811,8 @@ export type WfCardMeta = {
   rounds?: number;
   /** wf 2.17 分块并行的块数 */
   parts?: number;
+  /** 分块并行的各块名称 */
+  partNames?: string[];
   /** 卡的类型：实施 / 验收 / 集成 */
   kind?: string;
   /** 给长官看的大白话短标题 */
@@ -802,11 +832,49 @@ export type WfCardMeta = {
   autoFix?: string;
   /** wf 2.18：被自动返修的次数 */
   reviewFixes?: number;
+  /** 实施卡最新对应的独立验收卡号 */
+  verdictCard?: string;
   /** 回传没送到项目经理 */
   cbFail?: boolean;
   callback?: string;
+  /** 提炼的一句话阻断/未过关键结论（暗红高亮用） */
+  blocker?: string;
+  /** 失败/自测/验收详情摘要 */
+  detail?: string;
+  /** 独立验收逐条场景结果 */
+  scenarios?: WfScenarioItem[];
+  /** 独立验收场景汇总统计 */
+  scenarioCounts?: WfScenarioCounts;
+  /** 验收额外发现的问题（不计入本次结论） */
+  found?: string[];
+  /** 模型限流/切换记录 */
+  modelSwitches?: string[];
+  /** Git 分支、起点分支/提交与短提交号 */
+  branch?: string;
+  base?: string;
+  head?: string;
+  /** 耗时与活跃指标（秒 / 分钟） */
+  durationSec?: number;
+  expectMin?: number;
+  timeoutMin?: number;
+  lastOutputAt?: number;
+  /** 数值化 Token 成本（用于汇总和计算缓存命中率） */
+  inputTokens?: number;
+  cachedTokens?: number;
+  outputTokens?: number;
+  reasoningTokens?: number;
   /** 这个会话每一轮：问了什么、做了什么（wf-lody 同步程序从 prompt-N / last-message-N 摘第一句） */
-  steps?: Array<{ n: number; ask: string; did: string; at: number }>;
+  steps?: WfStepItem[];
+  /** 整张卡的执行步骤（兼容 Cursor 等未导入 Lody 会话的执行器） */
+  cardSteps?: WfStepItem[];
+  /** 已归档/超窗口父卡的轻量占位节点，保证因果时间轴不断链 */
+  stub?: boolean;
+  /** 小模型总结的「这个会话在干什么」大白话 */
+  doing?: string;
+  /** 该会话最后一次写入时间（秒） */
+  sessionAt?: number;
+  /** 写手会话是否已交棒给执行会话 */
+  writerDone?: boolean;
   /** 秒 */
   startedAt?: number;
   /** 秒 */

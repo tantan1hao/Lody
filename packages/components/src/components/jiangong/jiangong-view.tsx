@@ -4,7 +4,7 @@ import { useRouter } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { Archive, Minus, PanelLeft, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { getMachineRoomId, getSessionRoomId, type SessionMeta, type WfCardMeta } from '@lody/shared';
+import { getMachineRoomId, getSessionRoomId, type SessionMeta, type WfCardMeta, type WfHoldInfo } from '@lody/shared';
 import { activeWorkspaceRuntimeAtom } from '@/atoms/runtime';
 import { machineMetaCacheAtom } from '@/atoms/doc-meta';
 import { cn } from '@/lib/utils';
@@ -57,10 +57,28 @@ export type OwnerGroup = {
   cbFail: number;
 };
 
+export type ProjectGroup = {
+  project: string;
+  owner: string;
+  cards: CardItem[];
+  running: number;
+  waiting: number;
+  bad: number;
+  warn: number;
+  cbFail: number;
+};
+
 export type Tone = 'run' | 'wait' | 'warn' | 'bad' | 'ok' | 'off';
 
 const ROLE_ORDER = ['执行', '分块', '验收', '写手', '写卡', '工程师'];
 const OWNER_ORDER = ['心里项目经理', 'PDRS项目经理', '投顾项目助手', '总助'];
+const PROJECT_ORDER = ['心里', 'agentCPM', '投顾', 'PDRS', '总助'];
+const OWNER_TO_PROJECT: Record<string, string> = {
+  心里项目经理: '心里',
+  PDRS项目经理: 'PDRS',
+  投顾项目助手: '投顾',
+  总助: '总助',
+};
 const FRESH_MS = 30 * 60 * 1000;
 /** 整页卡片宽度（和下面 max-w-[540px] 一致）；下级卡保持同宽、往右缩进 */
 const CARD_W = 540;
@@ -160,17 +178,103 @@ export function hm(sec: number | undefined, now: Date): string {
   return d.toDateString() === now.toDateString() ? time : `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${time}`;
 }
 
-/** 卡片级字段（状态、轮数、用量、标题）取同一张卡里最新那条会话的。 */
+/** 卡片级字段（状态、轮数、用量、标题、结论、成本、证据）取同一张卡里最新那条会话的。 */
 function pickCardFields(wf: WfCardMeta): Partial<WfCardMeta> {
-  const { status, label, tone, rounds, parts, model, effort, usage, updatedAt, startedAt, goal, harness, kind, title } = wf;
-  const { unverified, unverifiedWhy, autoFix, reviewFixes, cbFail, callback } = wf;
+  const {
+    status,
+    label,
+    tone,
+    rounds,
+    parts,
+    partNames,
+    model,
+    modelId,
+    effort,
+    usage,
+    updatedAt,
+    startedAt,
+    goal,
+    harness,
+    kind,
+    title,
+    project,
+    owner,
+    unverified,
+    unverifiedWhy,
+    autoFix,
+    reviewFixes,
+    verdictCard,
+    cbFail,
+    callback,
+    blocker,
+    detail,
+    scenarios,
+    scenarioCounts,
+    found,
+    modelSwitches,
+    branch,
+    base,
+    head,
+    durationSec,
+    expectMin,
+    timeoutMin,
+    lastOutputAt,
+    inputTokens,
+    cachedTokens,
+    outputTokens,
+    reasoningTokens,
+    cardSteps,
+    stub,
+  } = wf;
   return {
-    status, label, tone, rounds, parts, model, effort, usage, updatedAt, startedAt, goal, harness, kind, title,
-    unverified, unverifiedWhy, autoFix, reviewFixes, cbFail, callback,
+    status,
+    label,
+    tone,
+    rounds,
+    parts,
+    partNames,
+    model,
+    modelId,
+    effort,
+    usage,
+    updatedAt,
+    startedAt,
+    goal,
+    harness,
+    kind,
+    title,
+    project,
+    owner,
+    unverified,
+    unverifiedWhy,
+    autoFix,
+    reviewFixes,
+    verdictCard,
+    cbFail,
+    callback,
+    blocker,
+    detail,
+    scenarios,
+    scenarioCounts,
+    found,
+    modelSwitches,
+    branch,
+    base,
+    head,
+    durationSec,
+    expectMin,
+    timeoutMin,
+    lastOutputAt,
+    inputTokens,
+    cachedTokens,
+    outputTokens,
+    reasoningTokens,
+    cardSteps,
+    stub,
   };
 }
 
-function buildGroups(sessions: SessionMeta[], board: WfCardMeta[] = [], archived: SessionMeta[] = []): OwnerGroup[] {
+function collectCardItems(sessions: SessionMeta[], board: WfCardMeta[] = [], archived: SessionMeta[] = []): CardItem[] {
   const byCard = new Map<string, WfSession[]>();
   const boardOnly = new Set<string>();
   for (const session of sessions) {
@@ -198,13 +302,13 @@ function buildGroups(sessions: SessionMeta[], board: WfCardMeta[] = [], archived
     l.push({ session, wf });
     extra.set(wf.card, l);
   }
-  const byOwner = new Map<string, CardItem[]>();
+  const items: CardItem[] = [];
   for (const [card, list] of byCard) {
     list.sort((a, b) => roleRank(a.wf.role) - roleRank(b.wf.role));
     const main = list[0];
     const latest = list.reduce((m, x) => ((x.wf.updatedAt ?? 0) > (m.wf.updatedAt ?? 0) ? x : m), main);
     const wf = { ...main.wf, ...pickCardFields(latest.wf) };
-    const item: CardItem = {
+    items.push({
       card,
       owner: latest.wf.owner || latest.wf.project || '其他',
       main: { session: main.session, wf },
@@ -218,26 +322,78 @@ function buildGroups(sessions: SessionMeta[], board: WfCardMeta[] = [], archived
       waitsFor: [],
       children: [],
       familyTone: toneOf(wf),
-    };
+    });
+  }
+  return items;
+}
+
+function buildGroups(sessions: SessionMeta[], board: WfCardMeta[] = [], archived: SessionMeta[] = []): OwnerGroup[] {
+  const items = collectCardItems(sessions, board, archived);
+  const byOwner = new Map<string, CardItem[]>();
+  for (const item of items) {
     const cards = byOwner.get(item.owner) ?? [];
     cards.push(item);
     byOwner.set(item.owner, cards);
   }
   const groups: OwnerGroup[] = [];
   for (const [owner, all] of byOwner) {
-    const cards = linkCards(all);
+    const cards = linkCards(all).filter((c) => !(c.main.wf.stub && c.children.length === 0));
+    const real = all.filter((c) => !c.main.wf.stub);
+    if (cards.length === 0) continue;
     groups.push({
       owner,
       cards,
-      running: all.filter((c) => c.tone === 'run').length,
-      waiting: all.filter((c) => c.tone === 'wait').length,
-      bad: all.filter((c) => c.tone === 'bad').length,
-      warn: all.filter((c) => c.tone === 'warn').length,
-      cbFail: all.filter((c) => c.main.wf.cbFail).length,
+      running: real.filter((c) => c.tone === 'run').length,
+      waiting: real.filter((c) => c.tone === 'wait').length,
+      bad: real.filter((c) => c.tone === 'bad').length,
+      warn: real.filter((c) => c.tone === 'warn').length,
+      cbFail: real.filter((c) => c.main.wf.cbFail).length,
     });
   }
   const rank = (o: string) => (OWNER_ORDER.includes(o) ? OWNER_ORDER.indexOf(o) : OWNER_ORDER.length);
   groups.sort((a, b) => rank(a.owner) - rank(b.owner) || a.owner.localeCompare(b.owner));
+  return groups;
+}
+
+function resolveProjectName(wf: WfCardMeta, owner: string): string {
+  const raw = (wf.project || '').trim();
+  if (raw) return raw;
+  return OWNER_TO_PROJECT[owner] ?? owner;
+}
+
+function buildProjectGroups(sessions: SessionMeta[], board: WfCardMeta[] = [], archived: SessionMeta[] = []): ProjectGroup[] {
+  const items = collectCardItems(sessions, board, archived);
+  const byProject = new Map<string, CardItem[]>();
+  for (const item of items) {
+    const proj = resolveProjectName(item.main.wf, item.owner);
+    const list = byProject.get(proj) ?? [];
+    list.push(item);
+    byProject.set(proj, list);
+  }
+  const groups: ProjectGroup[] = [];
+  for (const [project, all] of byProject) {
+    const cards = linkCards(all).filter((c) => !(c.main.wf.stub && c.children.length === 0));
+    const real = all.filter((c) => !c.main.wf.stub);
+    if (cards.length === 0) continue;
+    // 取该项目最近一张卡的 owner 用于底部「跟项目经理说」
+    const latestCard = real.reduce((m, c) => (c.updatedAt > m.updatedAt ? c : m), real[0] ?? all[0]);
+    const owner = latestCard?.owner || project;
+    groups.push({
+      project,
+      owner,
+      cards,
+      running: real.filter((c) => c.tone === 'run').length,
+      waiting: real.filter((c) => c.tone === 'wait').length,
+      bad: real.filter((c) => c.tone === 'bad').length,
+      warn: real.filter((c) => c.tone === 'warn').length,
+      cbFail: real.filter((c) => c.main.wf.cbFail).length,
+    });
+  }
+  const rank = (p: string) => {
+    const idx = PROJECT_ORDER.findIndex((x) => x.toLowerCase() === p.toLowerCase());
+    return idx >= 0 ? idx : PROJECT_ORDER.length;
+  };
+  groups.sort((a, b) => rank(a.project) - rank(b.project) || a.project.localeCompare(b.project));
   return groups;
 }
 
@@ -400,7 +556,7 @@ export function useArchiveCards() {
       if (!runtime) throw new Error('Lody 还没连上');
       const now = Date.now();
       for (const c of items) {
-        if (!c.noSession) continue;
+        if (!c.noSession || c.main.wf.stub) continue;
         const mid = (c.main.wf as WfCardMeta & { boardMachine?: string }).boardMachine;
         if (!mid) continue;
         await runtime.writer.upsertDocMeta(getMachineRoomId(mid as never), {
@@ -408,7 +564,7 @@ export function useArchiveCards() {
         } as never);
       }
       for (const c of items) {
-        if (c.noSession) continue;
+        if (c.noSession || c.main.wf.stub) continue;
         for (const x of [c.main, ...c.others]) {
           const lm = typeof x.session.lastMessageAt === 'number' ? x.session.lastMessageAt : 0;
           const patch = archived ? { isArchived: true, lastReadAt: Math.max(lm, now) } : { isArchived: false };
@@ -472,24 +628,42 @@ export function useJiangong() {
   const { sessions } = useVisibleSessionMetas();
   const { archivedSessions } = useVisibleArchivedSessionMetas();
   const machines = useAtomValue(machineMetaCacheAtom);
-  const board = useMemo(
-    () =>
-      Object.values(machines).flatMap((m) => {
-        const meta = m as unknown as { id: string; wfBoard?: { cards?: WfCardMeta[] } } & Record<string, unknown>;
-        // 隐藏的卡：机器信息上一张卡一个字段 wfHidden:<卡号> = 'yes'（撤销时写 'no'）
-        const hidden = new Set(
-          Object.keys(meta)
-            .filter((k) => k.startsWith('wfHidden:') && meta[k] === 'yes')
-            .map((k) => k.slice('wfHidden:'.length))
-        );
-        const cards = Array.isArray(meta.wfBoard?.cards) ? meta.wfBoard.cards : [];
-        // boardMachine：这张卡挂在哪台机器的清单上，归档时往那台机器的隐藏列表里写
-        return cards.filter((c) => !hidden.has(c.card)).map((c) => ({ ...c, boardMachine: meta.id }));
-      }),
-    [machines]
-  );
+  const { board, holds } = useMemo(() => {
+    const cardsOut: Array<WfCardMeta & { boardMachine?: string }> = [];
+    const holdsMap = new Map<string, WfHoldInfo>();
+    for (const m of Object.values(machines)) {
+      const meta = m as unknown as {
+        id: string;
+        wfBoard?: { cards?: WfCardMeta[]; holds?: WfHoldInfo[] };
+      } & Record<string, unknown>;
+      // 隐藏的卡：机器信息上一张卡一个字段 wfHidden:<卡号> = 'yes'（撤销时写 'no'）
+      const hidden = new Set(
+        Object.keys(meta)
+          .filter((k) => k.startsWith('wfHidden:') && meta[k] === 'yes')
+          .map((k) => k.slice('wfHidden:'.length))
+      );
+      const cards = Array.isArray(meta.wfBoard?.cards) ? meta.wfBoard.cards : [];
+      // boardMachine：这张卡挂在哪台机器的清单上，归档时往那台机器的隐藏列表里写
+      for (const c of cards) {
+        if (c && typeof c.card === 'string' && !hidden.has(c.card)) {
+          cardsOut.push({ ...c, boardMachine: meta.id });
+        }
+      }
+      const machineHolds = Array.isArray(meta.wfBoard?.holds) ? meta.wfBoard.holds : [];
+      for (const h of machineHolds) {
+        if (h && typeof h.project === 'string' && h.project.trim()) {
+          holdsMap.set(h.project.trim().toLowerCase(), h);
+        }
+      }
+    }
+    return { board: cardsOut, holds: Array.from(holdsMap.values()) };
+  }, [machines]);
   const groups = useMemo(
     () => buildGroups(sessions, board, archivedSessions as unknown as SessionMeta[]),
+    [sessions, board, archivedSessions]
+  );
+  const projectGroups = useMemo(
+    () => buildProjectGroups(sessions, board, archivedSessions as unknown as SessionMeta[]),
     [sessions, board, archivedSessions]
   );
   const total = groups.reduce((n, g) => n + countCards(g.cards), 0);
@@ -497,7 +671,7 @@ export function useJiangong() {
     (sessionId: string) => {
       if (sessionId.startsWith('wf-card-')) {
         toast.message('这张卡在 Lody 里没有会话', {
-          description: '可能还在排队、还没开工，或者是 wf 自己合并完的集成卡、开工前就停了的卡。',
+          description: '可能还在排队、还没开工，或者是 Cursor 会话 / 集成卡 / 已归档前置卡。',
         });
         return;
       }
@@ -509,7 +683,7 @@ export function useJiangong() {
     },
     [router, workspaceSlug]
   );
-  return { groups, total, openSession };
+  return { groups, projectGroups, holds, total, openSession };
 }
 
 function OwnerBadge({ group, compact }: { group: OwnerGroup; compact?: boolean }) {
